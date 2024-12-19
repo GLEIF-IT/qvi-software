@@ -6,21 +6,21 @@ Compatability matrix for Technical Dry Runs
 
 * KERIpy 1.1.27 (https://github.com/WebOfTrust/keripy/releases/tag/1.1.27) 
 * KERIA 0.2.0 (https://github.com/GLEIF-IT/keria/releases/tag/0.2.0)
-* SignifyTS 0.2.2 (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0)
+* SignifyTS 0.3.0 (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0)
 
 ## Table of functionality
 
-| **Multisig AID Creation**                                                           | **Test Date** | **Test Suite** |
+| **QVI Multisig AID Creation**                                                       | **Test Date** | **Test Suite** |
 |-------------------------------------------------------------------------------------|---------------|----------------|
-| Create Group Multisig AID comprised of two members that is delegated from the GLEIF |               |                |
+| Create two+ member Group Multisig AID delegated from the GLEIF External AID         |               |                |
 | Show delegation approval                                                            |               |                |
 | **Accept Qualified vLEI Issuer vLEI credential**                                    | **Test Date** | **Test Suite** |
 | Show credential                                                                     |               |                |
 | **Issue Legal Entity vLEI credentials**                                             | **Test Date** | **Test Suite** |
-| Issue the Legal Entity vLEI Credential to the GLEIF                                 |               |                |
+| Issue the Legal Entity vLEI Credential to the GLEIF Internal AID                    |               |                |
 | Present issued Legal Entity credential to the vLEI Reporting API                    |               |                |
 | **Issue OOR vLEI credentials**                                                      | **Test Date** | **Test Suite** |
-| Receive the OOR Authorization vLEI Credential issued from the GLEIF                 |               |                |
+| Receive the OOR Authorization vLEI Credential issued from the GLEIF Internal AID    |               |                |
 | Issue the Official Organizational Role vLEI Credential to a member of GLEIF         |               |                |
 | Present issued OOR credential to the vLEI Reporting API                             |               |                |
 | **Issue ECR vLEI credentials**                                                      | **Test Date** | **Test Suite** |
@@ -41,19 +41,19 @@ Compatability matrix for Technical Dry Runs
 ### Suite 2 - GLEIF planned upgrade 2025
 * KERIpy 1.2.1 (https://github.com/WebOfTrust/keripy/releases/tag/1.2.0) 
 * KERIA 0.2.0-dev6 (https://github.com/GLEIF-IT/keria/releases/tag/0.2.0)
-* SignifyTS 0.2.2 (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0)
+* SignifyTS 0.3.0 (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0)
 
 | **Multisig AID Creation**                                                           | **Test Date** | **Test Suite** |
 |-------------------------------------------------------------------------------------|---------------|----------------|
-| Create Group Multisig AID comprised of two members that is delegated from the GLEIF |               |                |
+| Create two+ member Group Multisig AID delegated from the GLEIF External AID         |               |                |
 | Show delegation approval                                                            |               |                |
 | **Accept Qualified vLEI Issuer vLEI credential**                                    | **Test Date** | **Test Suite** |
 | Show credential                                                                     |               |                |
 | **Issue Legal Entity vLEI credentials**                                             | **Test Date** | **Test Suite** |
-| Issue the Legal Entity vLEI Credential to the GLEIF                                 |               |                |
+| Issue the Legal Entity vLEI Credential to the GLEIF Internal AID                    |               |                |
 | Present issued Legal Entity credential to the vLEI Reporting API                    |               |                |
 | **Issue OOR vLEI credentials**                                                      | **Test Date** | **Test Suite** |
-| Receive the OOR Authorization vLEI Credential issued from the GLEIF                 |               |                |
+| Receive the OOR Authorization vLEI Credential issued from the GLEIF Internal AID    |               |                |
 | Issue the Official Organizational Role vLEI Credential to a member of GLEIF         |               |                |
 | Present issued OOR credential to the vLEI Reporting API                             |               |                |
 | **Issue ECR vLEI credentials**                                                      | **Test Date** | **Test Suite** |
