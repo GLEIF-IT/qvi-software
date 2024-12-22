@@ -2,7 +2,7 @@
 
 Compatability matrix for Technical Dry Runs
 
-### Suite 1 - GLEIF current
+### Suite 1 - GLEIF current: Stack A
 
 * KERIpy 1.1.27 (https://github.com/WebOfTrust/keripy/releases/tag/1.1.27) 
 * KERIA 0.2.0 (https://github.com/GLEIF-IT/keria/releases/tag/0.2.0)
