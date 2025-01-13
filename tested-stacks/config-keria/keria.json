@@ -1,0 +1,14 @@
+{
+    "dt": "2023-12-01T10:05:25.062609+00:00",
+    "keria": {
+        "dt": "2023-12-01T10:05:25.062609+00:00",
+        "curls": ["http://keria:3902/"]
+    },
+    "iurls": [
+        "http://wit-eps:5642/oobi/BGWIB2O7akfFYh6VSnbMaYqD8YEWxo84bCYv3guBYGkc/controller?name=wit-eps&tag=witness&tag=sample",
+        "http://wit-kap:5643/oobi/BAhH1rBtSc4sNrSkaQLm4V7hw6xRRXsvX-kiSyC2VbdN/controller?name=wit-kap&tag=witness&tag=sample",
+        "http://wit-phi:5644/oobi/BE7Q6dQRkft4R_4g7yfiEZKOnRLzT6duQHdRnWqALRRU/controller?name=wit-phi&tag=witness&tag=sample",
+        "http://wit-sig:5645/oobi/BKX15ju9AH87oxMqqxeLci5y9TiMSNEaQJiM39qh7moA/controller?name=wit-sig&tag=witness&tag=sample",
+        "http://wit-zet:5646/oobi/BKtfkeIMsJ6D5En30CavKrKSJ1nBjTaLUOCbHSaIFvr-/controller?name=wit-zet&tag=witness&tag=sample"
+    ]
+}

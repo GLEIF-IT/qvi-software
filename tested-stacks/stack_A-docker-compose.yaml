@@ -1,0 +1,205 @@
+# QVI Software Stack A recommended Docker Compose file
+# Starts up five witnesses, a KERIA agent server, and an ACDC schema caching server (vLEI-server)
+
+x-keri-image: &keri-image
+    image: weboftrust/keri:1.1.27
+x-keria-image: &keria-image
+    image: weboftrust/keria:0.2.0-dev6
+x-vlei-image: &vlei-image
+    image: gleif/vlei:0.2.1
+
+# Healthcheck interval for all services
+x-healthcheck: &healthcheck
+    interval: 10s
+    timeout: 3s
+    retries: 3
+    start_period: 5s
+
+volumes:
+    # Witness volumes
+    #   A separate volume is needed for each witness so that it maintains a stable history of all
+    #   identifiers it has interacted with. In production this should be replaced with a persistent volume.
+    wit-eps-data:
+    wit-kap-data:
+    wit-phi-data:
+    wit-sig-data:
+    wit-zet-data:
+    # Agent volume
+    keria-data:
+
+services:
+    # Starts five witnesses, epsilon, kappa, phi, sigma, and zeta
+    wit-eps:
+        <<: *keri-image
+        environment:
+            - NAME=wit-eps                              # also used as the alias
+            - TCP_PORT=5632
+            - HTTP_PORT=5642
+            - SALT=0ACLORdAUlV33yKR__WlpekS             # generated with "kli salt"
+            - PASSCODE=Bsy8rVks6fiRZ2YNA9KHc            # generated with "kli passcode generate"
+            - CONFIG_DIR=/witness                       # where the kli witness init/start will look for config
+            - CONFIG_FILE=/witness/keri/cf/witness.json # absolute path to config file
+            - PYTHONUNBUFFERED=1                        # Ensure output is logged in real-time
+            - PYTHONIOENCODING=UTF-8                    # Ensure consistent logging encoding
+            - PYTHONWARNINGS=ignore::SyntaxWarning      # Ignore regular expression syntax warning
+        volumes:
+            - wit-eps-data:/usr/local/var/keri
+            - ./config-witness/witness-entrypoint.sh:/witness-entrypoint.sh
+            - ./config-witness/wit-eps-bootstrap-config.json:/witness/keri/cf/witness.json
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://127.0.0.1:5642/oobi"]
+            <<: *healthcheck
+        entrypoint:
+            - /bin/sh
+            - /witness-entrypoint.sh
+        ports:
+            - "5642:5642"
+
+    wit-kap:
+        <<: *keri-image
+        environment:
+            - NAME=wit-kap                              # also used as the alias
+            - TCP_PORT=5633
+            - HTTP_PORT=5643
+            - SALT=0ABJwNTwdgMOJU3BVGUn8XLM             # generated with "kli salt"
+            - PASSCODE=oPUAkX2bgzK48cszT4bUN            # generated with "kli passcode generate"
+            - CONFIG_DIR=/witness                       # where the kli witness init/start will look for config
+            - CONFIG_FILE=/witness/keri/cf/witness.json # absolute path to config file
+            - PYTHONUNBUFFERED=1                        # Ensure output is logged in real-time
+            - PYTHONIOENCODING=UTF-8                    # Ensure consistent logging encoding
+            - PYTHONWARNINGS=ignore::SyntaxWarning      # Ignore regular expression syntax warning
+        volumes:
+            - wit-kap-data:/usr/local/var/keri
+            - ./config-witness/witness-entrypoint.sh:/witness-entrypoint.sh
+            - ./config-witness/wit-kap-bootstrap-config.json:/witness/keri/cf/witness.json
+        healthcheck:
+            test: [ "CMD", "curl", "-f", "http://127.0.0.1:5643/oobi" ]
+            <<: *healthcheck
+        entrypoint:
+            - /bin/sh
+            - /witness-entrypoint.sh
+        ports:
+            - "5643:5643"
+
+    wit-phi:
+        <<: *keri-image
+        environment:
+            - NAME=wit-phi                              # also used as the alias
+            - TCP_PORT=5634
+            - HTTP_PORT=5644
+            - SALT=0ADBjCYBRcksJVBNJMlA4uKW             # generated with "kli salt"
+            - PASSCODE=L9btUjeBG5gNjjCxyMTAQ            # generated with "kli passcode generate"
+            - CONFIG_DIR=/witness                       # where the kli witness init/start will look for config
+            - CONFIG_FILE=/witness/keri/cf/witness.json # absolute path to config file
+            - PYTHONUNBUFFERED=1                        # Ensure output is logged in real-time
+            - PYTHONIOENCODING=UTF-8                    # Ensure consistent logging encoding
+            - PYTHONWARNINGS=ignore::SyntaxWarning      # Ignore regular expression syntax warning
+        volumes:
+            - wit-phi-data:/usr/local/var/keri
+            - ./config-witness/witness-entrypoint.sh:/witness-entrypoint.sh
+            - ./config-witness/wit-phi-bootstrap-config.json:/witness/keri/cf/witness.json
+        healthcheck:
+            test: [ "CMD", "curl", "-f", "http://127.0.0.1:5644/oobi" ]
+            <<: *healthcheck
+        entrypoint:
+            - /bin/sh
+            - /witness-entrypoint.sh
+        ports:
+            - "5644:5644"
+
+    wit-sig:
+        <<: *keri-image
+        environment:
+            - NAME=wit-sig                              # also used as the alias
+            - TCP_PORT=5635
+            - HTTP_PORT=5645
+            - SALT=0AAsd_cyqnc6eZqSla0Fa7JN             # generated with "kli salt"
+            - PASSCODE=UI89SrPobK8dJUXXFzMSz            # generated with "kli passcode generate"
+            - CONFIG_DIR=/witness                       # where the kli witness init/start will look for config
+            - CONFIG_FILE=/witness/keri/cf/witness.json # absolute path to config file
+            - PYTHONUNBUFFERED=1                        # Ensure output is logged in real-time
+            - PYTHONIOENCODING=UTF-8                    # Ensure consistent logging encoding
+            - PYTHONWARNINGS=ignore::SyntaxWarning      # Ignore regular expression syntax warning
+        volumes:
+            - wit-sig-data:/usr/local/var/keri
+            - ./config-witness/witness-entrypoint.sh:/witness-entrypoint.sh
+            - ./config-witness/wit-sig-bootstrap-config.json:/witness/keri/cf/witness.json
+        healthcheck:
+            test: [ "CMD", "curl", "-f", "http://127.0.0.1:5645/oobi" ]
+            <<: *healthcheck
+        entrypoint:
+            - /bin/sh
+            - /witness-entrypoint.sh
+        ports:
+            - "5645:5645"
+
+    wit-zet:
+        <<: *keri-image
+        environment:
+            - NAME=wit-zet                              # also used as the alias
+            - TCP_PORT=5636
+            - HTTP_PORT=5646
+            - SALT=0AAHPx1HhfZfmKLlTP3p5wEO             # generated with "kli salt"
+            - PASSCODE=6D3DrEgoucnA6zK5kw82e            # generated with "kli passcode generate"
+            - CONFIG_DIR=/witness                       # where the kli witness init/start will look for config
+            - CONFIG_FILE=/witness/keri/cf/witness.json # absolute path to config file
+            - PYTHONUNBUFFERED=1                        # Ensure output is logged in real-time
+            - PYTHONIOENCODING=UTF-8                    # Ensure consistent logging encoding
+            - PYTHONWARNINGS=ignore::SyntaxWarning      # Ignore regular expression syntax warning
+        volumes:
+            - wit-zet-data:/usr/local/var/keri
+            - ./config-witness/witness-entrypoint.sh:/witness-entrypoint.sh
+            - ./config-witness/wit-zet-bootstrap-config.json:/witness/keri/cf/witness.json
+        healthcheck:
+            test: [ "CMD", "curl", "-f", "http://127.0.0.1:5646/oobi" ]
+            <<: *healthcheck
+        entrypoint:
+            - /bin/sh
+            - /witness-entrypoint.sh
+        ports:
+            - "5646:5646"
+
+    vlei-server:
+        <<: *vlei-image
+        environment:
+            - PYTHONUNBUFFERED=1     # Ensure output is logged in real-time
+            - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao"]
+            <<: *healthcheck
+        ports:
+            - "7723:7723"
+
+    keria:
+        <<: *keria-image
+        environment:
+            - KERI_AGENT_CORS=True   # Enable CORS for the KERI agent
+            - PYTHONUNBUFFERED=1     # Ensure output is logged in real-time
+            - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+        volumes:
+            - ./config-keria/keria.json:/keria/config/keri/cf/keria.json
+            - keria-data:/keria/config/keri/cf
+        command: --config-dir /keria/config --config-file keria --name agent
+        healthcheck:
+            test: ["CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml"]
+            <<: *healthcheck
+        ports:
+            - "3901:3901"
+            - "3902:3902"
+            - "3903:3903"
+        entrypoint:
+          ['keria', 'start','--config-dir','/keria/config','--config-file','keria','--name','agent',]
+        depends_on:
+            wit-eps:
+                condition: service_healthy
+            wit-kap:
+                condition: service_healthy
+            wit-phi:
+                condition: service_healthy
+            wit-sig:
+                condition: service_healthy
+            wit-zet:
+                condition: service_healthy
+            vlei-server:
+                condition: service_healthy
+
