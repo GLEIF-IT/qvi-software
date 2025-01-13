@@ -1,0 +1,12 @@
+FROM node:23-alpine3.20
+
+RUN apk add --no-cache
+
+RUN npm install -g tsx
+
+COPY ./signify_qvi /qvi
+
+ENV TEST_ENVIRONMENT=docker
+
+CMD ["tsx", "/qvi/qvi-setup.ts"]
+
