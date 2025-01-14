@@ -1,8 +1,8 @@
-import { parseAidInfo } from "./create-aid";
-import { getOrCreateClients } from "./keystore-creation";
-import { waitAndMarkNotification } from "./notifications";
-import { waitOperation } from "./operations";
-import { TestEnvironmentPreset } from "./resolve-env";
+import { parseAidInfo } from "../create-aid";
+import { getOrCreateClients } from "../keystore-creation";
+import { waitAndMarkNotification } from "../notifications";
+import { waitOperation } from "../operations";
+import { TestEnvironmentPreset } from "../resolve-env";
 
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';

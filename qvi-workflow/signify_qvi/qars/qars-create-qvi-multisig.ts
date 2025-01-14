@@ -1,20 +1,20 @@
 import fs from "fs";
 import signify, { CreateIdentiferArgs, HabState } from "signify-ts";
-import { parseAidInfo } from "./create-aid";
-import { getOrCreateAID, getOrCreateClients } from "./keystore-creation";
-import { createAIDMultisig } from "./multisig-creation";
-import { resolveEnvironment, TestEnvironmentPreset } from "./resolve-env";
+import { parseAidInfo } from "../create-aid";
+import { getOrCreateAID, getOrCreateClients } from "../keystore-creation";
+import { createAIDMultisig } from "../multisig-creation";
+import { resolveEnvironment, TestEnvironmentPreset } from "../resolve-env";
 
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
-const dataDir = args[1];
-const aidInfoArg = args[2]
-const delegationPrefix = args[3]
+const multisigName = args[1];
+const dataDir = args[2];
+const aidInfoArg = args[3];
+const delegationPrefix = args[4];
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
-const QVI_MS_NAME='QVI';
 
 
 /**
@@ -25,7 +25,7 @@ const QVI_MS_NAME='QVI';
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function createQviMultisig(aidInfo: string, delpre: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
+async function createQviMultisig(multisigName: string, aidInfo: string, delpre: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -54,9 +54,9 @@ async function createQviMultisig(aidInfo: string, delpre: string, witnessIds: Ar
     
     let qar1Ms, qar2Ms, qar3Ms: HabState;
     try {
-        qar1Ms = await QAR1Client.identifiers().get(QVI_MS_NAME);
-        qar2Ms = await QAR2Client.identifiers().get(QVI_MS_NAME);
-        qar3Ms = await QAR3Client.identifiers().get(QVI_MS_NAME);
+        qar1Ms = await QAR1Client.identifiers().get(multisigName);
+        qar2Ms = await QAR2Client.identifiers().get(multisigName);
+        qar3Ms = await QAR3Client.identifiers().get(multisigName);
         // return early if the QVI AID has already been incepted
     } catch (e: any) {
         // get QAR keystates for inclusion in the multisig inception event
@@ -81,7 +81,7 @@ async function createQviMultisig(aidInfo: string, delpre: string, witnessIds: Ar
             QAR1Client,
             QAR1Id,
             [QAR2Id, QAR3Id],
-            QVI_MS_NAME,
+            multisigName,
             kargsMultisigAID,
             true
         );
@@ -91,7 +91,7 @@ async function createQviMultisig(aidInfo: string, delpre: string, witnessIds: Ar
             QAR2Client,
             QAR2Id,
             [QAR1Id, QAR3Id],
-            QVI_MS_NAME,
+            multisigName,
             kargsMultisigAID
         );
         // change member hab to QAR3 and perform multisig inception
@@ -100,13 +100,13 @@ async function createQviMultisig(aidInfo: string, delpre: string, witnessIds: Ar
             QAR3Client,
             QAR3Id,
             [QAR1Id, QAR2Id],
-            QVI_MS_NAME,
+            multisigName,
             kargsMultisigAID
         );
 
-        qar1Ms = await QAR1Client.identifiers().get(QVI_MS_NAME);
-        qar2Ms = await QAR2Client.identifiers().get(QVI_MS_NAME);
-        qar3Ms = await QAR3Client.identifiers().get(QVI_MS_NAME);
+        qar1Ms = await QAR1Client.identifiers().get(multisigName);
+        qar2Ms = await QAR2Client.identifiers().get(multisigName);
+        qar3Ms = await QAR3Client.identifiers().get(multisigName);
     }
     
     
@@ -119,11 +119,6 @@ async function createQviMultisig(aidInfo: string, delpre: string, witnessIds: Ar
         }
     }
 }
-const multisigOobiObj: any = await createQviMultisig(aidInfoArg, delegationPrefix, witnessIds, env);
-await fs.writeFile(`${dataDir}/qvi-multisig-info.json`, JSON.stringify(multisigOobiObj), (err) => {
-    if (err) {
-        console.log(`error writing client info to file: ${err}`);        
-        return
-    }
-});
+const multisigOobiObj: any = await createQviMultisig(multisigName, aidInfoArg, delegationPrefix, witnessIds, env);
+await fs.promises.writeFile(`${dataDir}/qvi-multisig-info.json`, JSON.stringify(multisigOobiObj));
 console.log("QVI delegated multisig AID created, waiting for GEDA to confirm delegation...");

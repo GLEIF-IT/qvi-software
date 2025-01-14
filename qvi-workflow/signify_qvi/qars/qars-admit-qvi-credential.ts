@@ -1,22 +1,19 @@
-import fs from "fs";
-import signify, { CreateIdentiferArgs, HabState } from "signify-ts";
-import { createTimestamp, parseAidInfo } from "./create-aid";
-import { getOrCreateAID, getOrCreateClients } from "./keystore-creation";
-import { createAIDMultisig } from "./multisig-creation";
-import { resolveEnvironment, TestEnvironmentPreset } from "./resolve-env";
-import { admitMultisig, getReceivedCredential, waitForCredential } from "./credentials";
-import { waitAndMarkNotification } from "./notifications";
+import {createTimestamp, parseAidInfo} from "../create-aid";
+import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
+import {admitMultisig, getReceivedCredential, waitForCredential} from "../credentials";
+import {waitAndMarkNotification} from "../notifications";
 
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1]
-const gedaPrefix = args[2]
-const qviCredSAID = args[3]
+const multisigName = args[1]
+const aidInfoArg = args[2]
+const gedaPrefix = args[3]
+const qviCredSAID = args[4]
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
-const QVI_MS_NAME='QVI';
 
 
 /**
@@ -29,7 +26,7 @@ const QVI_MS_NAME='QVI';
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function admitQviCredential(aidInfo: string, gedaPrefix: string, witnessIds: Array<string>, qviCredSAID: string, environment: TestEnvironmentPreset) {
+async function admitQviCredential(multisigName: string, aidInfo: string, gedaPrefix: string, witnessIds: Array<string>, qviCredSAID: string, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -54,7 +51,7 @@ async function admitQviCredential(aidInfo: string, gedaPrefix: string, witnessId
     ]);
 
     // Get the QVI multisig AID
-    const qar1Ms = await QAR1Client.identifiers().get(QVI_MS_NAME);
+    const qar1Ms = await QAR1Client.identifiers().get(multisigName);
     // Skip if a QVI AID has already been incepted.
     
     let qviCredbyQAR1 = await getReceivedCredential(QAR1Client, qviCredSAID);
@@ -99,6 +96,6 @@ async function admitQviCredential(aidInfo: string, gedaPrefix: string, witnessId
     }
     
 }
-const admitResult: any = await admitQviCredential(aidInfoArg, gedaPrefix, witnessIds, qviCredSAID, env);
+const admitResult: any = await admitQviCredential(multisigName, aidInfoArg, gedaPrefix, witnessIds, qviCredSAID, env);
 
 console.log("QVI credential admitted");

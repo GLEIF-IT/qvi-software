@@ -1,23 +1,22 @@
 import fs from "fs";
-import signify, { CreateIdentiferArgs, HabState, randomNonce } from "signify-ts";
-import { parseAidInfo } from "./create-aid";
-import { getOrCreateAID, getOrCreateClients } from "./keystore-creation";
-import { createAIDMultisig } from "./multisig-creation";
-import { resolveEnvironment, TestEnvironmentPreset } from "./resolve-env";
-import { createRegistryMultisig } from "./credentials";
-import { waitOperation } from "./operations";
-import { waitAndMarkNotification } from "./notifications";
+import {randomNonce} from "signify-ts";
+import {parseAidInfo} from "../create-aid";
+import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
+import {createRegistryMultisig} from "../credentials";
+import {waitOperation} from "../operations";
+import {waitAndMarkNotification} from "../notifications";
 
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
-const dataDir = args[1];
-const aidInfoArg = args[2]
+const multisigName = args[1];
+const registryName = args[2];
+const dataDir = args[3];
+const aidInfoArg = args[4];
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
-const QVI_MS_NAME='QVI';
-const QVI_REGISTRY_NAME='QVI-REGISTRY'
 
 
 /**
@@ -28,7 +27,7 @@ const QVI_REGISTRY_NAME='QVI-REGISTRY'
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{registryRegk: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function createQviRegistry(aidInfo: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
+async function createQviRegistry(multisigName: string, registryName: string, aidInfo: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -53,14 +52,14 @@ async function createQviRegistry(aidInfo: string, witnessIds: Array<string>, env
     ]);
 
     // Get the QVI multisig AID
-    const qviAID = await QAR1Client.identifiers().get(QVI_MS_NAME);
+    const qviAID = await QAR1Client.identifiers().get(multisigName);
     // Skip if a QVI AID has already been incepted.
     
     let [qviRegistrybyQAR1, qviRegistrybyQAR2, qviRegistrybyQAR3] =
         await Promise.all([
-            QAR1Client.registries().list(QVI_MS_NAME),
-            QAR2Client.registries().list(QVI_MS_NAME),
-            QAR3Client.registries().list(QVI_MS_NAME),
+            QAR1Client.registries().list(multisigName),
+            QAR2Client.registries().list(multisigName),
+            QAR3Client.registries().list(multisigName),
         ]);
     if (qviRegistrybyQAR1.length != 0 &&
         qviRegistrybyQAR2.length != 0 &&
@@ -76,7 +75,7 @@ async function createQviRegistry(aidInfo: string, witnessIds: Array<string>, env
             QAR1Id,
             [QAR2Id, QAR3Id],
             qviAID,
-            QVI_REGISTRY_NAME,
+            registryName,
             nonce,
             true
         );
@@ -85,7 +84,7 @@ async function createQviRegistry(aidInfo: string, witnessIds: Array<string>, env
             QAR2Id,
             [QAR1Id, QAR3Id],
             qviAID,
-            QVI_REGISTRY_NAME,
+            registryName,
             nonce
         );
         const registryOp3 = await createRegistryMultisig(
@@ -93,7 +92,7 @@ async function createQviRegistry(aidInfo: string, witnessIds: Array<string>, env
             QAR3Id,
             [QAR1Id, QAR2Id],
             qviAID,
-            QVI_REGISTRY_NAME,
+            registryName,
             nonce
         );
 
@@ -116,10 +115,5 @@ async function createQviRegistry(aidInfo: string, witnessIds: Array<string>, env
         return {registryRegk: qviRegistrybyQAR1[0].regk}
     }
 }
-const registryInfo: any = await createQviRegistry(aidInfoArg, witnessIds, env);
-await fs.writeFile(`${dataDir}/qvi-registry-info.json`, JSON.stringify(registryInfo), (err) => {
-    if (err) {
-        console.log(`error writing client info to file: ${err}`);        
-        return
-    }
-});
+const registryInfo: any = await createQviRegistry(multisigName, registryName, aidInfoArg, witnessIds, env);
+await fs.promises.writeFile(`${dataDir}/qvi-registry-info.json`, JSON.stringify(registryInfo));

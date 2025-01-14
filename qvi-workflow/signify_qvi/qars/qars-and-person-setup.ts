@@ -1,8 +1,8 @@
-import { getOrCreateContact } from "./agent-contacts";
-import { getOrCreateAID, getOrCreateClients} from "./keystore-creation";
-import { resolveOobi } from "./oobis";
-import { resolveEnvironment, TestEnvironmentPreset } from "./resolve-env";
-import { parseAidInfo } from "./create-aid";
+import { getOrCreateContact } from "../agent-contacts";
+import { getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import { resolveOobi } from "../oobis";
+import { resolveEnvironment, TestEnvironmentPreset } from "../resolve-env";
+import { parseAidInfo } from "../create-aid";
 import fs from 'fs';
 
 /**
@@ -167,9 +167,4 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
     }
 }
 const clientInfo: any = await setupQVIAndPerson(aidInfoArg, env);
-await fs.writeFile(`${dataDir}/qars-and-person-info.json`, JSON.stringify(clientInfo), (err) => {
-    if (err) {
-        console.log(`error writing client info to file: ${err}`);        
-        return
-    }
-});
+await fs.promises.writeFile(`${dataDir}/qars-and-person-info.json`, JSON.stringify(clientInfo));

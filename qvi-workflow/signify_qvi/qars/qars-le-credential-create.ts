@@ -1,23 +1,22 @@
 import fs from "fs";
-import signify, { CreateIdentiferArgs, CredentialData, CredentialSubject, HabState, Saider } from "signify-ts";
-import { createTimestamp, parseAidInfo } from "./create-aid";
-import { getOrCreateAID, getOrCreateClients } from "./keystore-creation";
-import { createAIDMultisig } from "./multisig-creation";
-import { resolveEnvironment, TestEnvironmentPreset } from "./resolve-env";
-import { getIssuedCredential, grantMultisig, issueCredentialMultisig } from "./credentials";
-import { waitAndMarkNotification } from "./notifications";
-import { waitOperation } from "./operations";
+import {CredentialData, CredentialSubject} from "signify-ts";
+import {createTimestamp, parseAidInfo} from "../create-aid";
+import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
+import {getIssuedCredential, grantMultisig, issueCredentialMultisig} from "../credentials";
+import {waitAndMarkNotification} from "../notifications";
+import {waitOperation} from "../operations";
 
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
-const dataDir = args[1];
-const aidInfoArg = args[2]
-const lePrefix = args[3]
+const multisigName = args[1]
+const dataDir = args[2];
+const aidInfoArg = args[3]
+const lePrefix = args[4]
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
-const QVI_MS_NAME='QVI';
 const LE_SCHEMA_SAID = 'ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY';
 
 /**
@@ -28,8 +27,7 @@ const LE_SCHEMA_SAID = 'ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY';
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function createLeCredential(aidInfo: string, lePrefix: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
-    console.log(`Creating LE credential and issuing to GIDA ${lePrefix}`)
+async function createLeCredential(multisigName: string, aidInfo: string, lePrefix: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -53,7 +51,7 @@ async function createLeCredential(aidInfo: string, lePrefix: string, witnessIds:
         getOrCreateAID(QAR3Client, QAR3.name, kargsAID),
     ]);
 
-    const qviAID = await QAR1Client.identifiers().get(QVI_MS_NAME);
+    const qviAID = await QAR1Client.identifiers().get(multisigName);
 
     // QVI issues a LE vLEI credential to the LE (GIDA in this case).
     // Skip if the credential has already been issued.
@@ -88,9 +86,8 @@ async function createLeCredential(aidInfo: string, lePrefix: string, witnessIds:
     else {
         console.log("LE Credential does not exist, creating and granting");
 
-        const registries:[{name: string, regk: string}] = await QAR1Client.registries().list(QVI_MS_NAME)
+        const registries:[{name: string, regk: string}] = await QAR1Client.registries().list(multisigName)
         const qviRegistry = registries[0];
-        console.log(`QVI registry: ${qviRegistry.regk}`);
         
         let data: string = "";
         data = await fs.promises.readFile(`${dataDir}/legal-entity-data.json`, 'utf-8');
@@ -115,7 +112,6 @@ async function createLeCredential(aidInfo: string, lePrefix: string, witnessIds:
             e: leCredentialEdge,
             r: leRules,
         };
-        console.log(`LE credential data: `, kargsIss);
         const IssOp1 = await issueCredentialMultisig(
             QAR1Client,
             QAR1Id,
@@ -138,18 +134,15 @@ async function createLeCredential(aidInfo: string, lePrefix: string, witnessIds:
             qviAID.name,
             kargsIss
         );
-        console.log("Credential issued, waiting operations...");
 
         await Promise.all([
             waitOperation(QAR1Client, IssOp1),
             waitOperation(QAR2Client, IssOp2),
             waitOperation(QAR3Client, IssOp3),
         ]);
-        console.log("Operations completed, waiting for notifications...");
 
         await waitAndMarkNotification(QAR1Client, '/multisig/iss');
 
-        console.log("LE credential issued, getting Issued Credential...");
         leCredbyQAR1 = await getIssuedCredential(
             QAR1Client,
             qviAID.prefix,
@@ -170,7 +163,7 @@ async function createLeCredential(aidInfo: string, lePrefix: string, witnessIds:
         );
 
         const grantTime = createTimestamp();
-        console.log("Granting LE credential...");
+        console.log("IPEX Granting LE credential to GIDA (LE)...");
         await grantMultisig(
             QAR1Client,
             QAR1Id,
@@ -200,9 +193,7 @@ async function createLeCredential(aidInfo: string, lePrefix: string, witnessIds:
             grantTime
         );
 
-        console.log("Granting LE credential, waiting operations...");
         await waitAndMarkNotification(QAR1Client, '/multisig/exn');
-        console.log("LE credential granted");
         return {
             leCredSAID: leCredbyQAR1.sad.d,
             leCredIssuer: leCredbyQAR1.sad.i,
@@ -210,11 +201,6 @@ async function createLeCredential(aidInfo: string, lePrefix: string, witnessIds:
         }
     }
 }
-const leCreateResult: any = await createLeCredential(aidInfoArg, lePrefix, witnessIds, env);
-await fs.writeFile(`${dataDir}/signify_qvi/qvi_data/le-cred-info.json`, JSON.stringify(leCreateResult), (err) => {
-    if (err) {
-        console.log(`error writing LE credential info to file: ${err}`);        
-        return
-    }
-});
+const leCreateResult: any = await createLeCredential(multisigName, aidInfoArg, lePrefix, witnessIds, env);
+await fs.promises.writeFile(`${dataDir}/signify_qvi/qvi_data/le-cred-info.json`, JSON.stringify(leCreateResult));
 console.log("LE credential created and granted");

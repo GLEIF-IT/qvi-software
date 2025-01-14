@@ -123,6 +123,28 @@ OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
 ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
 OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
 
+function test_dependencies() {
+  # check that sally is installed and available on the PATH
+  command -v kli >/dev/null 2>&1 || { print_red "kli is not installed or not available on the PATH. Aborting."; exit 1; }
+  command -v tsx >/dev/null 2>&1 || { print_red "tsx is not installed or not available on the PATH. Aborting."; exit 1; }
+  command -v jq >/dev/null 2>&1 || { print_red "jq is not installed or not available on the PATH. Aborting."; exit 1; }
+  command -v sally >/dev/null 2>&1 || { print_red "sally is not installed or not available on the PATH. Aborting."; exit 1; }
+
+  curl ${WIT_HOST}/oobi/${WAN_PRE} >/dev/null 2>&1
+    status=$?
+    if [ $status -ne 0 ]; then
+        print_red "Witness server not running at ${WIT_HOST}"
+        cleanup
+    fi
+
+    curl ${SCHEMA_SERVER}/oobi/${QVI_SCHEMA} >/dev/null 2>&1
+    status=$?
+    if [ $status -ne 0 ]; then
+        print_red "Schema server not running at ${SCHEMA_SERVER}"
+        cleanup
+    fi
+}
+test_dependencies
 # functions
 temp_icp_config=""
 function create_temp_icp_cfg() {
