@@ -892,6 +892,22 @@ function admit_qvi_credential() {
 }
 admit_qvi_credential
 
+# 18.1 QVI: Delegated multisig rotation() {
+function qvi_rotate() {
+    print_yellow "[QVI] Rotating QVI Multisig"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${QVI_DATA_DIR}" \
+      "${SIGTS_AIDS}"
+    QVI_ROTATE_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
+    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_ROTATE_PREFIX}"
+
+
+}
+qvi_rotate
+cleanup
+
 # 18.5 Create QVI credential registry
 function create_qvi_reg() {
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-registry-create.ts" \
