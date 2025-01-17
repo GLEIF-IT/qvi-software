@@ -1,21 +1,21 @@
 import { SignifyClient } from "signify-ts";
-import { createTimestamp, parseAidInfo } from "./create-aid";
-import { getOrCreateAID, getOrCreateClients } from "./keystore-creation";
-import { addEndRoleMultisig } from "./multisig-creation";
-import { waitAndMarkNotification } from "./notifications";
-import { waitOperation } from "./operations";
-import { resolveEnvironment, TestEnvironmentPreset } from "./resolve-env";
+import { createTimestamp, parseAidInfo } from "../create-aid";
+import { getOrCreateAID, getOrCreateClients } from "../keystore-creation";
+import { addEndRoleMultisig } from "../multisig-creation";
+import { waitAndMarkNotification } from "../notifications";
+import { waitOperation } from "../operations";
+import { resolveEnvironment, TestEnvironmentPreset } from "../resolve-env";
 import fs from 'fs';
 
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
-const dataDir = args[1];
-const aidInfoArg = args[2]
+const multisigName = args[1]
+const dataDir = args[2];
+const aidInfoArg = args[3]
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
-const QVI_MS_NAME='QVI';
 
 /**
  * Authorizes the 'agent' role to each of the three agents used by each of the three SignifyTS participants in the QVI Multisig AID.
@@ -25,7 +25,7 @@ const QVI_MS_NAME='QVI';
  * @param environment runtime environment to use for resolving environment variables
  * @returns the three QAR SignifyClient instances
  */
-async function authorizeAgentEndRoleForQVI(aidInfo: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
+async function authorizeAgentEndRoleForQVI(multisigName: string, aidInfo: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -49,13 +49,13 @@ async function authorizeAgentEndRoleForQVI(aidInfo: string, witnessIds: Array<st
         getOrCreateAID(QAR3Client, QAR3.name, kargsAID),
     ]);
 
-    const qviMultisigAid = await QAR1Client.identifiers().get(QVI_MS_NAME);
+    const qviMultisigAid = await QAR1Client.identifiers().get(multisigName);
 
     // Skip if they have already been authorized.
     let [oobiQVIbyQAR1, oobiQVIbyQAR2, oobiQVIbyQAR3] = await Promise.all([
-        QAR1Client.oobis().get(QVI_MS_NAME, 'agent'),
-        QAR2Client.oobis().get(QVI_MS_NAME, 'agent'),
-        QAR3Client.oobis().get(QVI_MS_NAME, 'agent'),
+        QAR1Client.oobis().get(multisigName, 'agent'),
+        QAR2Client.oobis().get(multisigName, 'agent'),
+        QAR3Client.oobis().get(multisigName, 'agent'),
     ]);
     if (
         oobiQVIbyQAR1.oobis.length == 0 ||
@@ -65,7 +65,7 @@ async function authorizeAgentEndRoleForQVI(aidInfo: string, witnessIds: Array<st
         const timestamp = createTimestamp();
         const opList1 = await addEndRoleMultisig(
             QAR1Client,
-            QVI_MS_NAME,
+            multisigName,
             QAR1Id,
             [QAR2Id, QAR3Id],
             qviMultisigAid,
@@ -74,7 +74,7 @@ async function authorizeAgentEndRoleForQVI(aidInfo: string, witnessIds: Array<st
         );
         const opList2 = await addEndRoleMultisig(
             QAR2Client,
-            QVI_MS_NAME,
+            multisigName,
             QAR2Id,
             [QAR1Id, QAR3Id],
             qviMultisigAid,
@@ -82,7 +82,7 @@ async function authorizeAgentEndRoleForQVI(aidInfo: string, witnessIds: Array<st
         );
         const opList3 = await addEndRoleMultisig(
             QAR3Client,
-            QVI_MS_NAME,
+            multisigName,
             QAR3Id,
             [QAR1Id, QAR2Id],
             qviMultisigAid,
@@ -99,26 +99,18 @@ async function authorizeAgentEndRoleForQVI(aidInfo: string, witnessIds: Array<st
         // need it for client 3?
 
         [oobiQVIbyQAR1, oobiQVIbyQAR2, oobiQVIbyQAR3] = await Promise.all([
-            QAR1Client.oobis().get(QVI_MS_NAME, 'agent'),
-            QAR2Client.oobis().get(QVI_MS_NAME, 'agent'),
-            QAR3Client.oobis().get(QVI_MS_NAME, 'agent'),
+            QAR1Client.oobis().get(multisigName, 'agent'),
+            QAR2Client.oobis().get(multisigName, 'agent'),
+            QAR3Client.oobis().get(multisigName, 'agent'),
         ]);
 
         const oobiData = await getQVIMultisigOobi(QAR1Client);
-        await fs.writeFile(`${dataDir}/qvi-oobi.json`, JSON.stringify(oobiData), (err) => {
-            if (err) {
-                console.log(`Error writing multisig oobi to file: ${err}`);
-            }
-        });
+        await fs.promises.writeFile(`${dataDir}/qvi-oobi.json`, JSON.stringify(oobiData));
         console.log('QVI multisig oobi has been authorized and generated');
     }
     else {
         const oobiData = await getQVIMultisigOobi(QAR1Client);
-        await fs.writeFile(`${dataDir}/qvi-oobi.json`, JSON.stringify(oobiData), (err) => {
-            if (err) {
-                console.log(`Error writing multisig oobi to file: ${err}`);
-            }
-        });
+        await fs.promises.writeFile(`${dataDir}/qvi-oobi.json`, JSON.stringify(oobiData));
         console.log("QVI multisig oobi has already been authorized and generated");
     }
 }
@@ -133,10 +125,10 @@ async function authorizeAgentEndRoleForQVI(aidInfo: string, witnessIds: Array<st
  * @returns 
  */
 async function getQVIMultisigOobi(QAR1Client: SignifyClient) {
-    const msOobiResp = await QAR1Client.oobis().get(QVI_MS_NAME, 'agent')
+    const msOobiResp = await QAR1Client.oobis().get(multisigName, 'agent')
     const oobi=msOobiResp.oobis[0].split('/agent/')[0];
     return {oobi: oobi}
 }
-await authorizeAgentEndRoleForQVI(aidInfoArg, witnessIds, env);
+await authorizeAgentEndRoleForQVI(multisigName, aidInfoArg, witnessIds, env);
 
 

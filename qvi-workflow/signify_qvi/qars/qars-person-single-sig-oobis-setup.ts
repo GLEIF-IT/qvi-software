@@ -1,9 +1,8 @@
-import { getOrCreateContact } from "./agent-contacts";
-import { getOrCreateClients } from "./keystore-creation";
-import { TestEnvironmentPreset } from "./resolve-env";
-import { OobiInfo } from "./qvi-data";
-import { parseAidInfo } from "./create-aid";
-import { parseOobiInfo } from "./oobis";
+import { getOrCreateContact } from "../agent-contacts";
+import { getOrCreateClients } from "../keystore-creation";
+import { TestEnvironmentPreset } from "../resolve-env";
+import { OobiInfo } from "../qvi-data";
+import { parseAidInfo } from "../create-aid";
 
 // Pull in arguments from the command line and configuration
 const args = process.argv.slice(2);

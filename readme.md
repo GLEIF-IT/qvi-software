@@ -1,16 +1,22 @@
-# README
+# QVI Software Demonstration
 
-Compatability matrix for Technical Dry Runs
+Recommended versions
+
+* KERIpy 1.1.30 (https://github.com/WebOfTrust/keripy/releases/tag/1.1.30) 
+* KERIA 0.2.0-rc1 (https://github.com/GLEIF-IT/keria/releases/tag/0.2.0-rc1)
+* SignifyTS 0.3.0-rc1 (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc1)
+
+## Compatability matrix for Technical Dry Runs
 
 ### Suite 1 - GLEIF current: Stack A
 
 * GLEIF (KERIpy 1.1.30) (https://github.com/WebOfTrust/keripy/releases/tag/1.1.30)
 * GLEIF witnesses (KERIpy 1.2.3) (https://github.com/WebOfTrust/keripy/releases/tag/1.2.3)
 * QVI (KERIA 0.2.0-rc1) (https://github.com/GLEIF-IT/keria/releases/tag/0.2.0-rc1)
-* QVI (SignifyTS 0.3.0) (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0)
+* QVI (SignifyTS 0.3.0-rc1) (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc1)
 * QVI witnesses (KERIpy 1.2.3) (https://github.com/WebOfTrust/keripy/releases/tag/1.2.3)
 
-## Table of functionality
+#### Table of functionality
 
 | **QVI Multisig AID Creation**                                                       | **Test Date** | **Test Suite** |
 |-------------------------------------------------------------------------------------|---------------|----------------|

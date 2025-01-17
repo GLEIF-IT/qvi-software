@@ -13,3 +13,7 @@ There are three demonstrations:
 - NodeJS - remember to do `npm install` in the `full` directory to install 
 - [`tsx`](https://tsx.is/getting-started) - TypeScript Execute - for easily running Typescript files like a shell script.
   - This MUST be installed globally with `npm i -g tsx` in order to run properly.
+
+## TODOs
+
+- [ ] Add sample log output of the end-to-end scripts so people running the process can see what to expect.

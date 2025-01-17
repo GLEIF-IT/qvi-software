@@ -15,12 +15,7 @@ fi
 
 # Set current working directory for all scripts that must access files
 KLI1IMAGE="weboftrust/keri:1.1.29"
-# KLI1IMAGE="kentbull/keri:1.1.27a"
-
-# KLI2IMAGE="weboftrust/keri:1.2.0-rc1"
 KLI2IMAGE="weboftrust/keri:1.2.2"
-# KLI2IMAGE="weboftrust/keri:1.1.27"
-# KLI2IMAGE="kentbull/keri:1.1.27a"
 
 LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export KLI_DATA_DIR="${LOCAL_DIR}/data"

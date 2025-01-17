@@ -1,5 +1,6 @@
 import { SignifyClient } from "signify-ts";
 import { retry, RetryOptions } from "./retry";
+import {waitOperation} from "./operations.ts";
 
 export interface Notification {
     i: string;
