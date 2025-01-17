@@ -19,9 +19,11 @@ const {witnessIds} = resolveEnvironment(env);
 
 /**
  * Uses QAR1, QAR2, and QAR3 to create a delegated multisig AID for the QVI delegated from the AID specified by delpre.
- * 
+ *
+ * @param multisigName the name of the multisig to create
  * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
  * @param delpre The prefix of the delegator to use for the multisig AID
+ * @param witnessIds the list of witness IDs to use for the multisig AID
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
@@ -61,7 +63,6 @@ async function createQviMultisig(multisigName: string, aidInfo: string, delpre: 
     } catch (e: any) {
         // get QAR keystates for inclusion in the multisig inception event
         const rstates = [QAR1Id.state, QAR2Id.state, QAR3Id.state];
-        const states = rstates;
 
         // configure QVI AID multisig inception event
         const kargsMultisigAID: CreateIdentiferArgs = {
@@ -71,7 +72,7 @@ async function createQviMultisig(multisigName: string, aidInfo: string, delpre: 
             nsith: ['1/3', '1/3', '1/3'],
             toad: kargsAID.toad,
             wits: kargsAID.wits,
-            states: states,
+            states: [...rstates],
             rstates: rstates,
         };
 

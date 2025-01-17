@@ -89,7 +89,7 @@ export async function addEndRoleMultisig(
             .exchanges()
             .send(
                 aid.name,
-                groupName,
+                'multisig',
                 aid,
                 '/multisig/rpy',
                 { gid: multisigAID.prefix },

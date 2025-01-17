@@ -1,18 +1,15 @@
-import fs from "fs";
-import signify, {CreateIdentiferArgs, HabState, Serder, Siger, State} from "signify-ts";
-import { parseAidInfo } from "../create-aid";
-import { getOrCreateAID, getOrCreateClients } from "../keystore-creation";
-import { createAIDMultisig } from "../multisig-creation";
-import { resolveEnvironment, TestEnvironmentPreset } from "../resolve-env";
+import signify, {HabState, Serder, Siger, SignifyClient, State} from "signify-ts";
+import {parseAidInfo} from "../create-aid";
+import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {waitAndMarkNotification} from "../notifications.ts";
+import {waitOperation} from "../operations.ts";
 
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
 const multisigName = args[1];
-const dataDir = args[2];
-const aidInfoArg = args[3];
-const delegationPrefix = args[4];
+const aidInfoArg = args[2];
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
@@ -21,12 +18,13 @@ const {witnessIds} = resolveEnvironment(env);
 /**
  * Uses QAR1, QAR2, and QAR3 to create a delegated multisig AID for the QVI delegated from the AID specified by delpre.
  *
+ * @param multisigName
  * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param delpre The prefix of the delegator to use for the multisig AID
+ * @param witnessIds
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function rotateMultisig(multisigName: string, aidInfo: string, delpre: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
+async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -50,40 +48,101 @@ async function rotateMultisig(multisigName: string, aidInfo: string, delpre: str
         getOrCreateAID(QAR3Client, QAR3.name, kargsAID),
     ]);
 
-    // Create a multisig AID for the QVI.
-    // Skip if a QVI AID has already been incepted.
+    // Rotate all single signature AIDs and refresh keystate
+    const members = [
+        {name: QAR1.name, client: QAR1Client, id: QAR1Id},
+        {name: QAR2.name, client: QAR2Client, id: QAR2Id},
+        {name: QAR3.name, client: QAR3Client, id: QAR3Id}
+    ];
+    const [aid1State, aid2State, aid3State] = await rotateMultisigMembersAndRefreshKeystate(members);
 
     const multisig = await QAR1Client.identifiers().get(multisigName);
 
     // get QAR keystates for inclusion in the multisig inception event
-    const rstates = [QAR1Id.state, QAR2Id.state, QAR3Id.state];
-    const states = rstates;
+    const states = [aid1State, aid2State, aid3State];
+    const rstates = [...states];
 
-    const rotateOp = await QAR1Client.identifiers().rotate(
-        multisigName, {states: states}
+    const identifier = QAR1Client.identifiers();
+    console.log("Creating multisig rotation operation...");
+    const rotateOp = await identifier.rotate(
+        multisigName, {states: states, rstates: states}
     );
 
     // add signature attachments to the exn message
+    const {payload, rotationEmbeds} = createMultisigExnData(states, rotateOp.serder, rotateOp.sigs);
+    const recipients = [aid2State, aid3State].map((state: State) => state['i']);
 
-    const {payload, rotationEmbeds, recipients} = createMultisigExnData(states, rotateOp.serder, rotateOp.sigs);
-
+    console.log(`Sending multisig rotation exchange message to ${recipients}...`);
     await QAR1Client
         .exchanges()
         .send(
             QAR1.name,
-            multisigName,
+            'multisig',
             QAR1Id,
-            '/multisig/rotate',
+            '/multisig/rot',
             payload,
             rotationEmbeds,
             recipients
         );
 
-    await Promise.all([
-        waitAndMarkNotification(QAR1Client, '/multisig/rot'),
-        waitAndMarkNotification(QAR2Client, '/multisig/rot'),
-        waitAndMarkNotification(QAR3Client, '/multisig/rot'),
+    console.log("Multisig joining rotation as QARs...");
+
+
+    console.log("Waiting to mark notifications for multisig rotation...");
+    // await waitAndMarkNotification(QAR2Client, '/multisig/rot');
+    // await waitAndMarkNotification(QAR3Client, '/multisig/rot');
+}
+
+/**
+ * Prepare each single-signature identifier participating in the multisignature identifier for the delegated rotation by
+ * rotating each individual key and refreshing the keystate amongst all the participants.
+ * @param members
+ * @returns {Promise<[HabState, HabState, HabState]>} The updated key states for each member
+ */
+async function rotateMultisigMembersAndRefreshKeystate(members: {name: string, client: SignifyClient, id: HabState}[]) {
+    const [
+        {name: qar1, client: QAR1Client, id: QAR1Id},
+        {name: qar2, client: QAR2Client, id: QAR2Id},
+        {name: qar3, client: QAR3Client, id: QAR3Id}
+    ] = members;
+    // rotate single sig
+    const [rotateResult1, rotateResult2, rotateResult3] = await Promise.all([
+        QAR1Client.identifiers().rotate(qar1),
+        QAR2Client.identifiers().rotate(qar2),
+        QAR3Client.identifiers().rotate(qar3),
     ]);
+
+    await Promise.all([
+        waitOperation(QAR1Client, await rotateResult1.op()),
+        waitOperation(QAR2Client, await rotateResult2.op()),
+        waitOperation(QAR3Client, await rotateResult3.op()),
+    ]);
+
+    // refresh key state
+    const [aid1, aid2, aid3] = await Promise.all([
+        QAR1Client.identifiers().get(qar1),
+        QAR2Client.identifiers().get(qar2),
+        QAR3Client.identifiers().get(qar3),
+    ]);
+
+    const updates = await Promise.all([
+        await QAR1Client.keyStates().query(aid2.prefix),
+        await QAR1Client.keyStates().query(aid3.prefix),
+        await QAR2Client.keyStates().query(aid1.prefix),
+        await QAR2Client.keyStates().query(aid3.prefix),
+        await QAR3Client.keyStates().query(aid1.prefix),
+        await QAR3Client.keyStates().query(aid2.prefix),
+    ]);
+
+    const [aid2State, aid3State, aid1State] = await Promise.all([
+        waitOperation(QAR1Client, updates[0]),
+        waitOperation(QAR1Client, updates[1]),
+        waitOperation(QAR2Client, updates[2]),
+        waitOperation(QAR2Client, updates[3]),
+        waitOperation(QAR3Client, updates[4]),
+        waitOperation(QAR3Client, updates[5]),
+    ]);
+    return [aid1State.response, aid2State.response, aid3State.response];
 }
 
 /**
@@ -109,8 +168,8 @@ function createMultisigExnData(keyStates: State[], rotation: Serder, sigs: strin
     const rmids = keyStates.map((state: State) => state['i']);
     const recipients = keyStates.map((state: State) => state['i']);
     const payload = { gid: rotation.pre, smids, rmids};
-    return {payload, rotationEmbeds, recipients};
+    return {payload, rotationEmbeds};
 }
 
-const multisigOobiObj: any = await rotateMultisig(multisigName, aidInfoArg, delegationPrefix, witnessIds, env);
+const multisigOobiObj: any = await rotateMultisig(multisigName, aidInfoArg, witnessIds, env);
 console.log("QVI delegated multisig rotated, waiting for GEDA to confirm rotation...");
