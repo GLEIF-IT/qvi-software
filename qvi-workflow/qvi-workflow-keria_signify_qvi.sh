@@ -616,6 +616,7 @@ function create_qvi_multisig() {
 
     print_yellow "Creating QVI multisig"
     local delegator_prefix=$(kli status --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_yellow "Delegator Prefix: ${delegator_prefix}"
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-create-qvi-multisig.ts" \
       "${ENVIRONMENT}" \
       "${QVI_MS}" \
@@ -635,7 +636,6 @@ function create_qvi_multisig() {
     kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
-    
     print_yellow "GEDA2 confirm delegation"
     kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
     pid=$!
@@ -667,7 +667,6 @@ function authorize_qvi_multisig_agent_endpoint_role(){
 authorize_qvi_multisig_agent_endpoint_role
 print_green "QVI Agent OOBI: ${QVI_OOBI}"
 
-
 # 15. GEDA and GIDA: Resolve QVI OOBI
 function resolve_qvi_oobi() {
     exists=$(kli contacts list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | jq .alias | tr -d '"' | grep "${QVI_MS}")
@@ -694,7 +693,6 @@ function resolve_qvi_oobi() {
 }
 resolve_qvi_oobi
 
-        
 # 15.5 GEDA: Create GEDA credential registry
 function create_geda_reg() {
     # Check if GEDA credential registry already exists
@@ -856,7 +854,6 @@ function grant_qvi_credential() {
 }
 grant_qvi_credential
 
-
 # 18. QVI: Admit QVI credential from GEDA
 function admit_qvi_credential() {
     QVI_CRED_SAID=$(kli vc list \
@@ -892,13 +889,9 @@ function admit_qvi_credential() {
 }
 admit_qvi_credential
 
-read -p "Press enter to rotate the QVI"
-
 # 18.1 QVI: Delegated multisig rotation() {
 function qvi_rotate() {
     print_yellow "[QVI] Rotating QVI Multisig"
-    print_red "Early exit"
-    cleanup
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
       "${ENVIRONMENT}" \
       "${QVI_MS}" \
@@ -906,10 +899,24 @@ function qvi_rotate() {
     QVI_ROTATE_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
     print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_ROTATE_PREFIX}"
 
+    print_yellow "GEDA1 confirm delegated rotation"
+    kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
+    pid=$!
+    PID_LIST+=" $pid"
 
+    print_yellow "GEDA2 confirm delegated rotation"
+    kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    print_yellow "Waiting on delegated rotation completion"
+    wait $PID_LIST
+
+    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
 }
 qvi_rotate
-cleanup
+
 
 # 18.5 Create QVI credential registry
 function create_qvi_reg() {

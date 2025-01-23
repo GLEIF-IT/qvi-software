@@ -16,4 +16,21 @@ There are three demonstrations:
 
 ## TODOs
 
+- [ ] Add multisig revoke to the script and present a revoked credential to Sally. See signify-ts/examples/integration-tests/multisig.test.ts
+- [ ] finish off the IPEX credential presentations all the way to ECR and then to Sally.
+
 - [ ] Add sample log output of the end-to-end scripts so people running the process can see what to expect.
+
+# Setup instructions 
+
+## Debugging friendly setup (running everything locally)
+
+These instructions show you how to run the end-to-end script demonstrations locally on your machine. This is useful for debugging using IDEs and log messages and understanding the process.
+
+TBD. See the qvi-workflow-kli.sh script for an example of how to run the process locally.
+
+## Integration-friendly setup (running everything in containers)
+
+These instructions show you how to run the end-to-end script demonstrations using Docker containers. This is useful for integration testing and running the process in a more production-like environment.
+
+TBD.See the qvi-workflow-keria_signify_qvi-docker.sh script for an example of how to run the process in containers.

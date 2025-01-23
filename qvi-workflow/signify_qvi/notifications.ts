@@ -9,10 +9,16 @@ export interface Notification {
     a: { r: string; d?: string; m?: string };
 }
 
+/**
+ * Wait for a notification with a specific route and return the SAID of the Exchange (exn) message.
+ * @param client SignifyClient representing the Client AID
+ * @param route Route of the notification to wait for
+ * @returns SAID of the Exchange (exn) message
+ */
 export async function waitAndMarkNotification(
     client: SignifyClient,
     route: string
-) {
+): Promise<string> {
     const notes = await waitForNotifications(client, route);
 
     await Promise.all(

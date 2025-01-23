@@ -1,6 +1,19 @@
 import signify, { CreateIdentiferArgs, HabState, SignifyClient } from "signify-ts";
 import { waitAndMarkNotification } from "./notifications";
 
+/**
+ * Creates a multisig group with the given delegate member AID and other delegate member AIDs.
+ * If not the initiator, waits for a "/multisig/icp" exchange (exn) notification to be received and
+ * marked prior to sending out exn messages for the multisig inception event.
+ * Each member sends exn messages to each of the other participants.
+ *
+ * @param client The SignifyClient instance of the Controller AID making this request
+ * @param aid The delegate member AID participating in the multisig group
+ * @param otherMembersAIDs The other delegate member AIDs participating in the multisig group
+ * @param groupName The name label of the multisig group. Should be the same across all multisig participants.
+ * @param kargs The arguments for creating the identifier
+ * @param isInitiator whether or not this is the initiator of the multisig group operation
+ */
 export async function createAIDMultisig(
     client: SignifyClient,
     aid: HabState,
