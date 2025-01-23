@@ -1,14 +1,6 @@
 # QVI Software Demonstration
 
-Recommended versions
-
-* KERIpy 1.1.30 (https://github.com/WebOfTrust/keripy/releases/tag/1.1.30) 
-* KERIA 0.2.0-rc1 (https://github.com/GLEIF-IT/keria/releases/tag/0.2.0-rc1)
-* SignifyTS 0.3.0-rc1 (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc1)
-
-## Compatability matrix for Technical Dry Runs
-
-### Suite 1 - GLEIF current: Stack A
+## GLEIF tested versions for technical dry runs
 
 * GLEIF (KERIpy 1.1.30) (https://github.com/WebOfTrust/keripy/releases/tag/1.1.30)
 * GLEIF witnesses (KERIpy 1.2.3) (https://github.com/WebOfTrust/keripy/releases/tag/1.2.3)
