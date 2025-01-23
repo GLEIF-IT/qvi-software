@@ -10,7 +10,7 @@ const env = args[0] as 'local' | 'docker';
 const multisigName = args[1]
 const aidInfoArg = args[2]
 const gedaPrefix = args[3]
-const qviCredSAID = args[4]
+const credSAID = args[4]
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
@@ -20,13 +20,13 @@ const {witnessIds} = resolveEnvironment(env);
  * Uses QAR1, QAR2, and QAR3 to create a delegated multisig AID for the QVI delegated from the AID specified by delpre.
  * 
  * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param gedaPrefix identifier of the GEDA multisig AID who issued the QVI credential
+ * @param issuerPrefix identifier of the issuer AID who issued the credential to admit by the QARs for the QVI multisig
  * @param witnessIds list of witness IDs for the QVI multisig AID configuration
- * @param qviCredSAID the SAID of the QVI credential issued by the GEDA
+ * @param credSAID the SAID of the credential to admit
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function admitQviCredential(multisigName: string, aidInfo: string, gedaPrefix: string, witnessIds: Array<string>, qviCredSAID: string, environment: TestEnvironmentPreset) {
+async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerPrefix: string, witnessIds: Array<string>, credSAID: string, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -54,17 +54,17 @@ async function admitQviCredential(multisigName: string, aidInfo: string, gedaPre
     const qar1Ms = await QAR1Client.identifiers().get(multisigName);
     // Skip if a QVI AID has already been incepted.
     
-    let qviCredbyQAR1 = await getReceivedCredential(QAR1Client, qviCredSAID);
-    let qviCredbyQAR2 = await getReceivedCredential(QAR2Client, qviCredSAID);
-    let qviCredbyQAR3 = await getReceivedCredential(QAR3Client, qviCredSAID);
-    if (!(qviCredbyQAR1 && qviCredbyQAR2 && qviCredbyQAR3)) {
+    let credByQAR1 = await getReceivedCredential(QAR1Client, credSAID);
+    let credByQAR2 = await getReceivedCredential(QAR2Client, credSAID);
+    let credByQAR3 = await getReceivedCredential(QAR3Client, credSAID);
+    if (!(credByQAR1 && credByQAR2 && credByQAR3)) {
         const admitTime = createTimestamp();
         await admitMultisig(
             QAR1Client,
             QAR1Id,
             [QAR2Id, QAR3Id],
             qar1Ms,
-            gedaPrefix,
+            issuerPrefix,
             admitTime
         );
         await admitMultisig(
@@ -72,7 +72,7 @@ async function admitQviCredential(multisigName: string, aidInfo: string, gedaPre
             QAR2Id,
             [QAR1Id, QAR3Id],
             qar1Ms,
-            gedaPrefix,
+            issuerPrefix,
             admitTime
         );
         await admitMultisig(
@@ -80,7 +80,7 @@ async function admitQviCredential(multisigName: string, aidInfo: string, gedaPre
             QAR3Id,
             [QAR1Id, QAR2Id],
             qar1Ms,
-            gedaPrefix,
+            issuerPrefix,
             admitTime
         );
         await waitAndMarkNotification(QAR1Client, '/multisig/exn');
@@ -90,12 +90,12 @@ async function admitQviCredential(multisigName: string, aidInfo: string, gedaPre
         await waitAndMarkNotification(QAR2Client, '/exn/ipex/admit');
         await waitAndMarkNotification(QAR3Client, '/exn/ipex/admit');
 
-        qviCredbyQAR1 = await waitForCredential(QAR1Client, qviCredSAID);
-        qviCredbyQAR2 = await waitForCredential(QAR2Client, qviCredSAID);
-        qviCredbyQAR3 = await waitForCredential(QAR3Client, qviCredSAID);
+        credByQAR1 = await waitForCredential(QAR1Client, credSAID);
+        credByQAR2 = await waitForCredential(QAR2Client, credSAID);
+        credByQAR3 = await waitForCredential(QAR3Client, credSAID);
     }
     
 }
-const admitResult: any = await admitQviCredential(multisigName, aidInfoArg, gedaPrefix, witnessIds, qviCredSAID, env);
+const admitResult: any = await admitCredentialQvi(multisigName, aidInfoArg, gedaPrefix, witnessIds, credSAID, env);
 
-console.log("QVI credential admitted");
+console.log(`credential ${credSAID} admitted`);

@@ -142,6 +142,10 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
         resolveOobi(QAR1Client, OOR_SCHEMA_URL),
         resolveOobi(QAR2Client, OOR_SCHEMA_URL),
         resolveOobi(QAR3Client, OOR_SCHEMA_URL),
+        resolveOobi(personClient, QVI_SCHEMA_URL),
+        resolveOobi(personClient, LE_SCHEMA_URL),
+        resolveOobi(personClient, ECR_AUTH_SCHEMA_URL),
+        resolveOobi(personClient, OOR_AUTH_SCHEMA_URL),
         resolveOobi(personClient, ECR_SCHEMA_URL),
         resolveOobi(personClient, OOR_SCHEMA_URL),
     ])
