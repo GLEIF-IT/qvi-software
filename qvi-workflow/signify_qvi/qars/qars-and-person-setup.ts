@@ -49,6 +49,9 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
         personClient,
     ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
     console.log("QARs and Person SignifyClients created")
+    console.log(`QAR1 pre: ${QAR1Client.controller?.pre}`);
+    console.log(`QAR2 pre: ${QAR2Client.controller?.pre}`);
+    console.log(`QAR3 pre: ${QAR3Client.controller?.pre}`);
 
     const kargsAID = {
         toad: witnessIds.length,
@@ -139,6 +142,10 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
         resolveOobi(QAR1Client, OOR_SCHEMA_URL),
         resolveOobi(QAR2Client, OOR_SCHEMA_URL),
         resolveOobi(QAR3Client, OOR_SCHEMA_URL),
+        resolveOobi(personClient, QVI_SCHEMA_URL),
+        resolveOobi(personClient, LE_SCHEMA_URL),
+        resolveOobi(personClient, ECR_AUTH_SCHEMA_URL),
+        resolveOobi(personClient, OOR_AUTH_SCHEMA_URL),
         resolveOobi(personClient, ECR_SCHEMA_URL),
         resolveOobi(personClient, OOR_SCHEMA_URL),
     ])

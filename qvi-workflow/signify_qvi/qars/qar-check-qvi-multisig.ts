@@ -18,7 +18,7 @@ const aidInfoArg = args[2]
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<string>} String true/false if QVI multisig AID exists or not
  */
-async function checkQviMultisig(multisigName: string, aidInfo: string, environment: TestEnvironmentPreset) {
+async function checkQviMultisig(multisigName: string, aidInfo: string, environment: TestEnvironmentPreset): Promise<number> {
     // get Clients
     const {QAR1} = parseAidInfo(aidInfo);
     const [QAR1Client] = await getOrCreateClients(1, [QAR1.salt], environment);
@@ -28,9 +28,9 @@ async function checkQviMultisig(multisigName: string, aidInfo: string, environme
     try {
         qar1Ms = await QAR1Client.identifiers().get(multisigName);
     } catch (e: any) {
-        return "false"
+        return -1
     }
-    return "true"
+    return parseInt(qar1Ms.state.s)
 }
-const exists: string = await checkQviMultisig(multisigName, aidInfoArg, env);
-console.log(exists);
+const sequenceNo = await checkQviMultisig(multisigName, aidInfoArg, env);
+console.log(sequenceNo);

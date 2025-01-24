@@ -604,18 +604,19 @@ resolve_geda_and_gida_oobis
 # 11. QVI: Create delegated AID with GEDA as delegator
 # 12. GEDA: delegate to QVI
 function create_qvi_multisig() {
-    QVI_MULTISIG_EXISTS=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
+    QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
       "${ENVIRONMENT}" \
       "${QVI_MS}" \
       "${SIGTS_AIDS}"
       )
-    if [[ "$QVI_MULTISIG_EXISTS" == "true" ]]; then
+    if [[ "$QVI_MULTISIG_SEQ_NO" -gt -1 ]]; then
         print_dark_gray "[QVI] Multisig AID ${QVI_MS} already exists"
         return
     fi
 
     print_yellow "Creating QVI multisig"
     local delegator_prefix=$(kli status --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_yellow "Delegator Prefix: ${delegator_prefix}"
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-create-qvi-multisig.ts" \
       "${ENVIRONMENT}" \
       "${QVI_MS}" \
@@ -631,18 +632,18 @@ function create_qvi_multisig() {
     print_lcyan "[External] GEDA members approve delegated inception with 'kli delegate confirm'"
     echo
 
-    print_yellow "GEDA1 confirm delegation"
+    print_yellow "GEDA1 confirm delegated inception"
     kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
-    
-    print_yellow "GEDA2 confirm delegation"
+    print_yellow "GEDA2 confirm delegated inception"
     kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
 
-    print_yellow "Waiting on delegation completion"
+    print_yellow "[GEDA] Waiting 5s on delegated inception completion"
     wait $PID_LIST
+    sleep 5
 
     print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover new GEDA delegation seal anchored in interaction event."
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-complete-multisig-incept.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
@@ -666,7 +667,6 @@ function authorize_qvi_multisig_agent_endpoint_role(){
 }
 authorize_qvi_multisig_agent_endpoint_role
 print_green "QVI Agent OOBI: ${QVI_OOBI}"
-
 
 # 15. GEDA and GIDA: Resolve QVI OOBI
 function resolve_qvi_oobi() {
@@ -694,7 +694,69 @@ function resolve_qvi_oobi() {
 }
 resolve_qvi_oobi
 
-        
+#read -p "Press [ENTER] to rotate the QVI AID"
+
+# 18.1 QVI: Delegated multisig rotation() {
+function qvi_rotate() {
+  QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}"
+      )
+    if [[ "$QVI_MULTISIG_SEQ_NO" -gt 1 ]]; then
+        print_dark_gray "[QVI] Multisig AID ${QVI_MS} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
+        return
+    fi
+    print_yellow "[QVI] Rotating QVI Multisig"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}"
+    QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
+    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
+
+    # create interaction event
+    read -r -d '' ANCHOR << EOM
+{"i": "$QVI_PREFIX","s": "1","d": "$QVI_PREFIX"}
+EOM
+
+    # create temporary file to store json
+    temp_anchor=$(mktemp)
+
+    # write JSON content to the temp file
+    echo "$ANCHOR" > "$temp_anchor"
+
+    print_bg_blue "[QVI] QVI Multisig rotation anchor"
+    cat $temp_anchor | jq
+
+    read -p "Press [ENTER] to confirm the QVI rotation"
+    print_yellow "GEDA1 confirm delegated rotation"
+    kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
+#    kli multisig interact --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --data "$ANCHOR" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    print_yellow "GEDA2 confirm delegated rotation"
+    kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
+#    kli multisig interact --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --data "$ANCHOR" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    print_yellow "[GEDA] Waiting 5s on delegated rotation completion"
+    wait $PID_LIST
+    sleep 5
+
+    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
+
+    print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
+    sleep 8
+    rm "$temp_anchor"
+}
+#qvi_rotate
+
+#read -p "Press [ENTER] to create GEDA registry"
+
 # 15.5 GEDA: Create GEDA credential registry
 function create_geda_reg() {
     # Check if GEDA credential registry already exists
@@ -848,14 +910,13 @@ function grant_qvi_credential() {
     wait $PID_LIST
 
     echo
-    print_yellow "[External] Waiting for IPEX messages to be witnessed"
-    sleep 5
+    print_yellow "[External] Waiting 8s for QVI Credentials IPEX messages to be witnessed"
+    sleep 8
     echo
     print_green "[External] QVI Credential issued to QVI"
     echo
 }
 grant_qvi_credential
-
 
 # 18. QVI: Admit QVI credential from GEDA
 function admit_qvi_credential() {
@@ -871,7 +932,7 @@ function admit_qvi_credential() {
       "${QVI_MS}" \
       "${SIGTS_AIDS}" \
       "${QVI_CRED_SAID}"
-      )
+    )
     if [[ "$received" == "true" ]]; then
         print_dark_gray "[QVI] QVI Credential ${QVI_CRED_SAID} already admitted"
         return
@@ -879,7 +940,7 @@ function admit_qvi_credential() {
 
     echo
     print_yellow "[QVI] Admitting QVI Credential ${QVI_CRED_SAID} from GEDA"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-qvi-credential.ts" \
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
       "${ENVIRONMENT}" \
       "${QVI_MS}" \
       "${SIGTS_AIDS}" \
@@ -892,24 +953,7 @@ function admit_qvi_credential() {
 }
 admit_qvi_credential
 
-read -p "Press enter to rotate the QVI"
-
-# 18.1 QVI: Delegated multisig rotation() {
-function qvi_rotate() {
-    print_yellow "[QVI] Rotating QVI Multisig"
-    print_red "Early exit"
-    cleanup
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_MS}" \
-      "${SIGTS_AIDS}"
-    QVI_ROTATE_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
-    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_ROTATE_PREFIX}"
-
-
-}
-qvi_rotate
-cleanup
+#read -p "Press [ENTER] to create the QVI registry"
 
 # 18.5 Create QVI credential registry
 function create_qvi_reg() {
@@ -969,14 +1013,14 @@ prepare_le_cred_data
 # 19.3 Create LE credential in QVI
 function create_and_grant_le_credential() {
     # Check if LE credential already exists
-    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    le_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       $ENVIRONMENT \
       $QVI_MS \
       $SIGTS_AIDS \
       $GIDA_PRE \
       $LE_SCHEMA
     )
-    if [[ "$received" == "true" ]]; then
+    if [[ ! "$le_said" =~ "false" ]]; then
         print_dark_gray "[QVI] LE Credential already created"
         return
     fi
@@ -1061,6 +1105,9 @@ function admit_le_credential() {
 
     wait $PID_LIST
 
+    print_yellow "[Internal] Waiting 8s for LE IPEX messages to be witnessed"
+    sleep 8
+
     echo
     print_green "[Internal] Admitted LE credential"
     echo
@@ -1109,8 +1156,9 @@ function create_gida_reg() {
 }
 create_gida_reg
 
-# 21. GIDA (LE): Prepare, create, and Issue ECR Auth & OOR Auth credential to QVI
+#read -p "Press [ENTER] to issue the ECR Auth credential"
 
+# 21. GIDA (LE): Prepare, create, and Issue ECR Auth & OOR Auth credential to QVI
 # 21.1 prepare LE edge to ECR auth cred
 function prepare_le_edge() {
     LE_SAID=$(kli vc list \
@@ -1208,10 +1256,16 @@ function create_ecr_auth_credential() {
     wait $PID_LIST
 
     echo
+    print_yellow "[Internal] Waiting 8s ECR Auth for IPEX messages to be witnessed"
+    sleep 8
+
+    echo
     print_lcyan "[Internal] GIDA created ECR Auth credential"
     echo
 }
 create_ecr_auth_credential
+
+#read -p "Press [ENTER] to grant the ECR Auth credential"
 
 # 21.4 Grant ECR Auth credential to QVI
 function grant_ecr_auth_credential() {
@@ -1249,90 +1303,73 @@ function grant_ecr_auth_credential() {
     pid=$!
     PID_LIST+=" $pid"
 
-    kli ipex join \
+#    kli ipex join \
+#        --name "${GIDA_PT2}" \
+#        --passcode "${GIDA_PT2_PASSCODE}" \
+#        --auto &
+    kli ipex grant \
         --name "${GIDA_PT2}" \
         --passcode "${GIDA_PT2_PASSCODE}" \
-        --auto &
+        --alias "${GIDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
     wait $PID_LIST
 
     echo
-    print_yellow "[Internal] Waiting for IPEX messages to be witnessed"
-    sleep 5
+    print_yellow "[Internal] Waiting for IPEX ECR Auth grant messages to be witnessed"
+    sleep 8
 
     echo
     print_green "[Internal] ECR Auth Credential granted to QVI"
     echo
 }
 grant_ecr_auth_credential
-cleanup
 
-# TODO use SignifyTS for the following steps:
-#      - ECR Auth admit,
-#      - OOR Auth admit,
-#      - ECR/OOR create,
-#      - ECR/OOR grant,
-#      - ECR/OOR admit,
-#      - ECR/OOR present to Sally, verify webhook called
+#read -p "Press [ENTER] to admit the ECR Auth credential"
 
 # 21.5 (part of 22) Admit ECR Auth credential from GIDA
 function admit_ecr_auth_credential() {
-    VC_SAID=$(kli vc list \
+    ECR_AUTH_SAID=$(kli vc list \
         --name "${GIDA_PT2}" \
         --alias "${GIDA_MS}" \
         --passcode "${GIDA_PT2_PASSCODE}" \
         --issued \
         --said \
         --schema ${ECR_AUTH_SCHEMA})
-    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-credential.ts" "$ENVIRONMENT" "$SIGTS_AIDS" "${QVI_CRED_SAID}")
-    if [ ! -z "${VC_SAID}" ]; then
-        print_dark_gray "[GIDA] ECR Auth Credential already admitted"
+    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${ECR_AUTH_SAID}"
+    )
+    if [[ "$received" == "true" ]]; then
+        print_dark_gray "[QVI] ECR Auth Credential already admitted"
         return
     fi
-    print_red "Early exit"
-    cleanup
-
-    SAID=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --type "grant" \
-        --poll \
-        --said | \
-        tail -1) # get the last grant, which should be the ECR Auth credential
 
     echo
-    print_yellow "[QVI] Admitting ECR Auth Credential ${SAID} from GIDA LE"
+    print_yellow "[QVI] Admitting ECR Auth Credential ${ECR_AUTH_SAID} from GIDA"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${GIDA_PRE}" \
+      "${ECR_AUTH_SAID}"
 
-    KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
-    kli ipex admit \
-        --name ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --alias ${QVI_MS} \
-        --said ${SAID} \
-        --time "${KLI_TIME}" & 
-    pid=$!
-    PID_LIST+=" $pid"
-
-    print_green "[QVI] Admitting ECR Auth Credential as ${QVI_MS} from GIDA LE"
-    kli ipex join \
-        --name ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
-        --auto &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    wait $PID_LIST
+    print_yellow "[QVI] Waiting 8s for IPEX admit messages to be witnessed"
+    sleep 8
 
     echo
     print_green "[QVI] Admitted ECR Auth Credential"
     echo
 }
 admit_ecr_auth_credential
-print_red "Early exit"
-    cleanup
+
+#read -p "Press [ENTER] to issue the OOR Auth credential"
 
 # 21.6 Prepare OOR Auth credential data
 function prepare_oor_auth_data() {
@@ -1346,8 +1383,6 @@ function prepare_oor_auth_data() {
 EOM
 
     echo "$OOR_AUTH_DATA_JSON" > ./oor-auth-data.json
-    print_lcyan "[Internal] OOR Auth data JSON"
-    print_lcyan "$(cat ./oor-auth-data.json)"
 }
 prepare_oor_auth_data
 
@@ -1366,37 +1401,40 @@ function create_oor_auth_credential() {
         return
     fi
 
+    print_lcyan "[Internal] OOR Auth data JSON"
+    print_lcyan "$(cat ./oor-auth-data.json)"
+
     echo
     print_green "[Internal] GIDA creating OOR Auth credential"
 
     KLI_TIME=$(kli time)
     PID_LIST=""
     kli vc create \
-        --name ${GIDA_PT1} \
-        --alias ${GIDA_MS} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --registry-name ${GIDA_REGISTRY} \
-        --schema ${OOR_AUTH_SCHEMA} \
-        --recipient ${QVI_PRE} \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --registry-name "${GIDA_REGISTRY}" \
+        --schema "${OOR_AUTH_SCHEMA}" \
+        --recipient "${QVI_PRE}" \
         --data @./oor-auth-data.json \
         --edges @./legal-entity-edge.json \
         --rules @./rules.json \
-        --time ${KLI_TIME} &
+        --time "${KLI_TIME}" &
 
     pid=$!
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name ${GIDA_PT2} \
-        --alias ${GIDA_MS} \
-        --passcode ${GIDA_PT2_PASSCODE} \
-        --registry-name ${GIDA_REGISTRY} \
-        --schema ${OOR_AUTH_SCHEMA} \
-        --recipient ${QVI_PRE} \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --registry-name "${GIDA_REGISTRY}" \
+        --schema "${OOR_AUTH_SCHEMA}" \
+        --recipient "${QVI_PRE}" \
         --data @./oor-auth-data.json \
         --edges @./legal-entity-edge.json \
         --rules @./rules.json \
-        --time ${KLI_TIME} &
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
@@ -1408,19 +1446,19 @@ function create_oor_auth_credential() {
 }
 create_oor_auth_credential
 
-
+#read -p "Press [ENTER] to grant the OOR Auth credential"
 
 # 21.8 Grant OOR Auth credential to QVI
 function grant_oor_auth_credential() {
     # This relies on the last grant being the OOR Auth credential
     GRANT_COUNT=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
         --type "grant" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --poll \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --sent \
         --said | wc -l | tr -d ' ') # get grant count, remove whitespace
-    if [ "${GRANT_COUNT}" -ge 3 ]; then
+    if [ "${GRANT_COUNT}" -ge 2 ]; then
         print_dark_gray "[QVI] OOR Auth credential already granted"
         return
     fi
@@ -1438,46 +1476,34 @@ function grant_oor_auth_credential() {
 
     KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
     kli ipex grant \
-        --name ${GIDA_PT1} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --alias ${GIDA_MS} \
-        --said ${SAID} \
-        --recipient ${QVI_PRE} \
-        --time ${KLI_TIME} &
+        --name "${GIDA_PT1}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
-    kli ipex join \
-        --name ${GIDA_PT2} \
-        --passcode ${GIDA_PT2_PASSCODE} \
-        --auto &
+#    kli ipex join \
+#        --name "${GIDA_PT2}" \
+#        --passcode "${GIDA_PT2_PASSCODE}" \
+#        --auto &
+    kli ipex grant \
+        --name "${GIDA_PT2}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
     wait $PID_LIST
 
     echo
-    print_yellow "[Internal] Waiting for IPEX messages to be witnessed"
+    print_yellow "[Internal] Waiting for OOR Auth IPEX grant messages to be witnessed"
     sleep 5
-
-    echo
-    print_green "[QVI] Polling for OOR Auth Credential in ${QAR_PT1}..."
-    kli ipex list \
-            --name "${QAR_PT1}" \
-            --alias "${QVI_MS}" \
-            --passcode "${QAR_PT1_PASSCODE}" \
-            --type "grant" \
-            --poll \
-            --said
-
-    print_green "[QVI] Polling for OOR Auth Credential in ${QAR_PT2}..."
-    kli ipex list \
-            --name "${QAR_PT2}" \
-            --alias "${QVI_MS}" \
-            --passcode "${QAR_PT2_PASSCODE}" \
-            --type "grant" \
-            --poll \
-            --said
 
     echo
     print_green "[Internal] Granted OOR Auth credential to QVI"
@@ -1485,64 +1511,56 @@ function grant_oor_auth_credential() {
 }
 grant_oor_auth_credential
 
+#read -p "Press [ENTER] to admit OOR Auth credential"
+
 # 22. QVI: Admit OOR Auth credential
 function admit_oor_auth_credential() {
-    VC_SAID=$(kli vc list \
-        --name "${QAR_PT2}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+    OOR_AUTH_SAID=$(kli vc list \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --issued \
         --said \
         --schema ${OOR_AUTH_SCHEMA})
-    if [ ! -z "${VC_SAID}" ]; then
+    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${OOR_AUTH_SAID}"
+    )
+    if [[ "$received" == "true" ]]; then
         print_dark_gray "[QVI] OOR Auth Credential already admitted"
         return
     fi
-    SAID=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --type "grant" \
-        --poll \
-        --said | \
-        tail -1) # get the last grant, which should be the ECR Auth credential
 
     echo
-    print_yellow "[QVI] Admitting OOR Auth Credential ${SAID} from GIDA LE"
+    print_yellow "[QVI] Admitting OOR Auth Credential ${OOR_AUTH_SAID} from GIDA"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${GIDA_PRE}" \
+      "${OOR_AUTH_SAID}"
 
-    KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
-    kli ipex admit \
-        --name ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --alias ${QVI_MS} \
-        --said ${SAID} \
-        --time "${KLI_TIME}" & 
-    pid=$!
-    PID_LIST+=" $pid"
-
-    print_green "[QVI] Admitting OOR Auth Credential as ${QVI_MS} from GIDA LE"
-    kli ipex join \
-        --name ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
-        --auto &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    wait $PID_LIST
+    print_yellow "[QVI] Waiting for OOR Auth IPEX admit messages to be witnessed"
+    sleep 8
 
     echo
-    print_green "[QVI] OOR Auth Credential admitted"
+    print_green "[QVI] Admitted OOR Auth Credential"
     echo
 }
 admit_oor_auth_credential
 
+#read -p "Press [ENTER] to  issue the ECR credential"
 
 # 23. QVI: Create and Issue ECR credential to Person
 # 23.1 Prepare ECR Auth edge data
 function prepare_ecr_auth_edge() {
     ECR_AUTH_SAID=$(kli vc list \
-        --name ${QAR_PT1} \
-        --alias ${QVI_MS} \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name ${GIDA_PT1} \
+        --alias ${GIDA_MS} \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --issued \
         --said \
         --schema ${ECR_AUTH_SCHEMA})
     print_bg_blue "[QVI] Preparing [ECR Auth] edge with [ECR Auth] Credential SAID: ${ECR_AUTH_SAID}"
@@ -1559,9 +1577,6 @@ EOM
     echo "$ECR_AUTH_EDGE_JSON" > ./ecr-auth-edge.json
 
     kli saidify --file ./ecr-auth-edge.json
-    
-    print_lcyan "[QVI] ECR Auth edge Data"
-    print_lcyan "$(cat ./ecr-auth-edge.json | jq )"
 }
 prepare_ecr_auth_edge      
 
@@ -1577,176 +1592,92 @@ function prepare_ecr_cred_data() {
 EOM
 
     echo "${ECR_CRED_DATA}" > ./ecr-data.json
-
-    print_lcyan "[QVI] ECR Credential Data"
-    print_lcyan "$(cat ./ecr-data.json)"
 }
 prepare_ecr_cred_data
 
 # TODO add a Typescript script to resolve the QVI OOBI for the person
 # kli oobi resolve --name "${PERSON}"   --oobi-alias "${QVI_MS}" --passcode "${PERSON_PASSCODE}"   --oobi "${QVI_OOBI}"
 
+#read -p "Press [ENTER] to issue and grant the ECR credential"
+
 # 23.3 Create ECR credential in QVI, issued to the Person
-function create_ecr_credential() {
-    # Check if ECR credential already exists
-    SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --issued \
-        --said \
-        --schema ${ECR_SCHEMA})
-    if [ ! -z "${SAID}" ]; then
-        print_dark_gray "[QVI] ECR credential already created"
-        return
-    fi
-
-    echo
-    print_green "[QVI] creating ECR credential"
-
-    KLI_TIME=$(kli time)
-    CRED_NONCE=$(kli nonce)
-    SUBJ_NONCE=$(kli nonce)
-    PID_LIST=""
-    kli vc create \
-        --name ${QAR_PT1} \
-        --alias ${QVI_MS} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --private-credential-nonce "${CRED_NONCE}" \
-        --private-subject-nonce "${SUBJ_NONCE}" \
-        --private \
-        --registry-name ${QVI_REGISTRY} \
-        --schema ${ECR_SCHEMA} \
-        --recipient ${PERSON_PRE} \
-        --data @./ecr-data.json \
-        --edges @./ecr-auth-edge.json \
-        --rules @./ecr-rules.json \
-        --time ${KLI_TIME} &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    kli vc create \
-        --name ${QAR_PT2} \
-        --alias ${QVI_MS} \
-        --passcode ${QAR_PT2_PASSCODE} \
-        --private \
-        --private-credential-nonce "${CRED_NONCE}" \
-        --private-subject-nonce "${SUBJ_NONCE}" \
-        --registry-name ${QVI_REGISTRY} \
-        --schema ${ECR_SCHEMA} \
-        --recipient ${PERSON_PRE} \
-        --data @./ecr-data.json \
-        --edges @./ecr-auth-edge.json \
-        --rules @./ecr-rules.json \
-        --time ${KLI_TIME} &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    wait $PID_LIST
-
-    echo
-    print_lcyan "[QVI] ECR credential created"
-    echo
-}
-create_ecr_credential
-
 # 23.4 QVI Grant ECR credential to PERSON
-function grant_ecr_credential() {
-    # This only works the last grant is the ECR credential
-    ECR_GRANT_SAID=$(kli ipex list \
-        --name "${PERSON}" \
-        --alias "${PERSON}" \
-        --type "grant" \
-        --passcode "${PERSON_PASSCODE}" \
-        --poll \
-        --said | \
-        tail -1) # get the last grant
-    if [ ! -z "${ECR_GRANT_SAID}" ]; then
-        print_yellow "[QVI] ECR credential already granted"
+function create_and_grant_ecr_credential() {
+    # Check if ECR credential already exists
+    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      "$ENVIRONMENT" \
+      "$QVI_MS" \
+      "$SIGTS_AIDS" \
+      "$PERSON_PRE" \
+      "$ECR_SCHEMA"
+    )
+    if [[ ! "$ecr_said" =~ "false" ]]; then
+        print_dark_gray "[QVI] ECR Credential already created"
         return
     fi
-    SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --alias "${QVI_MS}" \
-        --issued \
-        --said \
-        --schema ${ECR_SCHEMA})
+
+    print_lcyan "[QVI] ECR Auth edge Data"
+    print_lcyan "$(cat ./ecr-auth-edge.json | jq )"
+
+    print_lcyan "[QVI] ECR Credential Data"
+    print_lcyan "$(cat ./ecr-data.json)"
 
     echo
-    print_yellow $'[QVI] IPEX GRANTing ECR credential with\n\tSAID'" ${SAID}"$'\n\tto'" ${PERSON} ${PERSON_PRE}"
-    KLI_TIME=$(kli time)
-    kli ipex grant \
-        --name ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --alias ${QVI_MS} \
-        --said ${SAID} \
-        --recipient ${PERSON_PRE} \
-        --time ${KLI_TIME} &
-    pid=$!
-    PID_LIST+=" $pid"
+    print_green "[QVI] creating and granting ECR credential"
 
-    kli ipex join \
-        --name ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
-        --auto &
-    pid=$!
-    PID_LIST+=" $pid"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-ecr-credential-create.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "./" \
+      "${SIGTS_AIDS}" \
+      "${PERSON_PRE}" \
+      "${QVI_SAID}"
 
-    wait $PID_LIST
+    print_yellow "[QVI] Waiting for ECR IPEX messages to be witnessed"
+    sleep 8
 
     echo
-    print_yellow "[QVI] Waiting for IPEX messages to be witnessed"
-    sleep 5
-
-    echo
-    print_green "[PERSON] Polling for ECR Credential in ${PERSON}..."
-    kli ipex list \
-        --name "${PERSON}" \
-        --alias "${PERSON}" \
-        --passcode "${PERSON_PASSCODE}" \
-        --type "grant" \
-        --poll \
-        --said
-
-    echo
-    print_green "ECR Credential granted to ${PERSON}"
+    print_lcyan "[QVI] ECR credential created and granted"
     echo
 }
-grant_ecr_credential
+create_and_grant_ecr_credential
+
+#read -p "Press [ENTER] to admit the ECR credential"
 
 # 23.5. Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
-    VC_SAID=$(kli vc list \
-        --name "${PERSON}" \
-        --alias "${PERSON}" \
-        --passcode "${PERSON_PASSCODE}" \
-        --said \
-        --schema ${ECR_SCHEMA})
-    if [ ! -z "${VC_SAID}" ]; then
-        print_yellow "[PERSON] ECR credential already admitted"
+    # check if ECR has been admitted to receiver
+    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${ECR_SCHEMA}" \
+      "${QVI_PRE}"
+    )
+    if [[ ! "$ecr_said" =~ "false" ]]; then
+        print_dark_gray "[PERSON] ECR Credential already admitted with SAID ${ecr_said}"
         return
     fi
-    SAID=$(kli ipex list \
-        --name "${PERSON}" \
-        --alias "${PERSON}" \
-        --passcode "${PERSON_PASSCODE}" \
-        --type "grant" \
-        --poll \
-        --said)
+
+    # get ECR cred SAID from issuer
+    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      "$ENVIRONMENT" \
+      "$QVI_MS" \
+      "$SIGTS_AIDS" \
+      "$PERSON_PRE" \
+      "$ECR_SCHEMA"
+    )
 
     echo
-    print_yellow "[PERSON] Admitting ECR credential ${SAID} to ${PERSON}"
+    print_yellow "[PERSON] Admitting ECR credential ${ecr_said} to ${PERSON}"
 
-    kli ipex admit \
-        --name ${PERSON} \
-        --passcode ${PERSON_PASSCODE} \
-        --alias ${PERSON} \
-        --said ${SAID}  & 
-    pid=$!
-    PID_LIST+=" $pid"
+    tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${QVI_PRE}" \
+      "${ecr_said}"
 
-    wait $PID_LIST
+    print_yellow "[PERSON] Waiting for IPEX messages to be witnessed"
+    sleep 5
 
     echo
     print_green "ECR Credential admitted"
@@ -1758,9 +1689,10 @@ admit_ecr_credential
 # 24.1 Prepare OOR Auth edge data
 function prepare_oor_auth_edge() {
     OOR_AUTH_SAID=$(kli vc list \
-        --name ${QAR_PT1} \
-        --alias ${QVI_MS} \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name ${GIDA_PT1} \
+        --alias ${GIDA_MS} \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --issued \
         --said \
         --schema ${OOR_AUTH_SCHEMA})
     print_bg_blue "[QVI] Preparing [OOR Auth] edge with [OOR Auth] Credential SAID: ${OOR_AUTH_SAID}"
@@ -1777,9 +1709,6 @@ EOM
     echo "$OOR_AUTH_EDGE_JSON" > ./oor-auth-edge.json
 
     kli saidify --file ./oor-auth-edge.json
-    
-    print_lcyan "[QVI] OOR Auth edge Data"
-    print_lcyan "$(cat ./oor-auth-edge.json | jq )"
 }
 prepare_oor_auth_edge      
 
@@ -1795,163 +1724,88 @@ function prepare_oor_cred_data() {
 EOM
 
     echo "${OOR_CRED_DATA}" > ./oor-data.json
-
-    print_lcyan "[QVI] OOR Credential Data"
-    print_lcyan "$(cat ./oor-data.json)"
 }
 prepare_oor_cred_data
 
+#read -p "Press [ENTER] to issue and grant the OOR credential"
+
 # 24.3 Create OOR credential in QVI, issued to the Person
-function create_oor_credential() {
+function create_and_grant_oor_credential() {
     # Check if OOR credential already exists
-    SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --issued \
-        --said \
-        --schema ${OOR_SCHEMA})
-    if [ ! -z "${SAID}" ]; then
-        print_dark_gray "[QVI] OOR credential already created"
+    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      "$ENVIRONMENT" \
+      "$QVI_MS" \
+      "$SIGTS_AIDS" \
+      "$PERSON_PRE" \
+      "$OOR_SCHEMA"
+    )
+    if [[ ! "$oor_said" =~ "false" ]]; then
+        print_dark_gray "[QVI] OOR Credential already created"
         return
     fi
 
+    print_lcyan "[QVI] OOR Auth edge Data"
+    print_lcyan "$(cat ./oor-auth-edge.json | jq )"
+
+    print_lcyan "[QVI] OOR Credential Data"
+    print_lcyan "$(cat ./oor-data.json)"
+
     echo
-    print_green "[QVI] creating OOR credential"
+    print_green "[QVI] creating and granting OOR credential"
 
-    KLI_TIME=$(kli time)
-    PID_LIST=""
-    kli vc create \
-        --name ${QAR_PT1} \
-        --alias ${QVI_MS} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --registry-name ${QVI_REGISTRY} \
-        --schema ${OOR_SCHEMA} \
-        --recipient ${PERSON_PRE} \
-        --data @./oor-data.json \
-        --edges @./oor-auth-edge.json \
-        --rules @./oor-rules.json \
-        --time ${KLI_TIME} &
-    pid=$!
-    PID_LIST+=" $pid"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-oor-credential-create.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "./" \
+      "${SIGTS_AIDS}" \
+      "${PERSON_PRE}" \
+      "${QVI_SAID}"
 
-    kli vc create \
-        --name ${QAR_PT2} \
-        --alias ${QVI_MS} \
-        --passcode ${QAR_PT2_PASSCODE} \
-        --registry-name ${QVI_REGISTRY} \
-        --schema ${OOR_SCHEMA} \
-        --recipient ${PERSON_PRE} \
-        --data @./oor-data.json \
-        --edges @./oor-auth-edge.json \
-        --rules @./oor-rules.json \
-        --time ${KLI_TIME} &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    wait $PID_LIST
+    print_yellow "[QVI] Waiting for OOR IPEX messages to be witnessed"
+    sleep 5
 
     echo
     print_lcyan "[QVI] OOR credential created"
     echo
 }
-create_oor_credential
+create_and_grant_oor_credential
 
-
-# 24.4 QVI Grant OOR credential to PERSON
-function grant_oor_credential() {
-    # This only works the last grant is the OOR credential
-    GRANT_COUNT=$(kli ipex list \
-        --name "${PERSON}" \
-        --alias "${PERSON}" \
-        --type "grant" \
-        --passcode "${PERSON_PASSCODE}" \
-        --poll \
-        --said | wc -l | tr -d ' ') # get the last grant
-    if [ "${GRANT_COUNT}" -ge 2 ]; then
-        print_yellow "[QVI] OOR credential already granted"
-        return
-    fi
-    SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --alias "${QVI_MS}" \
-        --issued \
-        --said \
-        --schema ${OOR_SCHEMA})
-
-    echo
-    print_yellow $'[QVI] IPEX GRANTing OOR credential with\n\tSAID'" ${SAID}"$'\n\tto'" ${PERSON} ${PERSON_PRE}"
-    kli ipex grant \
-        --name ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --alias ${QVI_MS} \
-        --said ${SAID} \
-        --recipient ${PERSON_PRE} &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    kli ipex join \
-        --name ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
-        --auto &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    wait $PID_LIST
-
-    echo
-    print_yellow "[QVI] Waiting for IPEX messages to be witnessed"
-    sleep 5
-
-    echo
-    print_green "[PERSON] Polling for OOR Credential in ${PERSON}..."
-    kli ipex list \
-        --name "${PERSON}" \
-        --alias "${PERSON}" \
-        --passcode "${PERSON_PASSCODE}" \
-        --type "grant" \
-        --poll \
-        --said
-
-    echo
-    print_green "OOR Credential granted to ${PERSON}"
-    echo
-}
-grant_oor_credential
+#read -p "Press [ENTER] to admit the OOR credential"
 
 # 24.5. Person: Admit OOR credential from QVI
 function admit_oor_credential() {
-    VC_SAID=$(kli vc list \
-        --name "${PERSON}" \
-        --alias "${PERSON}" \
-        --passcode "${PERSON_PASSCODE}" \
-        --said \
-        --schema ${OOR_SCHEMA})
-    if [ ! -z "${VC_SAID}" ]; then
-        print_yellow "[PERSON] OOR credential already admitted"
+    # check if OOR has been admitted to receiver
+    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${OOR_SCHEMA}" \
+      "${QVI_PRE}"
+    )
+    if [[ ! "$oor_said" =~ "false" ]]; then
+        print_dark_gray "[PERSON] OOR Credential already admitted with SAID ${oor_said}"
         return
     fi
-    SAID=$(kli ipex list \
-        --name "${PERSON}" \
-        --alias "${PERSON}" \
-        --passcode "${PERSON_PASSCODE}" \
-        --type "grant" \
-        --poll \
-        --said | tail -1) # get the last grant, which should be the OOR credential
+
+    # get OOR cred SAID from issuer
+    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      "$ENVIRONMENT" \
+      "$QVI_MS" \
+      "$SIGTS_AIDS" \
+      "$PERSON_PRE" \
+      "$OOR_SCHEMA"
+    )
 
     echo
-    print_yellow "[PERSON] Admitting OOR credential ${SAID} to ${PERSON}"
+    print_yellow "[PERSON] Admitting OOR credential ${oor_said} to ${PERSON}"
 
-    kli ipex admit \
-        --name ${PERSON} \
-        --passcode ${PERSON_PASSCODE} \
-        --alias ${PERSON} \
-        --said ${SAID}  & 
-    pid=$!
-    PID_LIST+=" $pid"
+    tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${QVI_PRE}" \
+      "${oor_said}"
 
-    wait $PID_LIST
+    print_yellow "[PERSON] Waiting for OOR Cred IPEX messages to be witnessed"
+    sleep 5
 
     echo
     print_green "OOR Credential admitted"
@@ -1959,20 +1813,18 @@ function admit_oor_credential() {
 }
 admit_oor_credential
 
+#read -p "Press [ENTER] to present the OOR credential to Sally"
 # 25. QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
 
 SALLY_PID=""
 WEBHOOK_PID=""
 function sally_setup() {
-    # Supposedly not needed
-    # kli oobi resolve --name $SALLY \
-    #     --alias $SALLY \
-    #     --oobi-alias ${QVI_MS} \
-    #     --oobi ${QVI_OOBI}
     print_yellow "[GLEIF] setting up sally"
     print_yellow "[GLEIF] setting up webhook"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
+
+    sleep 3
 
     print_yellow "[GLEIF] starting sally"
     sally server start \
@@ -1987,33 +1839,31 @@ function sally_setup() {
 }
 sally_setup
 
+#read -p "Press [ENTER] to present the OOR credential to Sally"
+
 function present_le_cred_to_sally() {
-    print_yellow "[QVI] Presenting LE Credential to Sally"
-    LE_SAID=$(kli vc list --name ${GIDA_PT1} \
-        --alias ${GIDA_MS} \
-        --passcode "${GIDA_PT1_PASSCODE}" \
-        --said --schema ${LE_SCHEMA})
+    print_yellow "[QVI] Presenting OOR Credential to Sally"
 
-    PID_LIST=""
-    kli ipex grant \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --said "${LE_SAID}" \
-        --recipient "${SALLY}" &
-    pid=$!
-    PID_LIST+=" $pid"
+    tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${OOR_SCHEMA}" \
+      "${QVI_PRE}" \
+      "${SALLY_PRE}" \
 
-    kli ipex join \
-        --name "${QAR_PT2}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
-        --auto &
-    pid=$!
-    PID_LIST+=" $pid"
-    wait $PID_LIST
+    start=$EPOCHSECONDS
+    present_result=0
+    print_dark_gray "[PERSON] Waiting for Sally to receive the OOR Credential"
+    while [ $present_result -ne 200 ]; do
+      present_result=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:9923/?holder=${PERSON_PRE}")
+      sleep 1
+      if (( EPOCHSECONDS-start > 15 )); then
+        print_red "[PERSON] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
+        break;
+      fi # 15 seconds timeout
+    done
 
-    sleep 30
-    print_green "[QVI] LE Credential presented to Sally"
+    print_green "[PERSON] OOR Credential presented to Sally"
 }
 present_le_cred_to_sally
 

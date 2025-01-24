@@ -39,7 +39,7 @@ function cleanup() {
     #     docker kill $name || true && docker rm $name || true
     # fi
     # done
-    exit 1
+    exit 0
 }
 
 function clear_containers() {

@@ -138,7 +138,7 @@ export async function getIssuedCredential(
 /**
  * Returns a credential that has been received through an IPEX Admit by the client.
  * @param client SignifyClient for the recipient or for multisig the client of one of the recipients
- * @param credId SAID of the credential to retrieve
+ * @param schemaSAID SAID of the credential to retrieve
  * @returns the credential body
  */
 export async function getReceivedCredential(
@@ -148,6 +148,24 @@ export async function getReceivedCredential(
     const credentialList = await client.credentials().list({
         filter: {
             '-d': credId,
+        },
+    });
+    let credential: any;
+    if (credentialList.length > 0) {
+        credential = credentialList[0];
+    }
+    return credential;
+}
+
+export async function getReceivedCredBySchemaAndIssuer(
+    client: SignifyClient,
+    schemaSAID: string,
+    issuerPrefix: string
+): Promise<any> {
+    const credentialList = await client.credentials().list({
+        filter: {
+            '-s': schemaSAID,
+            '-i': issuerPrefix
         },
     });
     let credential: any;
@@ -242,6 +260,34 @@ export async function grantMultisig(
             gembeds,
             recp
         );
+}
+
+/**
+ * Admits the most recent IPEX Admit message for a single-sig credential.
+ * @param client
+ * @param aidName
+ * @param recipientPrefix
+ */
+export async function admitSinglesig(
+    client: SignifyClient,
+    aidName: string,
+    recipientPrefix: string
+) {
+    const grantMsgSaid = await waitAndMarkNotification(
+        client,
+        '/exn/ipex/grant'
+    );
+
+    const [admit, sigs, aend] = await client.ipex().admit({
+        senderName: aidName,
+        message: '',
+        grantSaid: grantMsgSaid,
+        recipient: recipientPrefix,
+    });
+
+    await client
+        .ipex()
+        .submitAdmit(aidName, admit, sigs, aend, [recipientPrefix]);
 }
 
 /**
