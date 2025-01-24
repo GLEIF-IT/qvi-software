@@ -632,16 +632,16 @@ function create_qvi_multisig() {
     print_lcyan "[External] GEDA members approve delegated inception with 'kli delegate confirm'"
     echo
 
-    print_yellow "GEDA1 confirm delegation"
+    print_yellow "GEDA1 confirm delegated inception"
     kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
-    print_yellow "GEDA2 confirm delegation"
+    print_yellow "GEDA2 confirm delegated inception"
     kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
 
-    print_yellow "[GEDA] Waiting 5s on delegation completion"
+    print_yellow "[GEDA] Waiting 5s on delegated inception completion"
     wait $PID_LIST
     sleep 5
 
@@ -693,6 +693,69 @@ function resolve_qvi_oobi() {
     echo
 }
 resolve_qvi_oobi
+
+#read -p "Press [ENTER] to rotate the QVI AID"
+
+# 18.1 QVI: Delegated multisig rotation() {
+function qvi_rotate() {
+  QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}"
+      )
+    if [[ "$QVI_MULTISIG_SEQ_NO" -gt 1 ]]; then
+        print_dark_gray "[QVI] Multisig AID ${QVI_MS} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
+        return
+    fi
+    print_yellow "[QVI] Rotating QVI Multisig"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}"
+    QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
+    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
+
+    # create interaction event
+    read -r -d '' ANCHOR << EOM
+{"i": "$QVI_PREFIX","s": "1","d": "$QVI_PREFIX"}
+EOM
+
+    # create temporary file to store json
+    temp_anchor=$(mktemp)
+
+    # write JSON content to the temp file
+    echo "$ANCHOR" > "$temp_anchor"
+
+    print_bg_blue "[QVI] QVI Multisig rotation anchor"
+    cat $temp_anchor | jq
+
+    read -p "Press [ENTER] to confirm the QVI rotation"
+    print_yellow "GEDA1 confirm delegated rotation"
+    kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
+#    kli multisig interact --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --data "$ANCHOR" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    print_yellow "GEDA2 confirm delegated rotation"
+    kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
+#    kli multisig interact --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --data "$ANCHOR" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    print_yellow "[GEDA] Waiting 5s on delegated rotation completion"
+    wait $PID_LIST
+    sleep 5
+
+    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
+
+    print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
+    sleep 8
+    rm "$temp_anchor"
+}
+#qvi_rotate
+
+#read -p "Press [ENTER] to create GEDA registry"
 
 # 15.5 GEDA: Create GEDA credential registry
 function create_geda_reg() {
@@ -890,48 +953,6 @@ function admit_qvi_credential() {
 }
 admit_qvi_credential
 
-#read -p "Press [ENTER] to rotate the QVI AID"
-
-# 18.1 QVI: Delegated multisig rotation() {
-function qvi_rotate() {
-  QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_MS}" \
-      "${SIGTS_AIDS}"
-      )
-    if [[ "$QVI_MULTISIG_SEQ_NO" -gt 1 ]]; then
-        print_dark_gray "[QVI] Multisig AID ${QVI_MS} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
-        return
-    fi
-    print_yellow "[QVI] Rotating QVI Multisig"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_MS}" \
-      "${SIGTS_AIDS}"
-    QVI_ROTATE_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
-    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_ROTATE_PREFIX}"
-
-    print_yellow "GEDA1 confirm delegated rotation"
-    kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    print_yellow "GEDA2 confirm delegated rotation"
-    kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    print_yellow "[GEDA] Waiting 5s on delegated rotation completion"
-    wait $PID_LIST
-    sleep 5
-
-    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
-
-    print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
-    sleep 8
-}
-#qvi_rotate
 #read -p "Press [ENTER] to create the QVI registry"
 
 # 18.5 Create QVI credential registry
@@ -1623,10 +1644,6 @@ create_and_grant_ecr_credential
 
 #read -p "Press [ENTER] to admit the ECR credential"
 
-# TODO use SignifyTS for the following steps:
-#      - ECR/OOR grant,
-#      - ECR/OOR admit,
-#      - ECR/OOR present to Sally, verify webhook called
 # 23.5. Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
     # check if ECR has been admitted to receiver
@@ -1667,8 +1684,6 @@ function admit_ecr_credential() {
     echo
 }
 admit_ecr_credential
-
-#read -p "Press [ENTER] to issue and grant the OOR credential"
 
 # 24. QVI: Issue, grant OOR to Person and Person admits OOR
 # 24.1 Prepare OOR Auth edge data
@@ -1712,6 +1727,8 @@ EOM
 }
 prepare_oor_cred_data
 
+#read -p "Press [ENTER] to issue and grant the OOR credential"
+
 # 24.3 Create OOR credential in QVI, issued to the Person
 function create_and_grant_oor_credential() {
     # Check if OOR credential already exists
@@ -1752,6 +1769,8 @@ function create_and_grant_oor_credential() {
     echo
 }
 create_and_grant_oor_credential
+
+#read -p "Press [ENTER] to admit the OOR credential"
 
 # 24.5. Person: Admit OOR credential from QVI
 function admit_oor_credential() {
@@ -1794,8 +1813,7 @@ function admit_oor_credential() {
 }
 admit_oor_credential
 
-read -p "Press [ENTER] to start Sally"
-
+#read -p "Press [ENTER] to present the OOR credential to Sally"
 # 25. QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
 
 SALLY_PID=""
@@ -1805,6 +1823,8 @@ function sally_setup() {
     print_yellow "[GLEIF] setting up webhook"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
+
+    sleep 3
 
     print_yellow "[GLEIF] starting sally"
     sally server start \
@@ -1819,10 +1839,10 @@ function sally_setup() {
 }
 sally_setup
 
-read -p "Press [ENTER] to present the ECR credential to Sally"
+#read -p "Press [ENTER] to present the OOR credential to Sally"
 
 function present_le_cred_to_sally() {
-    print_yellow "[QVI] Presenting LE Credential to Sally"
+    print_yellow "[QVI] Presenting OOR Credential to Sally"
 
     tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
       "${ENVIRONMENT}" \
@@ -1831,8 +1851,19 @@ function present_le_cred_to_sally() {
       "${QVI_PRE}" \
       "${SALLY_PRE}" \
 
-    sleep 15
-    print_green "[QVI] LE Credential presented to Sally"
+    start=$EPOCHSECONDS
+    present_result=0
+    print_dark_gray "[PERSON] Waiting for Sally to receive the OOR Credential"
+    while [ $present_result -ne 200 ]; do
+      present_result=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:9923/?holder=${PERSON_PRE}")
+      sleep 1
+      if (( EPOCHSECONDS-start > 15 )); then
+        print_red "[PERSON] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
+        break;
+      fi # 15 seconds timeout
+    done
+
+    print_green "[PERSON] OOR Credential presented to Sally"
 }
 present_le_cred_to_sally
 

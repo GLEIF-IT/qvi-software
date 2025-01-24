@@ -41,6 +41,8 @@ export async function grantCredential(aidInfo: string, schemaSAID: string, issue
         return "false-credential-not-found"
     }
 
+    const PersonAID = await PersonClient.identifiers().get(PERSON.name);
+
     // grant credential
     const dt = createTimestamp();
     const [grant, gsigs, gend] = await PersonClient.ipex().grant({
