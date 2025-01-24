@@ -190,6 +190,24 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
     console.log("QAR3 joined multisig rotation, waiting for GEDA to confirm rotation...");
 
     const qar3MSAID = await QAR3Client.identifiers().get(multisigName);
+
+    // refresh each other's key state again
+    const initialUpdates = await Promise.all([
+        await QAR1Client.keyStates().query(QAR2Id.prefix),
+        await QAR1Client.keyStates().query(QAR3Id.prefix),
+        await QAR2Client.keyStates().query(QAR1Id.prefix),
+        await QAR2Client.keyStates().query(QAR3Id.prefix),
+        await QAR3Client.keyStates().query(QAR1Id.prefix),
+        await QAR3Client.keyStates().query(QAR2Id.prefix),
+    ]);
+    const [aid2St, aid3St, aid1St] = await Promise.all([
+        waitOperation(QAR1Client, initialUpdates[0]),
+        waitOperation(QAR1Client, initialUpdates[1]),
+        waitOperation(QAR2Client, initialUpdates[2]),
+        waitOperation(QAR2Client, initialUpdates[3]),
+        waitOperation(QAR3Client, initialUpdates[4]),
+        waitOperation(QAR3Client, initialUpdates[5]),
+    ]);
 }
 
 /**

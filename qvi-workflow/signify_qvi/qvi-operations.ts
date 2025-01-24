@@ -32,7 +32,7 @@ export async function checkIssuedCredential(multisigName: string, aidInfo: strin
     if (!issuedCred) {
         return "false-credential-not-found"
     }
-    return "true"
+    return issuedCred.sad.d
 }
 
 /**
