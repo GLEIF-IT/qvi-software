@@ -16,13 +16,27 @@
 #   > keria start --config-dir scripts --config-file keria --loglevel INFO
 # and make sure to perform "npm install" in this directory to be able to run the NodeJS scripts.
 
-trap cleanup INT
+SALLY_PID=""
+WEBHOOK_PID=""
+
+function sally_teardown() {
+  if [ -n "$SALLY_PID" ]; then
+    kill -SIGTERM $SALLY_PID
+  fi
+  if [ -n "$WEBHOOK_PID" ]; then
+    kill -SIGTERM $WEBHOOK_PID
+  fi
+}
+
 function cleanup() {
     # Triggered on Control + C, cleans up resources the script uses
     echo
-    print_red "Caught Ctrl+C, Exiting script..."
+    print_red "Exit or Caught Ctrl+C, Exiting script..."
+    sally_teardown
     exit 0
 }
+trap cleanup INT
+trap cleanup EXIT
 
 source ./script-utils.sh
 echo
@@ -1816,8 +1830,7 @@ admit_oor_credential
 #read -p "Press [ENTER] to present the OOR credential to Sally"
 # 25. QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
 
-SALLY_PID=""
-WEBHOOK_PID=""
+
 function sally_setup() {
     print_yellow "[GLEIF] setting up sally"
     print_yellow "[GLEIF] setting up webhook"
@@ -1856,8 +1869,9 @@ function present_le_cred_to_sally() {
     print_dark_gray "[PERSON] Waiting for Sally to receive the OOR Credential"
     while [ $present_result -ne 200 ]; do
       present_result=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:9923/?holder=${PERSON_PRE}")
+      print_dark_gray "[PERSON] received ${present_result} from Sally"
       sleep 1
-      if (( EPOCHSECONDS-start > 15 )); then
+      if (( EPOCHSECONDS-start > 25 )); then
         print_red "[PERSON] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
         break;
       fi # 15 seconds timeout
@@ -1866,17 +1880,10 @@ function present_le_cred_to_sally() {
     print_green "[PERSON] OOR Credential presented to Sally"
 }
 present_le_cred_to_sally
-
-# send sigterm to sally PID
-function sally_teardown() {
-    kill -SIGTERM $SALLY_PID
-    kill -SIGTERM $WEBHOOK_PID
-}
-sally_teardown
+read -p "Press [Enter] to end the script"
 
 # 26. QVI: Revoke ECR Auth and OOR Auth credentials
 
 # 27. QVI: Present revoked credentials to Sally
-
 
 print_lcyan "Full chain workflow completed"
