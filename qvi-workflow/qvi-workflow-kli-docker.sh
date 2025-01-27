@@ -5,8 +5,10 @@
 # Person AID for usage in the iXBRL data attestation.
 #
 # Note:
-# This script uses the kli and kli2 commands as defined in ./kli-commands.sh to perform the QVI
-# workflow steps.
+# 1) This script uses the kli and kli2 commands as defined in ./kli-commands.sh to perform the QVI
+#    workflow steps.
+# 2) $HOME/.qvi_workflow_docker should be cleared out prior to running this script.
+#    By specifying a directory as the first argument to this script you can control where the keystores are located.
 #
 
 

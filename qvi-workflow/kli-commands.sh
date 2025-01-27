@@ -14,13 +14,14 @@ if [ ! -d "${KEYSTORE_DIR}" ]; then
 fi
 
 # Set current working directory for all scripts that must access files
-KLI1IMAGE="weboftrust/keri:1.1.29"
-KLI2IMAGE="weboftrust/keri:1.2.2"
+KLI1IMAGE="weboftrust/keri:1.1.30"
+KLI2IMAGE="weboftrust/keri:1.2.4"
 
 LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export KLI_DATA_DIR="${LOCAL_DIR}/data"
 export KLI_CONFIG_DIR="${LOCAL_DIR}/config"
 
+# Separate function enables different version of KERIpy to be used for some identifiers.
 function kli() {
   docker run -it --rm \
     --network vlei \
@@ -33,12 +34,13 @@ function kli() {
 
 export -f kli
 
+# Runs the KLI command in a detached container which is expected to be used in conjunction with
+# `docker wait` to wait for the container to finish before continuing with further steps.
 function klid() {
   name=$1
   # must pull first arg off to use as container name
   shift 1
   # pass remaining args to docker run
-  set -xe
   docker run -d \
     --network vlei \
     --name $name \
@@ -46,12 +48,12 @@ function klid() {
     -v "${KLI_CONFIG_DIR}:/config" \
     -v "${KLI_DATA_DIR}":/data \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI1IMAGE}" "$@" 
-  set +xe
+    "${KLI1IMAGE}" "$@"
 }
 
 export -f klid
 
+# Separate function enables different version of KERIpy to be used for some identifiers.
 function kli2() {
   docker run -it --rm \
     --network vlei \
@@ -64,12 +66,13 @@ function kli2() {
 
 export -f kli2
 
+# Runs the KLI command in a detached container which is expected to be used in conjunction with
+# `docker wait` to wait for the container to finish before continuing with further steps.
 function kli2d() {
   name=$1
   # must pull first arg off to use as container name
   shift 1
   # pass remaining args to docker run
-  set -xe
   docker run -d \
     --network vlei \
     --name $name \
@@ -78,7 +81,6 @@ function kli2d() {
     -v "${KLI_DATA_DIR}":/data \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI2IMAGE}" "$@"
-  set +xe
 }
 
 export -f kli2d

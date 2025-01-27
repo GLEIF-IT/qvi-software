@@ -2,10 +2,10 @@
 
 Stack A:
 - Compose file: `stack_A-docker-compose.yaml`
-- KERIpy 1.1.27
-- KERIA 0.2.0-dev6
-- vLEI-server 0.2.1
-- SignifyTS 0.3.0
+- KERIpy 1.1.30
+- KERIA 0.2.0-rc2
+- vLEI-server 0.2.2
+- SignifyTS 0.3.0-rc1
 
 # Important Points
 
