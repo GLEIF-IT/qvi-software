@@ -2,11 +2,11 @@
 # Starts up five witnesses, a KERIA agent server, and an ACDC schema caching server (vLEI-server)
 
 x-keri-image: &keri-image
-    image: weboftrust/keri:1.1.27
+    image: weboftrust/keri:1.1.30
 x-keria-image: &keria-image
-    image: weboftrust/keria:0.2.0-dev6
+    image: weboftrust/keria:0.2.0-rc2
 x-vlei-image: &vlei-image
-    image: gleif/vlei:0.2.1
+    image: gleif/vlei:0.2.0
 
 # Healthcheck interval for all services
 x-healthcheck: &healthcheck
@@ -28,6 +28,20 @@ volumes:
     keria-data:
 
 services:
+    # Start vLEI server for caching credential schema
+    vlei-server:
+        <<: *vlei-image
+        environment:
+            - PYTHONUNBUFFERED=1     # Ensure output is logged in real-time
+            - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+        command:
+          [ 'vLEI-server', '-s','./schema/acdc','-c','./schema/acdc','-o','./samples/oobis' ]
+        healthcheck:
+            test: [ "CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao" ]
+            <<: *healthcheck
+        ports:
+            - "7723:7723"
+
     # Starts five witnesses, epsilon, kappa, phi, sigma, and zeta
     wit-eps:
         <<: *keri-image
@@ -54,6 +68,9 @@ services:
             - /witness-entrypoint.sh
         ports:
             - "5642:5642"
+        depends_on:
+            vlei-server:
+                condition: service_healthy
 
     wit-kap:
         <<: *keri-image
@@ -80,6 +97,9 @@ services:
             - /witness-entrypoint.sh
         ports:
             - "5643:5643"
+        depends_on:
+            vlei-server:
+                condition: service_healthy
 
     wit-phi:
         <<: *keri-image
@@ -106,6 +126,9 @@ services:
             - /witness-entrypoint.sh
         ports:
             - "5644:5644"
+        depends_on:
+            vlei-server:
+                condition: service_healthy
 
     wit-sig:
         <<: *keri-image
@@ -132,6 +155,9 @@ services:
             - /witness-entrypoint.sh
         ports:
             - "5645:5645"
+        depends_on:
+            vlei-server:
+                condition: service_healthy
 
     wit-zet:
         <<: *keri-image
@@ -158,17 +184,9 @@ services:
             - /witness-entrypoint.sh
         ports:
             - "5646:5646"
-
-    vlei-server:
-        <<: *vlei-image
-        environment:
-            - PYTHONUNBUFFERED=1     # Ensure output is logged in real-time
-            - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao"]
-            <<: *healthcheck
-        ports:
-            - "7723:7723"
+        depends_on:
+            vlei-server:
+                condition: service_healthy
 
     keria:
         <<: *keria-image
@@ -179,7 +197,7 @@ services:
         volumes:
             - ./config-keria/keria.json:/keria/config/keri/cf/keria.json
             - keria-data:/keria/config/keri/cf
-        command: --config-dir /keria/config --config-file keria --name agent
+        command: --config-dir /keria/config --config-file keria --name agent --loglevel INFO
         healthcheck:
             test: ["CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml"]
             <<: *healthcheck
@@ -188,8 +206,10 @@ services:
             - "3902:3902"
             - "3903:3903"
         entrypoint:
-          ['keria', 'start','--config-dir','/keria/config','--config-file','keria','--name','agent',]
+          ['keria', 'start','--config-dir','/keria/config','--config-file','keria','--name','agent', '--loglevel', 'INFO']
         depends_on:
+            vlei-server:
+                condition: service_healthy
             wit-eps:
                 condition: service_healthy
             wit-kap:
@@ -199,7 +219,5 @@ services:
             wit-sig:
                 condition: service_healthy
             wit-zet:
-                condition: service_healthy
-            vlei-server:
                 condition: service_healthy
 
