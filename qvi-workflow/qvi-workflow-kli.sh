@@ -648,7 +648,7 @@ EOM
 
     print_lcyan "[External] GEDA members approve delegated inception with 'kli delegate confirm'"
     echo
-    read -p "Press [enter] to approve delegation as GEDA 1"
+
 
     print_lcyan "[External] GEDA 1 approves delegation"
     kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &

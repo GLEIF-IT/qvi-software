@@ -1,4 +1,4 @@
-import signify, {HabState, Serder, Siger, SignifyClient, State} from "signify-ts";
+import signify, {HabState, Serder, Siger, SignifyClient, KeyState} from "signify-ts";
 import {parseAidInfo} from "../create-aid";
 import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
@@ -92,10 +92,10 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
         rot: [serder, atc]
     };
     // signing member IDs (signing this rotation - must satisfy the current signing threshold and prior next)
-    const smids = states.map((state: State) => state['i']);
-    const rmids = states.map((state: State) => state['i']);
+    const smids = states.map((state: KeyState) => state['i']);
+    const rmids = states.map((state: KeyState) => state['i']);
     const payload = { gid: serder.pre, smids: smids, rmids: rmids};
-    const recipients = [aid2State, aid3State].map((state: State) => state['i']);
+    const recipients = [aid2State, aid3State].map((state: KeyState) => state['i']);
 
     console.log(`Sending multisig rotation exchange message to ${recipients}...`);
     await QAR1Client
