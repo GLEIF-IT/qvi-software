@@ -1854,7 +1854,7 @@ sally_setup
 
 #read -p "Press [ENTER] to present the OOR credential to Sally"
 
-function present_le_cred_to_sally() {
+function present_oor_cred_to_sally() {
     print_yellow "[QVI] Presenting OOR Credential to Sally"
 
     tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
@@ -1879,7 +1879,11 @@ function present_le_cred_to_sally() {
 
     print_green "[PERSON] OOR Credential presented to Sally"
 }
-present_le_cred_to_sally
+present_oor_cred_to_sally
+
+# TODO Add OOR and ECR credential revocation by the QVI
+# TODO Add presentation of revoked OOR and ECR credentials to Sally
+
 read -p "Press [Enter] to end the script"
 
 # 26. QVI: Revoke ECR Auth and OOR Auth credentials
