@@ -1,0 +1,29 @@
+exclude = [
+    ".github",
+    ".idea",
+    ".venv",
+    "qvi-workflow",
+    "tested-stacks",
+    ".vscode"
+]
+line-length = 127 # GitHub editor line length
+
+[lint.isort]
+known-third-party = ["keri", "hio"]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder"
+]
+
+[format]
+quote-style = "single"
+indent-style = "space"
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+docstring-code-format = false
+docstring-code-line-length = "dynamic"

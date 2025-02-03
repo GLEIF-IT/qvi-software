@@ -1,0 +1,23 @@
+[project]
+name = "qvi-software"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12.2"
+dependencies = [
+    "keri>=1.2.4",
+    "pysodium>=0.7.18",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "behave>=1.2.6",
+    "hio>=0.6.14",
+    "mockito>=1.5.4",
+    "pytest>=8.3.4",
+]
+
+[dependency-groups]
+lint = [
+    "ruff>=0.9.3",
+]
