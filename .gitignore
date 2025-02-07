@@ -31,3 +31,8 @@ qvi-workflow/signify_qvi/qvi_data/qvi-oobi.json
 qvi-workflow/signify_qvi/qvi_data/qvi-registry-info.json
 qvi-workflow/signify_qvi/qvi_data/oor-cred-info.json
 qvi-workflow/signify_qvi/qvi_data/ecr-cred-info.json
+
+base
+.vscode
+.venv
+__pycache__/
