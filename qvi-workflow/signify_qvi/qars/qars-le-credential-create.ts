@@ -21,9 +21,11 @@ const LE_SCHEMA_SAID = 'ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY';
 
 /**
  * Uses QAR1, QAR2, and QAR3 to create a delegated multisig AID for the QVI delegated from the AID specified by delpre.
- * 
+ *
+ * @param multisigName
  * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
  * @param lePrefix identifier prefix for the Legal Entity multisig AID who would be the recipient, or issuee, of the LE credential.
+ * @param witnessIds
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
@@ -36,20 +38,10 @@ async function createLeCredential(multisigName: string, aidInfo: string, lePrefi
         QAR3Client,
     ] = await getOrCreateClients(3, [QAR1.salt, QAR2.salt, QAR3.salt], environment);
 
-    // get AIDs
-    const kargsAID = {
-        toad: witnessIds.length,
-        wits: witnessIds,
-    };
-    const [
-            QAR1Id,
-            QAR2Id,
-            QAR3Id,
-    ] = await Promise.all([
-        getOrCreateAID(QAR1Client, QAR1.name, kargsAID),
-        getOrCreateAID(QAR2Client, QAR2.name, kargsAID),
-        getOrCreateAID(QAR3Client, QAR3.name, kargsAID),
-    ]);
+    // get QVI participant AIDs
+    const QAR1Id = await QAR1Client.identifiers().get(QAR1.name);
+    const QAR2Id = await QAR2Client.identifiers().get(QAR2.name);
+    const QAR3Id = await QAR3Client.identifiers().get(QAR3.name);
 
     const qviAID = await QAR1Client.identifiers().get(multisigName);
 

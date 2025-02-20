@@ -311,7 +311,7 @@ resolve_oobis
 # 3.5 GAR: Challenge responses between single sig AIDs
 function challenge_response() {
     chall_length=$(kli contacts list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | jq "select(.alias == \"${GEDA_PT2}\") | .challenges | length")
-    if [[ "$chall_length" > 0 ]]; then
+    if [[ "$chall_length" -gt 0 ]]; then
         print_yellow "Challenges already processed"
         return
     fi

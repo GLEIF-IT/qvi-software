@@ -5,10 +5,6 @@ import {getReceivedCredBySchemaAndIssuer} from "../credentials.ts";
 import {Serder} from "signify-ts";
 import {waitOperation} from "../operations.ts";
 
-/*
-Checks the specified multisig with the first QAR to see if a credential has been received
- */
-
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';

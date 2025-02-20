@@ -124,10 +124,13 @@ PERSON_OOR="Advisor"
 
 
 # Sally - vLEI Reporting API
+WEBHOOK_HOST=http://127.0.0.1:9923
+SALLY_HOST=http://127.0.0.1:9723
 SALLY=sally
 SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm
+SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
+#SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm # sally 0.9.4
 
 # Credentials
 GEDA_REGISTRY=vLEI-external
@@ -139,6 +142,33 @@ ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
 OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
 ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
 OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
+
+# Assume Sally and Webhook are already running
+#function sally_setup() {
+#    print_yellow "[GLEIF] setting up sally"
+#    print_yellow "[GLEIF] setting up webhook"
+#    sally hook demo & # For the webhook Sally will call upon credential presentation
+#    WEBHOOK_PID=$!
+#
+#    sleep 3
+#
+#    print_yellow "[GLEIF] starting sally"
+#    # This will use the config file located at ./scripts/keri/cf/sally.json
+#    sally server start \
+#        --name $SALLY \
+#        --alias $SALLY \
+#        --salt "${SALLY_SALT}" \
+#        --passcode "${SALLY_PASSCODE}" \
+#        -c scripts \
+#        -f sally.json \
+#        --web-hook ${WEBHOOK_HOST} \
+#        --auth "${GEDA_PRE}" \
+#        -l INFO & # who will be presenting the credential
+#    SALLY_PID=$!
+#
+#    sleep 5
+#}
+#sally_setup
 
 # ensure services are up
 function test_dependencies() {
@@ -166,7 +196,21 @@ function test_dependencies() {
     curl ${KERIA_SERVER}/health >/dev/null 2>&1
     status=$?
     if [ $status -ne 0 ]; then
-        print_red "Keria server not running at ${KERIA_SERVER}"
+        print_red "KERIA server not running at ${KERIA_SERVER}"
+        cleanup
+    fi
+
+    curl ${SALLY_HOST}/health >/dev/null 2>&1
+    status=$?
+    if [ $status -ne 0 ]; then
+        print_red "Sally server not running at ${SALLY_HOST}"
+        cleanup
+    fi
+
+    curl ${WEBHOOK_HOST}/health >/dev/null 2>&1
+    status=$?
+    if [ $status -ne 0 ]; then
+        print_red "Demo Webhook server not running at ${WEBHOOK_HOST}"
         cleanup
     fi
 }
@@ -175,8 +219,9 @@ test_dependencies
 # KERIA SignifyTS QVI salts
 SIGTS_AIDS="qar1|$QAR_PT1|$QAR_PT1_SALT,qar2|$QAR_PT2|$QAR_PT2_SALT,qar3|$QAR_PT3|$QAR_PT3_SALT,person|$PERSON|$PERSON_SALT"
 
+print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
 tsx "${QVI_SIGNIFY_DIR}/qars/qars-and-person-setup.ts" $ENVIRONMENT $QVI_DATA_DIR $SIGTS_AIDS
-echo "QVI and Person Identifiers from SignifyTS + KERIA are "
+print_green "QVI and Person Identifiers from SignifyTS + KERIA are "
 qvi_setup_data=$(cat "${QVI_DATA_DIR}"/qars-and-person-info.json)
 echo $qvi_setup_data | jq
 QAR_PT1_PRE=$(echo $qvi_setup_data | jq -r ".QAR1.aid" | tr -d '"')
@@ -290,7 +335,9 @@ function resolve_oobis() {
     GEDA2_OOBI="${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}"
     GIDA1_OOBI="${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}"
     GIDA2_OOBI="${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}"
-    SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
+    SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi
+#    SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI
+#    SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # sally 0.9.4
 
     OOBIS_FOR_KERIA="geda1|$GEDA1_OOBI,geda2|$GEDA2_OOBI,gida1|$GIDA1_OOBI,gida2|$GIDA2_OOBI,sally|$SALLY_OOBI"
 
@@ -682,6 +729,98 @@ function authorize_qvi_multisig_agent_endpoint_role(){
 authorize_qvi_multisig_agent_endpoint_role
 print_green "QVI Agent OOBI: ${QVI_OOBI}"
 
+
+#read -p "Press [ENTER] to rotate the QVI AID"
+
+# 18.1 QVI: Delegated multisig rotation() {
+function qvi_rotate() {
+  QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}"
+      )
+    if [[ "$QVI_MULTISIG_SEQ_NO" -gt 1 ]]; then
+        print_dark_gray "[QVI] Multisig AID ${QVI_MS} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
+        return
+    fi
+    print_yellow "[QVI] Rotating QVI Multisig"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}"
+    QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
+    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
+
+#    read -p "Press [enter] to have GEDA query new keystate from QARs"
+
+    # GEDA participants Query keystate from QARs
+    print_yellow "[GEDA] Query QVI multisig participants to discover new delegated rotation and complete delegation for KERIpy 1.1.x+"
+    print_yellow "[GEDA] GEDA1 querying QAR1, 2, and 3 multisig for new key state"
+    kli query --name ${GEDA_PT1} --alias ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --prefix "${QAR_PT1_PRE}" &
+    pid=$!
+    PID_LIST+=" $pid"
+    kli query --name ${GEDA_PT1} --alias ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --prefix "${QAR_PT2_PRE}" &
+    pid=$!
+    PID_LIST+=" $pid"
+    kli query --name ${GEDA_PT1} --alias ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --prefix "${QAR_PT3_PRE}" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+
+    print_yellow "[GEDA] GEDA2 querying QAR1, 2, and 3 multisig for new key state"
+    kli query --name ${GEDA_PT2} --alias ${GEDA_PT2} --passcode ${GEDA_PT2_PASSCODE} --prefix "${QAR_PT1_PRE}" &
+    pid=$!
+    PID_LIST+=" $pid"
+    kli query --name ${GEDA_PT2} --alias ${GEDA_PT2} --passcode ${GEDA_PT2_PASSCODE} --prefix "${QAR_PT2_PRE}" &
+    pid=$!
+    PID_LIST+=" $pid"
+    kli query --name ${GEDA_PT2} --alias ${GEDA_PT2} --passcode ${GEDA_PT2_PASSCODE} --prefix "${QAR_PT3_PRE}" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    wait $PID_LIST
+
+    # create interaction event
+    read -r -d '' ANCHOR << EOM
+{"i": "$QVI_PREFIX","s": "1","d": "$QVI_PREFIX"}
+EOM
+
+    # create temporary file to store json
+    temp_anchor=$(mktemp)
+
+    # write JSON content to the temp file
+    echo "$ANCHOR" > "$temp_anchor"
+
+    print_bg_blue "[QVI] QVI Multisig rotation anchor"
+    cat $temp_anchor | jq
+
+#    read -p "Press [ENTER] to confirm the QVI rotation"
+    print_yellow "GEDA1 confirm delegated rotation"
+    kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
+#    kli multisig interact --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --data "$ANCHOR" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    print_yellow "GEDA2 confirm delegated rotation"
+    kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
+#    kli multisig interact --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --data "$ANCHOR" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    print_yellow "[GEDA] Waiting 5s on delegated rotation completion"
+    wait $PID_LIST
+    sleep 5
+
+    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
+
+    print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
+    sleep 8
+    rm "$temp_anchor"
+}
+qvi_rotate
+
+
 # 15. GEDA and GIDA: Resolve QVI OOBI
 function resolve_qvi_oobi() {
     exists=$(kli contacts list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | jq .alias | tr -d '"' | grep "${QVI_MS}")
@@ -708,66 +847,19 @@ function resolve_qvi_oobi() {
 }
 resolve_qvi_oobi
 
-#read -p "Press [ENTER] to rotate the QVI AID"
+function qvi_resolve_sally_oobi() {
+  SALLY_OOBI="${SALLY_HOST}/oobi"
+#  SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller"
+#  SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
+  alias="sally"
 
-# 18.1 QVI: Delegated multisig rotation() {
-function qvi_rotate() {
-  QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
+  tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" \
       "${ENVIRONMENT}" \
-      "${QVI_MS}" \
-      "${SIGTS_AIDS}"
-      )
-    if [[ "$QVI_MULTISIG_SEQ_NO" -gt 1 ]]; then
-        print_dark_gray "[QVI] Multisig AID ${QVI_MS} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
-        return
-    fi
-    print_yellow "[QVI] Rotating QVI Multisig"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_MS}" \
-      "${SIGTS_AIDS}"
-    QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
-    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
-
-    # create interaction event
-    read -r -d '' ANCHOR << EOM
-{"i": "$QVI_PREFIX","s": "1","d": "$QVI_PREFIX"}
-EOM
-
-    # create temporary file to store json
-    temp_anchor=$(mktemp)
-
-    # write JSON content to the temp file
-    echo "$ANCHOR" > "$temp_anchor"
-
-    print_bg_blue "[QVI] QVI Multisig rotation anchor"
-    cat $temp_anchor | jq
-
-    read -p "Press [ENTER] to confirm the QVI rotation"
-    print_yellow "GEDA1 confirm delegated rotation"
-    kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
-#    kli multisig interact --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --data "$ANCHOR" &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    print_yellow "GEDA2 confirm delegated rotation"
-    kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
-#    kli multisig interact --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --data "$ANCHOR" &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    print_yellow "[GEDA] Waiting 5s on delegated rotation completion"
-    wait $PID_LIST
-    sleep 5
-
-    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
-
-    print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
-    sleep 8
-    rm "$temp_anchor"
+      "${SIGTS_AIDS}" \
+      "${alias}" \
+      "${SALLY_OOBI}"
 }
-#qvi_rotate
+qvi_resolve_sally_oobi
 
 #read -p "Press [ENTER] to create GEDA registry"
 
@@ -1105,7 +1197,7 @@ function admit_le_credential() {
         --passcode "${GIDA_PT1_PASSCODE}" \
         --alias "${GIDA_MS}" \
         --said "${SAID}" \
-        --time "${KLI_TIME}" & 
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
@@ -1827,33 +1919,48 @@ function admit_oor_credential() {
 }
 admit_oor_credential
 
-#read -p "Press [ENTER] to present the OOR credential to Sally"
-# 25. QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
+# 25 present credentials to Sally
+# 25.1 QVI: Present LE credential Sally (vLEI Reporting API)
+
+#read -p "Press [ENTER] to start Sally"
 
 
-function sally_setup() {
-    print_yellow "[GLEIF] setting up sally"
-    print_yellow "[GLEIF] setting up webhook"
-    sally hook demo & # For the webhook Sally will call upon credential presentation
-    WEBHOOK_PID=$!
 
-    sleep 3
+#read -p "Press [ENTER] to present the LE credential to Sally"
 
-    print_yellow "[GLEIF] starting sally"
-    sally server start \
-        --name $SALLY \
-        --alias $SALLY \
-        --passcode $SALLY_PASSCODE \
-        --web-hook http://127.0.0.1:9923 \
-        --auth ${GEDA_PRE} & # who will be presenting the credential
-    SALLY_PID=$!
+function present_le_cred_to_sally() {
+  print_yellow "[QVI] Presenting LE Credential to Sally"
 
-    sleep 5
+  tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+    "${ENVIRONMENT}" \
+    "${QVI_MS}" \
+    "${SIGTS_AIDS}" \
+    "${LE_SCHEMA}" \
+    "${QVI_PRE}" \
+    "${GIDA_PRE}"\
+    "${SALLY_PRE}"
+
+  start=$EPOCHSECONDS
+  present_result=0
+  print_dark_gray "[QVI] Waiting for Sally to receive the LE Credential"
+  while [ $present_result -ne 200 ]; do
+    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${SALLY_HOST}/?holder=${GIDA_PRE}")
+    print_dark_gray "[QVI] received ${present_result} from Sally"
+    sleep 1
+    if (( EPOCHSECONDS-start > 25 )); then
+      print_red "[QVI] TIMEOUT - Sally did not receive the LE Credential for ${GIDA_MS} | ${GIDA_PRE}"
+      break;
+    fi # 25 seconds timeout
+  done
+
+  print_green "[PERSON] OOR Credential presented to Sally"
+
 }
-sally_setup
+present_le_cred_to_sally
 
-#read -p "Press [ENTER] to present the OOR credential to Sally"
+read -p "Press [ENTER] to present the OOR credential to Sally"
 
+# 25.2 PERSON: Present OOR credential to Sally (vLEI Reporting API)
 function present_oor_cred_to_sally() {
     print_yellow "[QVI] Presenting OOR Credential to Sally"
 
@@ -1862,19 +1969,19 @@ function present_oor_cred_to_sally() {
       "${SIGTS_AIDS}" \
       "${OOR_SCHEMA}" \
       "${QVI_PRE}" \
-      "${SALLY_PRE}" \
+      "${SALLY_PRE}"
 
     start=$EPOCHSECONDS
     present_result=0
     print_dark_gray "[PERSON] Waiting for Sally to receive the OOR Credential"
     while [ $present_result -ne 200 ]; do
-      present_result=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:9923/?holder=${PERSON_PRE}")
+      present_result=$(curl -s -o /dev/null -w "%{http_code}" "${SALLY_HOST}/?holder=${PERSON_PRE}")
       print_dark_gray "[PERSON] received ${present_result} from Sally"
       sleep 1
       if (( EPOCHSECONDS-start > 25 )); then
         print_red "[PERSON] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
         break;
-      fi # 15 seconds timeout
+      fi # 25 seconds timeout
     done
 
     print_green "[PERSON] OOR Credential presented to Sally"

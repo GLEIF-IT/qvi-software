@@ -220,7 +220,6 @@ export async function grantMultisig(
     timestamp: string,
     isInitiator: boolean = false
 ) {
-    if (!isInitiator) await waitAndMarkNotification(client, '/multisig/exn');
 
     const [grant, sigs, end] = await client.ipex().grant({
         senderName: multisigAID.name,
