@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12.2"
 dependencies = [
-    "keri>=1.2.4",
+    "keri",
     "pysodium>=0.7.18",
 ]
 
@@ -16,6 +16,9 @@ dev-dependencies = [
     "mockito>=1.5.4",
     "pytest>=8.3.4",
 ]
+
+[tool.uv.sources]
+keri = { path = "../keripy", editable = true }
 
 [dependency-groups]
 lint = [

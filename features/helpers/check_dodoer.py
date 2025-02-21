@@ -1,7 +1,4 @@
-import json
-
 from hio.base import doing
-from hio.core.http import Client, ClientDoer
 
 
 class CheckDoDoer(doing.DoDoer):
@@ -32,18 +29,3 @@ class CheckDoDoer(doing.DoDoer):
 
         self.response = self.client_doer.client.responses.popleft()
         self.remove([self.client_doer])
-
-
-def fetch_witness_aid(port):
-    client_doer = ClientDoer(client=Client(hostname='127.0.0.1', port=port))
-    tock = 0.03125
-    doist = doing.Doist(limit=5, tock=tock, real=True)
-    check_dodoer = CheckDoDoer(client_doer=client_doer)
-    doist.do(doers=[check_dodoer])
-    print(check_dodoer.response.get('body'))
-    body = check_dodoer.response.get('body').decode('utf-8')
-    print(body)
-    end = body.rfind('}') + 1
-    print(end)
-    print(body[:end])
-    # print(json.loads().get('i'))

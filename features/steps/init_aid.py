@@ -20,7 +20,6 @@ def __init_incept(context, name, passcode):
         passcode = core.Salter(raw=pysodium.randombytes(pysodium.crypto_sign_SEEDBYTES)).qb64
 
     merge_into_context(context, f'{name}_passcode', passcode)
-
     subprocess.run(
         [
             'kli',
@@ -38,6 +37,7 @@ def __init_incept(context, name, passcode):
         ],
         check=True,
     )
+
     subprocess.run(
         [
             'kli',

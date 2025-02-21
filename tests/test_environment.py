@@ -15,8 +15,8 @@ def context():
     return MockContext()
 
 
-def test_before_feature_with_witness_pool(context):
-    feature = type('Feature', (object,), {'tags': ['with_witness_pool'], 'name': 'Test Feature'})
+def test_before_feature_with_witness(context):
+    feature = type('Feature', (object,), {'tags': ['with_witness'], 'name': 'Test Feature'})
 
     when(subprocess).Popen(...).thenReturn(subprocess.Popen(['echo', 'mock']))
 
@@ -29,8 +29,8 @@ def test_before_feature_with_witness_pool(context):
     unstub()
 
 
-def test_after_feature_with_witness_pool(context):
-    feature = type('Feature', (object,), {'tags': ['with_witness_pool'], 'name': 'Test Feature'})
+def test_after_feature_with_witness(context):
+    feature = type('Feature', (object,), {'tags': ['with_witness'], 'name': 'Test Feature'})
 
     context.wan = subprocess.Popen(['echo', 'mock'])
     context.wil = subprocess.Popen(['echo', 'mock'])
