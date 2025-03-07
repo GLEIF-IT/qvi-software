@@ -17,10 +17,9 @@ export function resolveEnvironment(
     input?: TestEnvironmentPreset
 ): TestEnvironment {
     const preset = input ?? process.env.TEST_ENVIRONMENT ?? 'docker';
-
+    const host = 'http://127.0.0.1'
     switch (preset) {
-        case 'local':
-            const host = 'http://127.0.0.1'
+        case 'local':    
             return {
                 preset: preset,
                 url: `${host}:3901`,
@@ -36,8 +35,8 @@ export function resolveEnvironment(
         case 'docker':
             return {
                 preset: preset,
-                url: 'http://keria:3901',
-                bootUrl: 'http://keria:3903',
+                url: `${host}:3901`,     //Because keria is called from the
+                bootUrl: `${host}:3903`, //host not from within the docker network
                 witnessUrls: [
                     'http://witness-demo:5642',
                     'http://witness-demo:5643',
