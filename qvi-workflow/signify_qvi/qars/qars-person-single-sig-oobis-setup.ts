@@ -57,7 +57,8 @@ async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: 
 
         getOrCreateContact(personClient, GIDA1.position, GIDA1.oobi),
         getOrCreateContact(personClient, GIDA2.position, GIDA2.oobi),
-        getOrCreateContact(personClient, SALLY.position, SALLY.oobi),
+        // TODO SALLY resolution
+        // getOrCreateContact(personClient, SALLY.position, SALLY.oobi),
 
     ])
 }
