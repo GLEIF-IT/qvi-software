@@ -484,7 +484,7 @@ function create_qvi_multisig() {
     fi
 
     print_yellow "Creating QVI multisig"
-    local delegator_prefix=$(kli status --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    local delegator_prefix=$(kli status --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r")
     print_yellow "Delegator Prefix: ${delegator_prefix}"
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-create-qvi-multisig.ts" \
       "${ENVIRONMENT}" \
