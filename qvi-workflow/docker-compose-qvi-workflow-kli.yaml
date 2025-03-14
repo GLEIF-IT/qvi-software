@@ -8,7 +8,7 @@
 # x-keri12-image: &keri12-image
 #     image: kentbull/keri:1.2.1a    
 x-witness-demo-image: &witness-demo-image
-    image: weboftrust/keri:1.1.30
+    image: weboftrust/keri:1.1.32
 x-keria-image: &keria-image
     image: weboftrust/keria:0.2.0-rc2
 x-vlei-image: &vlei-image
