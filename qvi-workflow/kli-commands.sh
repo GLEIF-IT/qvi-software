@@ -14,7 +14,7 @@ if [ ! -d "${KEYSTORE_DIR}" ]; then
 fi
 
 # Set current working directory for all scripts that must access files
-KLI1IMAGE="weboftrust/keri:1.1.30"
+KLI1IMAGE="weboftrust/keri:1.1.32"
 KLI2IMAGE="weboftrust/keri:1.2.4"
 
 LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
