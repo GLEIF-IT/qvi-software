@@ -95,6 +95,8 @@ CONT_CONFIG_DIR=/config
 CONT_INIT_CFG=qvi-workflow-init-config-dev-docker-compose.json #witness and schemas(5) oobis
 CONT_ICP_CFG=/config/single-sig-incept-config.json #Created by create_icp_config()
 
+GEDA_LEI=254900OPPU84GM83MG36 # GLEIF Americas
+
 # GEDA AIDs - GLEIF External Delegated AID
 GEDA_PT1=accolon
 GEDA_PT1_PRE=ENFbr9MI0K7f4Wz34z4hbzHmCTxIPHR9Q_gWjLJiv20h
@@ -159,10 +161,10 @@ SALLY_HOST=http://127.0.0.1:9723
 #SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm # sally 0.9.4
 
 # Credentials
-#GEDA_REGISTRY=vLEI-external
-#GIDA_REGISTRY=vLEI-internal
-#QVI_REGISTRY=vLEI-qvi
-#QVI_SCHEMA=EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao
+GEDA_REGISTRY=vLEI-external
+GIDA_REGISTRY=vLEI-internal
+QVI_REGISTRY=vLEI-qvi
+QVI_SCHEMA=EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao
 LE_SCHEMA=ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY
 #ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
 #OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
@@ -182,6 +184,7 @@ docker compose -f $DOCKER_COMPOSE_FILE up -d --wait
 ###############################################
 # Workflow 
 ###############################################
+
 
 # KERIA SignifyTS QVI salts
 SIGTS_AIDS="qar1|$QAR_PT1|$QAR_PT1_SALT,qar2|$QAR_PT2|$QAR_PT2_SALT,qar3|$QAR_PT3|$QAR_PT3_SALT,person|$PERSON|$PERSON_SALT"
@@ -273,14 +276,6 @@ function create_aids() {
     create_aid "${GEDA_PT2}" "${GEDA_PT2_SALT}" "${GEDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
     create_aid "${GIDA_PT1}" "${GIDA_PT1_SALT}" "${GIDA_PT1_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
     create_aid "${GIDA_PT2}" "${GIDA_PT2_SALT}" "${GIDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
-
-    # TODO I believe this won't be needed since this part is going to be done with SignifyTS
-    #create_aid "${QAR_PT1}"  "${QAR_PT1_SALT}"  "${QAR_PT1_PASSCODE}"  "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}" "kli2"
-    #create_aid "${QAR_PT2}"  "${QAR_PT2_SALT}"  "${QAR_PT2_PASSCODE}"  "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}" "kli2"
-    #create_aid "${PERSON}"   "${PERSON_SALT}"   "${PERSON_PASSCODE}"   "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}" "kli2"
-
-    # TODO I believe this won't be needed
-    #create_aid "${SALLY}"    "${SALLY_SALT}"    "${SALLY_PASSCODE}"    "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
 }
 create_aids
 
@@ -302,7 +297,7 @@ function resolve_oobis() {
     # SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # sally 0.9.4
     OOBIS_FOR_KERIA="geda1|$GEDA1_OOBI,geda2|$GEDA2_OOBI,gida1|$GIDA1_OOBI,gida2|$GIDA2_OOBI,sally|$SALLY_OOBI"
 
-    print_red "qars-person-single-sig-oobis-setup.ts" #EG
+
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT $SIGTS_AIDS $OOBIS_FOR_KERIA
 
     echo
@@ -469,6 +464,7 @@ function resolve_geda_and_gida_oobis() {
 }
 resolve_geda_and_gida_oobis
 
+
 # 10. QAR: Create delegated multisig QVI AID
 # 11. QVI: Create delegated AID with GEDA as delegator
 # 12. GEDA: delegate to QVI
@@ -482,6 +478,8 @@ function create_qvi_multisig() {
         print_dark_gray "[QVI] Multisig AID ${QVI_MS} already exists"
         return
     fi
+
+    
 
     print_yellow "Creating QVI multisig"
     local delegator_prefix=$(kli status --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r")
@@ -502,17 +500,19 @@ function create_qvi_multisig() {
     echo
 
     print_yellow "GEDA1 confirm delegated inception"
-    kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
-    pid=$!
-    PID_LIST+=" $pid"
+    klid geda1 delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto
+
     print_yellow "GEDA2 confirm delegated inception"
-    kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
-    pid=$!
-    PID_LIST+=" $pid"
+    klid geda2 delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto
+
 
     print_yellow "[GEDA] Waiting 5s on delegated inception completion"
-    wait $PID_LIST
-    sleep 5
+ 
+    print_dark_gray "waiting on Docker containers geda1, geda2"
+    docker wait geda1 geda2
+    docker logs geda1
+    docker logs geda2
+    docker rm geda1 geda2
 
     print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover new GEDA delegation seal anchored in interaction event."
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-complete-multisig-incept.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
@@ -521,6 +521,374 @@ create_qvi_multisig
 MULTISIG_INFO=$(cat $QVI_DATA_DIR/qvi-multisig-info.json)
 QVI_PRE=$(echo $MULTISIG_INFO | jq .msPrefix | tr -d '"')
 print_green "[QVI] Multisig AID ${QVI_MS} with prefix: ${QVI_PRE}"
+
+
+# 13. QVI: (skip) Perform endpoint role authorizations
+# 14. QVI: Generate OOBI for QVI to send to GEDA
+QVI_OOBI=""
+function authorize_qvi_multisig_agent_endpoint_role(){
+    print_yellow "Authorizing QVI multisig agent endpoint role"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-authorize-endroles-get-qvi-oobi.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${QVI_DATA_DIR}" \
+      "${SIGTS_AIDS}"
+    QVI_OOBI=$(cat "${QVI_DATA_DIR}/qvi-oobi.json" | jq .oobi | tr -d '"')
+}
+authorize_qvi_multisig_agent_endpoint_role
+print_green "QVI Agent OOBI: ${QVI_OOBI}"
+
+
+# 18.1 QVI: Delegated multisig rotation() {
+function qvi_rotate() {
+  QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}"
+      )
+    if [[ "$QVI_MULTISIG_SEQ_NO" -gt 1 ]]; then
+        print_dark_gray "[QVI] Multisig AID ${QVI_MS} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
+        return
+    fi
+    print_yellow "[QVI] Rotating QVI Multisig"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}"
+    QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
+    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
+
+#    read -p "Press [enter] to have GEDA query new keystate from QARs"
+
+    # GEDA participants Query keystate from QARs
+    print_yellow "[GEDA] Query QVI multisig participants to discover new delegated rotation and complete delegation for KERIpy 1.1.x+"
+    print_yellow "[GEDA] GEDA1 querying QAR1, 2, and 3 multisig for new key state"
+    klid geda1 query --name ${GEDA_PT1} --alias ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --prefix "${QAR_PT1_PRE}"
+    docker wait geda1 
+    docker logs geda1
+    docker rm geda1 
+    klid geda1 query --name ${GEDA_PT1} --alias ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --prefix "${QAR_PT2_PRE}"
+    docker wait geda1 
+    docker logs geda1
+    docker rm geda1 
+    klid geda1 query --name ${GEDA_PT1} --alias ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --prefix "${QAR_PT3_PRE}"
+    docker wait geda1 
+    docker logs geda1
+    docker rm geda1 
+
+    print_yellow "[GEDA] GEDA2 querying QAR1, 2, and 3 multisig for new key state"
+    klid geda2 query --name ${GEDA_PT2} --alias ${GEDA_PT2} --passcode ${GEDA_PT2_PASSCODE} --prefix "${QAR_PT1_PRE}"
+    docker wait geda2 
+    # docker logs geda2
+    docker rm geda2 
+    klid geda2 query --name ${GEDA_PT2} --alias ${GEDA_PT2} --passcode ${GEDA_PT2_PASSCODE} --prefix "${QAR_PT2_PRE}"
+    docker wait geda2 
+    # docker logs geda2
+    docker rm geda2 
+    klid geda2 query --name ${GEDA_PT2} --alias ${GEDA_PT2} --passcode ${GEDA_PT2_PASSCODE} --prefix "${QAR_PT3_PRE}"
+    docker wait geda2 
+    # docker logs geda2
+    docker rm geda2 
+
+#    read -p "Press [ENTER] to confirm the QVI rotation"
+    print_yellow "GEDA1 confirm delegated rotation"
+    klid geda1 delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto 
+
+    print_yellow "GEDA2 confirm delegated rotation"
+    klid geda2 delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto
+
+    print_yellow "[GEDA] Waiting 5s on delegated rotation completion"
+    print_dark_gray "waiting on Docker containers qvi1, qvi2, geda1, geda2"
+    docker wait geda1 geda2
+    docker logs geda1
+    docker logs geda2
+    docker rm geda1 geda2
+
+    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
+
+    print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
+    sleep 8
+
+}
+qvi_rotate
+
+# 15. GEDA and GIDA: Resolve QVI OOBI
+function resolve_qvi_oobi() {
+    exists=$(kli contacts list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | jq .alias | tr -d '"' | grep "${QVI_MS}")
+    if [[ "$exists" =~ "${QVI_MS}" ]]; then
+        print_yellow "QVI OOBIs already resolved"
+        return
+    fi
+
+    echo
+    echo "QVI OOBI: ${QVI_OOBI}"
+    print_yellow "Resolving QVI OOBI for GEDA and GIDA"
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QVI_MS}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QVI_MS}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QVI_MS}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QVI_MS}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QVI_OOBI}"
+
+    print_yellow "Resolving QVI OOBI for Person"
+    tsx "${QVI_SIGNIFY_DIR}/person-resolve-qvi-oobi.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${QVI_OOBI}"
+    echo
+}
+resolve_qvi_oobi
+
+# 15.5 GEDA: Create GEDA credential registry
+function create_geda_reg() {
+    # Check if GEDA credential registry already exists
+    REGISTRY=$(kli vc registry list \
+        --name "${GEDA_PT1}" \
+        --passcode "${GEDA_PT1_PASSCODE}" | awk '{print $1}')
+    if [ ! -z "${REGISTRY}" ]; then
+        print_dark_gray "GEDA registry already created"
+        return
+    fi
+
+    echo
+    print_yellow "Creating GEDA registry"
+    NONCE=$(kli nonce)
+
+    klid geda1 vc registry incept \
+        --name ${GEDA_PT1} \
+        --alias ${GEDA_MS} \
+        --passcode ${GEDA_PT1_PASSCODE} \
+        --usage "QVI Credential Registry for GEDA" \
+        --nonce ${NONCE} \
+        --registry-name ${GEDA_REGISTRY}
+
+
+    klid geda2 vc registry incept \
+        --name ${GEDA_PT2} \
+        --alias ${GEDA_MS} \
+        --passcode ${GEDA_PT2_PASSCODE} \
+        --usage "QVI Credential Registry for GEDA" \
+        --nonce ${NONCE} \
+        --registry-name ${GEDA_REGISTRY}
+
+    docker wait geda1 geda2 
+    docker rm geda1 geda2 
+
+    echo
+    print_green "QVI Credential Registry created for GEDA"
+    echo
+}
+create_geda_reg
+
+# 16. GEDA: Create QVI credential
+function prepare_qvi_cred_data() {
+    print_bg_blue "[External] Preparing QVI credential data"
+    read -r -d '' QVI_CRED_DATA << EOM
+{
+    "LEI": "${GEDA_LEI}"
+}
+EOM
+
+    echo "$QVI_CRED_DATA" > ./data/qvi-cred-data.json
+
+    print_lcyan "QVI Credential Data"
+    print_lcyan "$(cat ./data/qvi-cred-data.json)"
+}
+prepare_qvi_cred_data
+
+function create_qvi_credential() {
+    # Check if QVI credential already exists
+    SAID=$(kli vc list \
+        --name "${GEDA_PT1}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --issued \
+        --said \
+        --schema "${QVI_SCHEMA}")
+    if [ ! -z "${SAID}" ]; then 
+        print_dark_gray "[External] GEDA QVI credential already created ${SAID} done."
+        return
+    fi
+
+    echo
+    print_green "[External] GEDA creating QVI credential"
+    KLI_TIME=$(kli time | tr -d '[:space:]')
+    
+    klid geda1 vc create \
+        --name "${GEDA_PT1}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --registry-name "${GEDA_REGISTRY}" \
+        --schema "${QVI_SCHEMA}" \
+        --recipient "${QVI_PRE}" \
+        --data @/data/qvi-cred-data.json \
+        --rules @/data/rules.json \
+        --time "${KLI_TIME}"
+
+    klid geda2 vc create \
+        --name "${GEDA_PT2}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT2_PASSCODE}" \
+        --registry-name "${GEDA_REGISTRY}" \
+        --schema "${QVI_SCHEMA}" \
+        --recipient "${QVI_PRE}" \
+        --data @/data/qvi-cred-data.json \
+        --rules @/data/rules.json \
+        --time "${KLI_TIME}"
+
+    echo
+    print_yellow "[External] GEDA creating QVI credential - wait for signatures"
+    echo 
+    print_dark_gray "waiting on Docker containers geda1 and geda2"
+    docker wait geda1 geda2
+    docker logs geda1
+    docker logs geda2
+    docker rm geda1 geda2
+
+    echo
+    print_lcyan "[External] QVI Credential created for GEDA"
+    echo
+}
+create_qvi_credential
+
+# 17. GEDA: IPEX Grant QVI credential to QVI
+function grant_qvi_credential() {
+    QVI_GRANT_SAID=$(kli ipex list \
+        --name "${GEDA_PT1}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --sent \
+        --said)
+    if [ ! -z "${QVI_GRANT_SAID}" ]; then
+        print_dark_gray "[External] GEDA QVI credential already granted"
+        return
+    fi
+    SAID=$(kli vc list \
+        --name "${GEDA_PT1}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --alias "${GEDA_MS}" \
+        --issued \
+        --said \
+        --schema "${QVI_SCHEMA}" | tr -d '[:space:]')
+
+    echo
+    print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
+    KLI_TIME=$(kli time | tr -d '[:space:]')
+    klid geda1 ipex grant \
+        --name "${GEDA_PT1}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --alias "${GEDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}"
+
+    # klid geda2 ipex grant \
+    #     --name "${GEDA_PT2}" \
+    #     --passcode "${GEDA_PT2_PASSCODE}" \
+    #     --alias "${GEDA_MS}" \
+    #     --said "${SAID}" \
+    #     --recipient "${QVI_PRE}" \
+    #     --time "${KLI_TIME}"
+    klid geda2 ipex join \
+        --name ${GEDA_PT2} \
+        --passcode ${GEDA_PT2_PASSCODE} \
+        --auto
+
+    echo
+    print_yellow "[External] Waiting for IPEX messages to be witnessed"
+    echo 
+    print_dark_gray "waiting on Docker containers geda1 and geda2"
+    docker wait geda1 geda2
+    docker logs geda1
+    docker logs geda2
+    docker rm geda1 geda2
+
+
+    echo
+    print_green "[External] QVI Credential issued to QVI"
+    echo
+}
+grant_qvi_credential
+
+# 18. QVI: Admit QVI credential from GEDA
+function admit_qvi_credential() {
+    QVI_CRED_SAID=$(kli vc list \
+        --name "${GEDA_PT1}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --issued \
+        --said \
+        --schema "${QVI_SCHEMA}" | tr -d " \t\n\r")
+    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${QVI_CRED_SAID}"
+    )
+    if [[ "$received" == "true" ]]; then
+        print_dark_gray "[QVI] QVI Credential ${QVI_CRED_SAID} already admitted"
+        return
+    fi
+
+    echo
+    print_yellow "[QVI] Admitting QVI Credential ${QVI_CRED_SAID} from GEDA"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${GEDA_PRE}" \
+      "${QVI_CRED_SAID}"
+
+    echo
+    print_green "[QVI] Admitted QVI credential"
+    echo
+}
+admit_qvi_credential
+
+# 18.5 Create QVI credential registry
+function create_qvi_reg() {
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-registry-create.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${QVI_REGISTRY}" \
+      "${QVI_DATA_DIR}" \
+      "${SIGTS_AIDS}"
+    QVI_REG_REGK=$(cat "${QVI_DATA_DIR}/qvi-registry-info.json" | jq .registryRegk | tr -d '"')
+    print_green "[QVI] Credential Registry created for QVI with regk: ${QVI_REG_REGK}"
+}
+create_qvi_reg
+
+# 18.6 QVI OOBIs with GIDA (already done in step 9)
+
+# 19. QVI: Prepare, create, and Issue LE credential to GEDA
+
+# 19.1 Prepare LE edge data
+function prepare_qvi_edge() {
+    QVI_CRED_SAID=$(kli vc list \
+        --name "${GEDA_PT1}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --issued \
+        --said \
+        --schema "${QVI_SCHEMA}" | tr -d " \t\n\r")
+    print_bg_blue "[QVI] Preparing QVI edge with QVI Credential SAID: ${QVI_CRED_SAID}"
+    read -r -d '' QVI_EDGE_JSON << EOM
+{
+    "d": "",
+    "qvi": {
+        "n": "${QVI_CRED_SAID}",
+        "s": "${QVI_SCHEMA}"
+    }
+}
+EOM
+    echo "$QVI_EDGE_JSON" > ./data/qvi-edge.json
+    read -p "before saidify"
+    kli saidify --file /data/qvi-edge.json
+    read -p "afetr saidify"
+    print_lcyan "Legal Entity edge Data"
+    print_lcyan "$(cat ./data/qvi-edge.json | jq )"
+}
+prepare_qvi_edge
 
 # Script cleanup calls
 clear_containers
