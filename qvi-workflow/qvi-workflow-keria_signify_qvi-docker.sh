@@ -66,20 +66,20 @@ source ./kli-commands.sh ${1:-}
 # Create docker network if it does not exist
 docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
 
-
-####################################################
-# TODO Configuration variables
-# - Complete and create as needed 
-
-# NOTE: (used by resolve-envs.ts)
-# Since the ts scripts run on the host use 'ENVIRONMENT=local'
+# NOTE: (used by resolve-env.ts)
 ENVIRONMENT=docker
+
+# Not used in this script, just for display. see kli-commands.sh
+KEYSTORE_DIR=${1:-$HOME/.qvi_workflow_docker} 
+
+print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
+print_yellow "Using $ENVIRONMENT configuration files"
 
 # Process outline:
 # 1. GAR: Prepare environment
 
 # QVI Config
-# KEYSTORE_DIR=${1:-$HOME/.qvi_workflow_docker} # Not needed?
+
 QVI_SIGNIFY_DIR=$(dirname "$0")/signify_qvi
 QVI_DATA_DIR="${QVI_SIGNIFY_DIR}/qvi_data"
 
@@ -89,7 +89,7 @@ SCHEMA_SERVER=http://vlei-server:7723
 # KERIA_SERVER=http://keria:3903
 #TODO check if needed SALLY_SERVER=http://  
 
-# Container configuration
+# Container configuration (name of the config dir in docker containers kli*)
 CONT_CONFIG_DIR=/config
 # CONT_DATA_DIR=/data
 CONT_INIT_CFG=qvi-workflow-init-config-dev-docker-compose.json #witness and schemas(5) oobis
@@ -140,16 +140,16 @@ QAR_PT3=tristan
 QAR_PT3_SALT=0AAzX0tS638c9SEf5LnxTlj4
 
 QVI_MS=percival
-# QVI_PRE=
+QVI_PRE=
 # QVI_MS_SALT=0AA2sMML7K-XdQLrgzOfIvf3
 # QVI_MS_PASSCODE=97542531221a214cc0a55
 
 # Person AID
-#PERSON_NAME="Mordred Delacqs"
+PERSON_NAME="Mordred Delacqs"
 PERSON=mordred
 PERSON_SALT=0ABlXAYDE2TkaNDk4UXxxtaN
-#PERSON_ECR="Consultant"
-#PERSON_OOR="Advisor"
+PERSON_ECR="Consultant"
+PERSON_OOR="Advisor"
 
 # Sally - vLEI Reporting API
 #WEBHOOK_HOST=http://127.0.0.1:9923
@@ -157,7 +157,7 @@ SALLY_HOST=http://127.0.0.1:9723
 #SALLY=sally
 #SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 #SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-#SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
+SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
 #SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm # sally 0.9.4
 
 # Credentials
@@ -166,10 +166,10 @@ GIDA_REGISTRY=vLEI-internal
 QVI_REGISTRY=vLEI-qvi
 QVI_SCHEMA=EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao
 LE_SCHEMA=ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY
-#ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
-#OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
+ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
+OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
 ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
-#OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
+OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
 
 ###################################################
 
@@ -342,6 +342,7 @@ function resolve_oobis() {
 }
 resolve_oobis
 
+
 # TODO
 # challenge_response() including SignifyTS Integration
 
@@ -477,9 +478,7 @@ function create_qvi_multisig() {
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt -1 ]]; then
         print_dark_gray "[QVI] Multisig AID ${QVI_MS} already exists"
         return
-    fi
-
-    
+    fi 
 
     print_yellow "Creating QVI multisig"
     local delegator_prefix=$(kli status --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r")
@@ -524,7 +523,7 @@ print_green "[QVI] Multisig AID ${QVI_MS} with prefix: ${QVI_PRE}"
 
 
 # 13. QVI: (skip) Perform endpoint role authorizations
-# 14. QVI: Generate OOBI for QVI to send to GEDA
+# 14. QVI: Generate OOBI for QVI to send to GEDA and GIDA
 QVI_OOBI=""
 function authorize_qvi_multisig_agent_endpoint_role(){
     print_yellow "Authorizing QVI multisig agent endpoint role"
@@ -611,7 +610,7 @@ function qvi_rotate() {
     sleep 8
 
 }
-qvi_rotate
+# qvi_rotate
 
 # 15. GEDA and GIDA: Resolve QVI OOBI
 function resolve_qvi_oobi() {
@@ -782,17 +781,17 @@ function grant_qvi_credential() {
         --recipient "${QVI_PRE}" \
         --time "${KLI_TIME}"
 
-    # klid geda2 ipex grant \
-    #     --name "${GEDA_PT2}" \
-    #     --passcode "${GEDA_PT2_PASSCODE}" \
-    #     --alias "${GEDA_MS}" \
-    #     --said "${SAID}" \
-    #     --recipient "${QVI_PRE}" \
-    #     --time "${KLI_TIME}"
-    klid geda2 ipex join \
-        --name ${GEDA_PT2} \
-        --passcode ${GEDA_PT2_PASSCODE} \
-        --auto
+    klid geda2 ipex grant \
+        --name "${GEDA_PT2}" \
+        --passcode "${GEDA_PT2_PASSCODE}" \
+        --alias "${GEDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}"
+    # klid geda2 ipex join \
+    #     --name ${GEDA_PT2} \
+    #     --passcode ${GEDA_PT2_PASSCODE} \
+    #     --auto
 
     echo
     print_yellow "[External] Waiting for IPEX messages to be witnessed"
@@ -870,7 +869,7 @@ function prepare_qvi_edge() {
         --passcode "${GEDA_PT1_PASSCODE}" \
         --issued \
         --said \
-        --schema "${QVI_SCHEMA}" | tr -d " \t\n\r")
+        --schema "${QVI_SCHEMA}" | tr -d '[:space:]')
     print_bg_blue "[QVI] Preparing QVI edge with QVI Credential SAID: ${QVI_CRED_SAID}"
     read -r -d '' QVI_EDGE_JSON << EOM
 {
@@ -881,14 +880,823 @@ function prepare_qvi_edge() {
     }
 }
 EOM
+
     echo "$QVI_EDGE_JSON" > ./data/qvi-edge.json
-    read -p "before saidify"
     kli saidify --file /data/qvi-edge.json
-    read -p "afetr saidify"
+    cp -f ./data/qvi-edge.json . # copy for qars-le-credential-create.ts
     print_lcyan "Legal Entity edge Data"
     print_lcyan "$(cat ./data/qvi-edge.json | jq )"
 }
 prepare_qvi_edge
+
+# 19.2 Prepare LE credential data
+function prepare_le_cred_data() {
+    print_yellow "[QVI] Preparing LE credential data"
+    read -r -d '' LE_CRED_DATA << EOM
+{
+    "LEI": "${GEDA_LEI}"
+}
+EOM
+
+    echo "$LE_CRED_DATA" > ./legal-entity-data.json
+}
+prepare_le_cred_data
+
+# 19.3 Create LE credential in QVI
+function create_and_grant_le_credential() {
+    # Check if LE credential already exists
+    le_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      $ENVIRONMENT \
+      $QVI_MS \
+      $SIGTS_AIDS \
+      $GIDA_PRE \
+      $LE_SCHEMA
+    )
+    if [[ ! "$le_said" =~ "false" ]]; then
+        print_dark_gray "[QVI] LE Credential already created"
+        return
+    fi
+
+    echo
+    print_green "[QVI] creating LE credential"
+
+    print_lcyan "[QVI] Legal Entity edge Data"
+    print_lcyan "$(cat ./qvi-edge.json | jq )"
+
+    print_lcyan "[QVI] Legal Entity Credential Data"
+    print_lcyan "$(cat ./legal-entity-data.json)"
+
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-le-credential-create.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "." \
+      "${SIGTS_AIDS}" \
+      "${GIDA_PRE}" # \
+    #   "${QVI_SAID}"
+
+    echo
+    print_lcyan "[QVI] LE Credential created"
+    print_dark_gray "Waiting 10 seconds for LE credential to be witnessed..."
+    sleep 10
+    echo
+}
+create_and_grant_le_credential
+
+# 19.4. GIDA (LE): Admit LE credential from QVI
+function admit_le_credential() {
+    VC_SAID=$(kli vc list \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --said \
+        --schema "${LE_SCHEMA}" | tr -d '[:space:]')
+    if [ ! -z "${VC_SAID}" ]; then
+        print_dark_gray "[Internal] LE Credential already admitted"
+        return
+    fi
+
+    print_dark_gray "Listing IPEX Grants for GIDA 1"
+    SAID=$(kli ipex list \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --type "grant" \
+        --poll \
+        --said | uniq | tr -d '[:space:]') # there are three grant messages, one from each QAR, yet all share the same SAID, so uniq condenses them to one
+
+    print_dark_gray "Listing IPEX Grants for GIDA 2"
+    # prime the mailbox to properly receive the messages.
+    kli ipex list \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --type "grant" \
+        --poll \
+        --said | uniq 
+
+    echo
+    print_yellow "[Internal] Admitting LE Credential ${SAID} to ${GIDA_MS} as ${GIDA_PT1}"
+
+    KLI_TIME=$(kli time)
+    klid gida1 ipex admit \
+        --name "${GIDA_PT1}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --said "${SAID}" \
+        --time "${KLI_TIME}"
+    
+    print_green "[Internal] Admitting LE Credential ${SAID} to ${GIDA_MS} as ${GIDA_PT2}"
+    klid gida2 ipex join \
+        --name "${GIDA_PT2}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --auto
+    
+    docker wait gida1 gida2
+    docker rm gida1 gida2  
+
+    print_yellow "[Internal] Waiting 8s for LE IPEX messages to be witnessed"
+    sleep 8
+
+    echo
+    print_green "[Internal] Admitted LE credential"
+    echo
+}
+admit_le_credential
+
+# 20. GIDA (LE): Create GIDA credential registry
+function create_gida_reg() {
+    # Check if GIDA credential registry already exists
+    REGISTRY=$(kli vc registry list \
+        --name "${GIDA_PT1}" \
+        --passcode "${GIDA_PT1_PASSCODE}" | awk '{print $1}' | tr -d '[:space:]')
+    if [ ! -z "${REGISTRY}" ]; then
+        print_dark_gray "[Internal] GIDA registry already created"
+        return
+    fi
+
+    echo
+    print_yellow "[Internal] Creating GIDA registry"
+    NONCE=$(kli nonce)
+
+    klid gida1 vc registry incept \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --usage "Legal Entity Credential Registry for GIDA (LE)" \
+        --nonce "${NONCE}" \
+        --registry-name "${GIDA_REGISTRY}"
+
+    klid gida2 vc registry incept \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --usage "Legal Entity Credential Registry for GIDA (LE)" \
+        --nonce "${NONCE}" \
+        --registry-name "${GIDA_REGISTRY}"
+
+    docker wait gida1 gida2
+    docker rm gida1 gida2  
+
+    echo
+    print_green "[Internal] Legal Entity Credential Registry created for GIDA"
+    echo
+}
+create_gida_reg
+
+# read -p "Press [ENTER] to issue the ECR Auth credential"
+
+# 21. GIDA (LE): Prepare, create, and Issue ECR Auth & OOR Auth credential to QVI
+# 21.1 prepare LE edge to ECR auth cred
+function prepare_le_edge() {
+    LE_SAID=$(kli vc list \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --said \
+        --schema "${LE_SCHEMA}" | tr -d '[:space:]')
+    print_bg_blue "[Internal] Preparing ECR Auth cred with LE Credential SAID: ${LE_SAID}"
+    read -r -d '' LE_EDGE_JSON << EOM
+{
+    "d": "", 
+    "le": {
+        "n": "${LE_SAID}", 
+        "s": "${LE_SCHEMA}"
+    }
+}
+EOM
+
+    echo "$LE_EDGE_JSON" > ./data/legal-entity-edge.json
+    kli saidify --file /data/legal-entity-edge.json
+}
+prepare_le_edge
+
+#######################################################################
+
+# 21.2 Prepare ECR Auth credential data
+function prepare_ecr_auth_data() {
+    read -r -d '' ECR_AUTH_DATA_JSON << EOM
+{
+  "AID": "${PERSON_PRE}",
+  "LEI": "${GEDA_LEI}",
+  "personLegalName": "${PERSON_NAME}",
+  "engagementContextRole": "${PERSON_ECR}"
+}
+EOM
+
+    echo "$ECR_AUTH_DATA_JSON" > ./data/ecr-auth-data.json
+}
+prepare_ecr_auth_data
+
+# 21.3 Create ECR Auth credential
+function create_ecr_auth_credential() {
+    # Check if ECR auth credential already exists
+    SAID=$(kli vc list \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --issued \
+        --said \
+        --schema "${ECR_AUTH_SCHEMA}" | tr -d '[:space:]')
+    if [ ! -z "${SAID}" ]; then
+        print_dark_gray "[Internal] ECR Auth credential already created"
+        return
+    fi
+
+    echo
+    print_green "[Internal] GIDA creating ECR Auth credential"
+
+    print_lcyan "[Internal] Legal Entity edge JSON"
+    print_lcyan "$(cat ./data/legal-entity-edge.json | jq)"
+
+    print_lcyan "[Internal] ECR Auth data JSON"
+    print_lcyan "$(cat ./data/ecr-auth-data.json)"
+
+    KLI_TIME=$(kli time | tr -d '[:space:]')
+
+    klid gida1 vc create \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --registry-name "${GIDA_REGISTRY}" \
+        --schema "${ECR_AUTH_SCHEMA}" \
+        --recipient "${QVI_PRE}" \
+        --data @/data/ecr-auth-data.json \
+        --edges @/data/legal-entity-edge.json \
+        --rules @/data/ecr-auth-rules.json \
+        --time "${KLI_TIME}"
+
+    klid gida2 vc create \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --registry-name "${GIDA_REGISTRY}" \
+        --schema "${ECR_AUTH_SCHEMA}" \
+        --recipient "${QVI_PRE}" \
+        --data @/data/ecr-auth-data.json \
+        --edges @/data/legal-entity-edge.json \
+        --rules @/data/ecr-auth-rules.json \
+        --time "${KLI_TIME}"
+
+    docker wait gida1 gida2
+    docker rm gida1 gida2  
+
+    echo
+    print_yellow "[Internal] Waiting 8s ECR Auth for IPEX messages to be witnessed"
+    sleep 8
+
+    echo
+    print_lcyan "[Internal] GIDA created ECR Auth credential"
+    echo
+}
+create_ecr_auth_credential
+
+# read -p "Press [ENTER] to grant the ECR Auth credential"
+
+# 21.4 Grant ECR Auth credential to QVI
+function grant_ecr_auth_credential() {
+    # This relies on there being only one grant in the list for the GEDA
+    GRANT_COUNT=$(kli ipex list \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --type "grant" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --sent \
+        --said | wc -l | tr -d ' ') # get the last grant
+    if [ "${GRANT_COUNT}" -ge 1 ]; then
+        print_dark_gray "[GIDA] ECR Auth credential grant already granted"
+        return
+    fi
+    SAID=$(kli vc list \
+        --name "${GIDA_PT1}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --issued \
+        --said \
+        --schema ${ECR_AUTH_SCHEMA} | tr -d '[:space:]')
+
+    echo
+    print_yellow $'[Internal] IPEX GRANTing ECR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI '"${QVI_PRE}"
+
+    KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
+    klid gida1 ipex grant \
+        --name "${GIDA_PT1}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}"
+
+#    kli ipex join \
+#        --name "${GIDA_PT2}" \
+#        --passcode "${GIDA_PT2_PASSCODE}" \
+#        --auto &
+    klid gida2 ipex grant \
+        --name "${GIDA_PT2}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}"
+
+    docker wait gida1 gida2
+    docker rm gida1 gida2  
+
+    echo
+    print_yellow "[Internal] Waiting for IPEX ECR Auth grant messages to be witnessed"
+    sleep 8
+
+    echo
+    print_green "[Internal] ECR Auth Credential granted to QVI"
+    echo
+}
+grant_ecr_auth_credential
+
+# read -p "Press [ENTER] to admit the ECR Auth credential"
+
+# 21.5 (part of 22) Admit ECR Auth credential from GIDA
+function admit_ecr_auth_credential() {
+    ECR_AUTH_SAID=$(kli vc list \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --issued \
+        --said \
+        --schema ${ECR_AUTH_SCHEMA} | tr -d '[:space:]')
+    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${ECR_AUTH_SAID}"
+    )
+    if [[ "$received" == "true" ]]; then
+        print_dark_gray "[QVI] ECR Auth Credential already admitted"
+        return
+    fi
+
+    echo
+    print_yellow "[QVI] Admitting ECR Auth Credential ${ECR_AUTH_SAID} from GIDA"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${GIDA_PRE}" \
+      "${ECR_AUTH_SAID}"
+
+    print_yellow "[QVI] Waiting 8s for IPEX admit messages to be witnessed"
+    sleep 8
+
+    echo
+    print_green "[QVI] Admitted ECR Auth Credential"
+    echo
+}
+admit_ecr_auth_credential
+
+# read -p "Press [ENTER] to issue the OOR Auth credential"
+
+# 21.6 Prepare OOR Auth credential data
+function prepare_oor_auth_data() {
+    read -r -d '' OOR_AUTH_DATA_JSON << EOM
+{
+  "AID": "${PERSON_PRE}",
+  "LEI": "${GEDA_LEI}",
+  "personLegalName": "${PERSON_NAME}",
+  "officialRole": "${PERSON_OOR}"
+}
+EOM
+
+    echo "$OOR_AUTH_DATA_JSON" > ./data/oor-auth-data.json
+}
+prepare_oor_auth_data
+
+# 21.7 Create OOR Auth credential
+function create_oor_auth_credential() {
+    # Check if OOR auth credential already exists
+    SAID=$(kli vc list \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --issued \
+        --said \
+        --schema "${OOR_AUTH_SCHEMA}" | tr -d '[:space:]')
+    if [ ! -z "${SAID}" ]; then
+        print_yellow "[QVI] OOR Auth credential already created"
+        return
+    fi
+
+    print_lcyan "[Internal] OOR Auth data JSON"
+    print_lcyan "$(cat ./data/oor-auth-data.json)"
+
+    echo
+    print_green "[Internal] GIDA creating OOR Auth credential"
+
+    KLI_TIME=$(kli time | tr -d '[:space:]')
+
+    klid gida1 vc create \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --registry-name "${GIDA_REGISTRY}" \
+        --schema "${OOR_AUTH_SCHEMA}" \
+        --recipient "${QVI_PRE}" \
+        --data @/data/oor-auth-data.json \
+        --edges @/data/legal-entity-edge.json \
+        --rules @/data/rules.json \
+        --time "${KLI_TIME}"
+
+    klid gida2 vc create \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --registry-name "${GIDA_REGISTRY}" \
+        --schema "${OOR_AUTH_SCHEMA}" \
+        --recipient "${QVI_PRE}" \
+        --data @/data/oor-auth-data.json \
+        --edges @/data/legal-entity-edge.json \
+        --rules @/data/rules.json \
+        --time "${KLI_TIME}"
+
+    docker wait gida1 gida2
+    docker rm gida1 gida2  
+
+    echo
+    print_lcyan "[Internal] GIDA created OOR Auth credential"
+    echo
+}
+create_oor_auth_credential
+
+# read -p "Press [ENTER] to grant the OOR Auth credential"
+
+# 21.8 Grant OOR Auth credential to QVI
+function grant_oor_auth_credential() {
+    # This relies on the last grant being the OOR Auth credential
+    GRANT_COUNT=$(kli ipex list \
+        --name "${GIDA_PT1}" \
+        --alias "${GIDA_MS}" \
+        --type "grant" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --sent \
+        --said | wc -l | tr -d '[:space:]') # get grant count, remove whitespace
+    if [ "${GRANT_COUNT}" -ge 2 ]; then
+        print_dark_gray "[QVI] OOR Auth credential already granted"
+        return
+    fi
+    SAID=$(kli vc list \
+        --name "${GIDA_PT1}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --issued \
+        --said \
+        --schema ${OOR_AUTH_SCHEMA} | \
+        tail -1 | tr -d '[:space:]') # get the last credential, the OOR Auth credential
+
+    echo
+    print_yellow $'[Internal] IPEX GRANTing OOR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
+
+    KLI_TIME=$(kli time | tr -d '[:space:]') # Use consistent time so SAID of grant is same
+    klid gida1 ipex grant \
+        --name "${GIDA_PT1}" \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}"
+
+#    kli ipex join \
+#        --name "${GIDA_PT2}" \
+#        --passcode "${GIDA_PT2_PASSCODE}" \
+#        --auto &
+    klid gida2 ipex grant \
+        --name "${GIDA_PT2}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --alias "${GIDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}"
+
+    docker wait gida1 gida2
+    docker rm gida1 gida2 
+
+    echo
+    print_yellow "[Internal] Waiting for OOR Auth IPEX grant messages to be witnessed"
+    sleep 5
+
+    echo
+    print_green "[Internal] Granted OOR Auth credential to QVI"
+    echo
+}
+grant_oor_auth_credential
+
+# read -p "Press [ENTER] to admit OOR Auth credential"
+
+#######################################################################
+
+
+# 22. QVI: Admit OOR Auth credential
+function admit_oor_auth_credential() {
+    OOR_AUTH_SAID=$(kli vc list \
+        --name "${GIDA_PT2}" \
+        --alias "${GIDA_MS}" \
+        --passcode "${GIDA_PT2_PASSCODE}" \
+        --issued \
+        --said \
+        --schema ${OOR_AUTH_SCHEMA} | tr -d '[:space:]')
+    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${OOR_AUTH_SAID}"
+    )
+    if [[ "$received" == "true" ]]; then
+        print_dark_gray "[QVI] OOR Auth Credential already admitted"
+        return
+    fi
+
+    echo
+    print_yellow "[QVI] Admitting OOR Auth Credential ${OOR_AUTH_SAID} from GIDA"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "${SIGTS_AIDS}" \
+      "${GIDA_PRE}" \
+      "${OOR_AUTH_SAID}"
+
+    print_yellow "[QVI] Waiting for OOR Auth IPEX admit messages to be witnessed"
+    sleep 8
+
+    echo
+    print_green "[QVI] Admitted OOR Auth Credential"
+    echo
+}
+admit_oor_auth_credential
+
+#read -p "Press [ENTER] to  issue the ECR credential"
+
+# 23. QVI: Create and Issue ECR credential to Person
+# 23.1 Prepare ECR Auth edge data
+function prepare_ecr_auth_edge() {
+    ECR_AUTH_SAID=$(kli vc list \
+        --name ${GIDA_PT1} \
+        --alias ${GIDA_MS} \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --issued \
+        --said \
+        --schema ${ECR_AUTH_SCHEMA} | tr -d '[:space:]')
+    print_bg_blue "[QVI] Preparing [ECR Auth] edge with [ECR Auth] Credential SAID: ${ECR_AUTH_SAID}"
+    read -r -d '' ECR_AUTH_EDGE_JSON << EOM
+{
+    "d": "", 
+    "auth": {
+        "n": "${ECR_AUTH_SAID}", 
+        "s": "${ECR_AUTH_SCHEMA}",
+        "o": "I2I"
+    }
+}
+EOM
+    echo "$ECR_AUTH_EDGE_JSON" > ./data/ecr-auth-edge.json
+    kli saidify --file /data/ecr-auth-edge.json
+    cp -f ./data/ecr-auth-edge.json . # copy for qars-ecr-credential-create.ts
+}
+prepare_ecr_auth_edge      
+
+# 23.2 Prepare ECR credential data
+function prepare_ecr_cred_data() {
+    print_bg_blue "[QVI] Preparing ECR credential data"
+    read -r -d '' ECR_CRED_DATA << EOM
+{
+  "LEI": "${GEDA_LEI}",
+  "personLegalName": "${PERSON_NAME}",
+  "engagementContextRole": "${PERSON_ECR}"
+}
+EOM
+
+    echo "${ECR_CRED_DATA}" > ./ecr-data.json
+}
+prepare_ecr_cred_data
+
+# TODO add a Typescript script to resolve the QVI OOBI for the person
+# kli oobi resolve --name "${PERSON}"   --oobi-alias "${QVI_MS}" --passcode "${PERSON_PASSCODE}"   --oobi "${QVI_OOBI}"
+
+#read -p "Press [ENTER] to issue and grant the ECR credential"
+
+# 23.3 Create ECR credential in QVI, issued to the Person
+# 23.4 QVI Grant ECR credential to PERSON
+function create_and_grant_ecr_credential() {
+    # Check if ECR credential already exists
+    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      "$ENVIRONMENT" \
+      "$QVI_MS" \
+      "$SIGTS_AIDS" \
+      "$PERSON_PRE" \
+      "$ECR_SCHEMA"
+    )
+    if [[ ! "$ecr_said" =~ "false" ]]; then
+        print_dark_gray "[QVI] ECR Credential already created"
+        return
+    fi
+
+    print_lcyan "[QVI] ECR Auth edge Data"
+    print_lcyan "$(cat ./ecr-auth-edge.json | jq )"
+
+    print_lcyan "[QVI] ECR Credential Data"
+    print_lcyan "$(cat ./ecr-data.json)"
+
+    echo
+    print_green "[QVI] creating and granting ECR credential"
+
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-ecr-credential-create.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "." \
+      "${SIGTS_AIDS}" \
+      "${PERSON_PRE}" # \
+      # "${QVI_SAID}"
+
+    print_yellow "[QVI] Waiting for ECR IPEX messages to be witnessed"
+    sleep 8
+
+    echo
+    print_lcyan "[QVI] ECR credential created and granted"
+    echo
+}
+create_and_grant_ecr_credential
+
+#read -p "Press [ENTER] to admit the ECR credential"
+
+# 23.5. Person: Admit ECR credential from QVI
+function admit_ecr_credential() {
+    # check if ECR has been admitted to receiver
+    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${ECR_SCHEMA}" \
+      "${QVI_PRE}"
+    )
+    if [[ ! "$ecr_said" =~ "false" ]]; then
+        print_dark_gray "[PERSON] ECR Credential already admitted with SAID ${ecr_said}"
+        return
+    fi
+
+    # get ECR cred SAID from issuer
+    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      "$ENVIRONMENT" \
+      "$QVI_MS" \
+      "$SIGTS_AIDS" \
+      "$PERSON_PRE" \
+      "$ECR_SCHEMA"
+    )
+
+    echo
+    print_yellow "[PERSON] Admitting ECR credential ${ecr_said} to ${PERSON}"
+
+    tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${QVI_PRE}" \
+      "${ecr_said}"
+
+    print_yellow "[PERSON] Waiting for IPEX messages to be witnessed"
+    sleep 5
+
+    echo
+    print_green "ECR Credential admitted"
+    echo
+}
+admit_ecr_credential
+
+# 24. QVI: Issue, grant OOR to Person and Person admits OOR
+# 24.1 Prepare OOR Auth edge data
+function prepare_oor_auth_edge() {
+    OOR_AUTH_SAID=$(kli vc list \
+        --name ${GIDA_PT1} \
+        --alias ${GIDA_MS} \
+        --passcode "${GIDA_PT1_PASSCODE}" \
+        --issued \
+        --said \
+        --schema ${OOR_AUTH_SCHEMA} | tr -d '[:space:]')
+    print_bg_blue "[QVI] Preparing [OOR Auth] edge with [OOR Auth] Credential SAID: ${OOR_AUTH_SAID}"
+    read -r -d '' OOR_AUTH_EDGE_JSON << EOM
+{
+    "d": "", 
+    "auth": {
+        "n": "${OOR_AUTH_SAID}", 
+        "s": "${OOR_AUTH_SCHEMA}",
+        "o": "I2I"
+    }
+}
+EOM
+    echo "$OOR_AUTH_EDGE_JSON" > ./data/oor-auth-edge.json
+    kli saidify --file /data/oor-auth-edge.json
+    cp -f ./data/oor-auth-edge.json . # copy for qars-oor-credential-create.ts
+}
+prepare_oor_auth_edge      
+
+# 24.2 Prepare OOR credential data
+function prepare_oor_cred_data() {
+    print_bg_blue "[QVI] Preparing OOR credential data"
+    read -r -d '' OOR_CRED_DATA << EOM
+{
+  "LEI": "${GEDA_LEI}",
+  "personLegalName": "${PERSON_NAME}",
+  "officialRole": "${PERSON_OOR}"
+}
+EOM
+
+    echo "${OOR_CRED_DATA}" > ./oor-data.json
+}
+prepare_oor_cred_data
+
+#read -p "Press [ENTER] to issue and grant the OOR credential"
+
+# 24.3 Create OOR credential in QVI, issued to the Person
+function create_and_grant_oor_credential() {
+    # Check if OOR credential already exists
+    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      "$ENVIRONMENT" \
+      "$QVI_MS" \
+      "$SIGTS_AIDS" \
+      "$PERSON_PRE" \
+      "$OOR_SCHEMA"
+    )
+    if [[ ! "$oor_said" =~ "false" ]]; then
+        print_dark_gray "[QVI] OOR Credential already created"
+        return
+    fi
+
+    print_lcyan "[QVI] OOR Auth edge Data"
+    print_lcyan "$(cat ./oor-auth-edge.json | jq )"
+
+    print_lcyan "[QVI] OOR Credential Data"
+    print_lcyan "$(cat ./oor-data.json)"
+
+    echo
+    print_green "[QVI] creating and granting OOR credential"
+
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-oor-credential-create.ts" \
+      "${ENVIRONMENT}" \
+      "${QVI_MS}" \
+      "." \
+      "${SIGTS_AIDS}" \
+      "${PERSON_PRE}" #\
+      #"${QVI_SAID}"
+
+    print_yellow "[QVI] Waiting for OOR IPEX messages to be witnessed"
+    sleep 5
+
+    echo
+    print_lcyan "[QVI] OOR credential created"
+    echo
+}
+create_and_grant_oor_credential
+
+# read -p "Press [ENTER] to admit the OOR credential"
+
+
+
+######################################################################
+
+
+# 24.5. Person: Admit OOR credential from QVI
+function admit_oor_credential() {
+    # check if OOR has been admitted to receiver
+    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${OOR_SCHEMA}" \
+      "${QVI_PRE}"
+    )
+    if [[ ! "$oor_said" =~ "false" ]]; then
+        print_dark_gray "[PERSON] OOR Credential already admitted with SAID ${oor_said}"
+        return
+    fi
+
+    # get OOR cred SAID from issuer
+    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+      "$ENVIRONMENT" \
+      "$QVI_MS" \
+      "$SIGTS_AIDS" \
+      "$PERSON_PRE" \
+      "$OOR_SCHEMA"
+    )
+
+    echo
+    print_yellow "[PERSON] Admitting OOR credential ${oor_said} to ${PERSON}"
+    
+    tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${QVI_PRE}" \
+      "${oor_said}"
+
+    print_yellow "[PERSON] Waiting for OOR Cred IPEX messages to be witnessed"
+    sleep 5
+
+    echo
+    print_green "OOR Credential admitted"
+    echo
+}
+admit_oor_credential
+
+
 
 # Script cleanup calls
 clear_containers
