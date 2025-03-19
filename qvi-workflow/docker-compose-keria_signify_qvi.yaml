@@ -8,18 +8,19 @@
 # x-keri12-image: &keri12-image
 #     image: kentbull/keri:1.2.1a    
 x-witness-demo-image: &witness-demo-image
-    image: weboftrust/keri:1.1.30
+  image: weboftrust/keri:1.1.30
 x-keria-image: &keria-image
-    image: weboftrust/keria:0.2.0-rc2
+  image: weboftrust/keria:0.2.0-rc2
 x-vlei-image: &vlei-image
-    image: gleif/vlei:0.2.0
-# TODO: I may need to add Sally here.
+  image: gleif/vlei:0.2.0
+x-sally-image: &sally-image
+  image: gleif/sally:0.9.4
 
 x-healthcheck: &healthcheck
-    interval: 15s
-    timeout: 5s
-    retries: 3
-    start_period: 2s    
+  interval: 15s
+  timeout: 5s
+  retries: 3
+  start_period: 2s
 
 networks:
   default:
@@ -31,23 +32,22 @@ services:
   vlei-server:
     <<: *vlei-image
     environment:
-        - PYTHONUNBUFFERED=1     # Ensure output is logged in real-time
-        - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-    command:
-      [ 'vLEI-server', '-s','./schema/acdc','-c','./schema/acdc','-o','./samples/oobis' ]
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+    command: [ 'vLEI-server', '-s', './schema/acdc', '-c', './schema/acdc', '-o', './samples/oobis' ]
     healthcheck:
-        test: ["CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao"]
-        <<: *healthcheck
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao" ]
+      <<: *healthcheck
     ports:
-        - "7723:7723"   
+      - "7723:7723"
 
   # Six demo witnesses
   witness-demo:
     <<: *witness-demo-image
     environment:
-      - PYTHONUNBUFFERED=1                        # Ensure output is logged in real-time
-      - PYTHONIOENCODING=UTF-8                    # Ensure consistent logging encoding
-      - PYTHONWARNINGS=ignore::SyntaxWarning      # Ignore regular expression syntax warning
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - PYTHONWARNINGS=ignore::SyntaxWarning # Ignore regular expression syntax warning
     healthcheck:
       test: curl -f http://127.0.0.1:5642/oobi
       <<: *healthcheck
@@ -63,27 +63,65 @@ services:
       - "5647:5647" # witness named wyz
     depends_on:
       vlei-server:
-        condition: service_healthy   
+        condition: service_healthy
 
   keria:
     <<: *keria-image
     environment:
-      - KERI_AGENT_CORS=True   # Enable CORS for the KERI agent
-      - PYTHONUNBUFFERED=1     # Ensure output is logged in real-time
+      - KERI_AGENT_CORS=True # Enable CORS for the KERI agent
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
     volumes:
       - ./config/keria/keria.json:/keria/config/keri/cf/keria.json
     command: --config-dir /keria/config --config-file keria --name agent --loglevel INFO
     healthcheck:
-      test: ["CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml"]
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
       <<: *healthcheck
     ports:
       - "3901:3901"
       - "3902:3902"
       - "3903:3903"
-    entrypoint:
-      ['keria', 'start','--config-dir','/keria/config','--config-file','keria','--name','agent', '--loglevel', 'INFO']
+    entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'agent', '--loglevel', 'INFO' ]
     depends_on:
+      vlei-server:
+        condition: service_healthy
+      witness-demo:
+        condition: service_healthy
+
+  hook:
+    <<: *sally-image
+    environment:
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding    
+    # volumes:
+    healthcheck:
+      test: curl http://127.0.0.1:9923/health
+      <<: *healthcheck
+    ports:
+      - 9923:9923
+    entrypoint: [ 'sally', 'hook', 'demo' ]
+
+  sally:
+    <<: *sally-image
+    environment:
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - SALLY=${SALLY}
+      - SALLY_SALT=${SALLY_SALT}
+      - SALLY_PASSCODE=${SALLY_PASSCODE}
+      - WEBHOOK_HOST=${WEBHOOK_HOST}
+      - GEDA_PRE=${GEDA_PRE}
+    volumes:
+      - ./scripts/keri/cf/sally.json:/sally/scripts/keri/cf/sally.json
+    healthcheck:
+      test: curl http://127.0.0.1:9723/health
+      <<: *healthcheck
+    ports:
+      - 9723:9723
+    entrypoint: [ 'sally', 'server', 'start', '--name', '${SALLY}', '--alias', '${SALLY}', '--passcode', '${SALLY_PASSCODE}', '--config-dir', 'scripts', '--config-file', 'sally.json','--web-hook', '${WEBHOOK_HOST}', '--auth', '${GEDA_PRE}', '-l']
+    depends_on:
+      hook:
+        condition: service_healthy
       vlei-server:
         condition: service_healthy
       witness-demo:

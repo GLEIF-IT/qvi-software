@@ -152,13 +152,14 @@ PERSON_ECR="Consultant"
 PERSON_OOR="Advisor"
 
 # Sally - vLEI Reporting API
-#WEBHOOK_HOST=http://127.0.0.1:9923
 SALLY_HOST=http://127.0.0.1:9723
-#SALLY=sally
-#SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
-#SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
-#SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm # sally 0.9.4
+export WEBHOOK_HOST=http://127.0.0.1:9923
+export SALLY=sally
+export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
+export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
+export GEDA_PRE # Required to start sally container
+# SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
+SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm # sally 0.9.4
 
 # Credentials
 GEDA_REGISTRY=vLEI-external
@@ -177,6 +178,10 @@ OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
 # - it is a copy of docker-compose-qvi-workflow.yaml
 # - It may be needed to add Sally service TBD
 # Starts containers and waits for them all to be healthy before running the rest of the script
+
+
+
+
 DOCKER_COMPOSE_FILE=docker-compose-keria_signify_qvi.yaml
 docker compose -f $DOCKER_COMPOSE_FILE up -d --wait
 
