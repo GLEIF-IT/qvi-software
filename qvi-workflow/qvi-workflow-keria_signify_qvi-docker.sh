@@ -152,14 +152,16 @@ PERSON_ECR="Consultant"
 PERSON_OOR="Advisor"
 
 # Sally - vLEI Reporting API
-SALLY_HOST=http://127.0.0.1:9723
-export WEBHOOK_HOST=http://127.0.0.1:9923
+SALLY_HOST=http://sally:9723
+WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
+export WEBHOOK_HOST=http://hook:9923
 export SALLY=sally
 export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
 export GEDA_PRE # Required to start sally container
 # SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
 SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm # sally 0.9.4
+# SALLY_PRE=EOz6PBDx1-1P0PC8dsUt7BDN7APYwcC-8fBSLvtQG-gy
 
 # Credentials
 GEDA_REGISTRY=vLEI-external
@@ -184,6 +186,13 @@ OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
 
 DOCKER_COMPOSE_FILE=docker-compose-keria_signify_qvi.yaml
 docker compose -f $DOCKER_COMPOSE_FILE up -d --wait
+if [ $? -ne 0 ]; then
+    print_red "Docker services failed to start properly. Exiting."
+    cleanup
+    exit 1
+fi
+
+
 
 
 ###############################################
@@ -281,8 +290,11 @@ function create_aids() {
     create_aid "${GEDA_PT2}" "${GEDA_PT2_SALT}" "${GEDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
     create_aid "${GIDA_PT1}" "${GIDA_PT1_SALT}" "${GIDA_PT1_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
     create_aid "${GIDA_PT2}" "${GIDA_PT2_SALT}" "${GIDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
+    # create_aid "${SALLY}"    "${SALLY_SALT}"    "${SALLY_PASSCODE}"    "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
 }
 create_aids
+
+read -p "press enter to continue (sally)"
 
 # 3. GAR: OOBI resolutions between single sig AIDs
 function resolve_oobis() {
@@ -295,11 +307,10 @@ function resolve_oobis() {
     GEDA1_OOBI="${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}"
     GEDA2_OOBI="${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}"
     GIDA1_OOBI="${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}"
-    GIDA2_OOBI="${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}"
-    # TODO sort out the sally situation    
-    SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi
+    GIDA2_OOBI="${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}"   
+    # SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi
     # SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI
-    # SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # sally 0.9.4
+    SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # sally 0.9.4
     OOBIS_FOR_KERIA="geda1|$GEDA1_OOBI,geda2|$GEDA2_OOBI,gida1|$GIDA1_OOBI,gida2|$GIDA2_OOBI,sally|$SALLY_OOBI"
 
 
@@ -615,7 +626,7 @@ function qvi_rotate() {
     sleep 8
 
 }
-# qvi_rotate
+qvi_rotate
 
 # 15. GEDA and GIDA: Resolve QVI OOBI
 function resolve_qvi_oobi() {
@@ -642,6 +653,20 @@ function resolve_qvi_oobi() {
     echo
 }
 resolve_qvi_oobi
+
+function qvi_resolve_sally_oobi() {
+#   SALLY_OOBI="${SALLY_HOST}/oobi"
+#  SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller"
+ SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
+  alias="sally"
+
+  tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${alias}" \
+      "${SALLY_OOBI}"
+}
+qvi_resolve_sally_oobi
 
 # 15.5 GEDA: Create GEDA credential registry
 function create_geda_reg() {
@@ -1702,6 +1727,88 @@ function admit_oor_credential() {
 admit_oor_credential
 
 
+# SALLY_OOBI="${SALLY_HOST}/oobi"
+# PERSON_AIDS="person|$PERSON|$PERSON_SALT"
+# SALLY_INFO="sally|$SALLY_OOBI"
+
+# SALLY_PRE=$(tsx "${QVI_SIGNIFY_DIR}/person/person-get-sally-pre.ts" \
+#     "${ENVIRONMENT}" \
+#     "${PERSON_AIDS}" \
+#     "${SALLY_INFO}"
+#     )
+
+read -p "Press [ENTER] to present the LE credential to Sally"
+
+function present_le_cred_to_sally() {
+  print_yellow "[QVI] Presenting LE Credential to Sally"
+
+  tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+    "${ENVIRONMENT}" \
+    "${QVI_MS}" \
+    "${SIGTS_AIDS}" \
+    "${LE_SCHEMA}" \
+    "${QVI_PRE}" \
+    "${GIDA_PRE}"\
+    "${SALLY_PRE}"
+
+  start=$EPOCHSECONDS
+  present_result=0
+  print_dark_gray "[QVI] Waiting for Sally to receive the LE Credential"
+  while [ $present_result -ne 200 ]; do
+    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${GIDA_PRE}")
+    print_dark_gray "[QVI] received ${present_result} from Sally"
+    sleep 1
+    if (( EPOCHSECONDS-start > 25 )); then
+      print_red "[QVI] TIMEOUT - Sally did not receive the LE Credential for ${GIDA_MS} | ${GIDA_PRE}"
+      break;
+    fi # 25 seconds timeout
+  done
+
+  print_green "[PERSON] OOR Credential presented to Sally"
+
+}
+present_le_cred_to_sally
+
+read -p "Press [ENTER] to present the OOR credential to Sally"
+
+# 25.2 PERSON: Present OOR credential to Sally (vLEI Reporting API)
+function present_oor_cred_to_sally() {
+    print_yellow "[QVI] Presenting OOR Credential to Sally"
+
+    tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
+      "${ENVIRONMENT}" \
+      "${SIGTS_AIDS}" \
+      "${OOR_SCHEMA}" \
+      "${QVI_PRE}" \
+      "${SALLY_PRE}"
+
+    start=$EPOCHSECONDS
+    present_result=0
+    print_dark_gray "[PERSON] Waiting for Sally to receive the OOR Credential"
+    while [ $present_result -ne 200 ]; do
+      present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${PERSON_PRE}")
+      print_dark_gray "[PERSON] received ${present_result} from Sally"
+      sleep 1
+      if (( EPOCHSECONDS-start > 25 )); then
+        print_red "[PERSON] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
+        break;
+      fi # 25 seconds timeout
+    done
+
+    print_green "[PERSON] OOR Credential presented to Sally"
+}
+present_oor_cred_to_sally
+
+# TODO Add OOR and ECR credential revocation by the QVI
+# TODO Add presentation of revoked OOR and ECR credentials to Sally
+
+read -p "Press [Enter] to end the script"
+
+# 26. QVI: Revoke ECR Auth and OOR Auth credentials
+
+# 27. QVI: Present revoked credentials to Sally
+
+print_lcyan "Full chain workflow completed"
 
 # Script cleanup calls
 clear_containers
