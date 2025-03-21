@@ -112,13 +112,15 @@ services:
       - WEBHOOK_HOST=${WEBHOOK_HOST}
       - GEDA_PRE=${GEDA_PRE}
     volumes:
-      - ./scripts/keri/cf/sally.json:/sally/scripts/keri/cf/sally.json
+      - ./sally/keri/cf/sally-init-config-docker.json:/sally/scripts/keri/cf/sally.json
+      - ./sally/sally-incept-config.json:/sally/sally-incept-config.json
+      - ./sally/entry-point.sh:/sally/entry-point.sh
     healthcheck:
       test: curl http://127.0.0.1:9723/health
       <<: *healthcheck
     ports:
       - 9723:9723
-    entrypoint: [ 'sally', 'server', 'start', '--name', '${SALLY}', '--alias', '${SALLY}', '--passcode', '${SALLY_PASSCODE}', '--config-dir', 'scripts', '--config-file', 'sally.json','--web-hook', '${WEBHOOK_HOST}', '--auth', '${GEDA_PRE}', '-l']
+    entrypoint: "/sally/entry-point.sh"
     depends_on:
       hook:
         condition: service_healthy
