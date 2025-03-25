@@ -73,7 +73,7 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
     QAR2Id = Q2;
     QAR3Id = Q3;
 
-    // get QAR keystates for inclusion in the multisig inception event
+    // get QAR keystates for inclusion in the multisig rotation event
     const states = [aid1State, aid2State, aid3State];
     const rstates = [...states];
 
@@ -81,20 +81,20 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
     const rotateOp = await QAR1Client.identifiers().rotate(
         multisigName, {states: states, rstates: rstates}
     );
-    const serder = rotateOp.serder;
+    const body = rotateOp.serder;
     let sigs = rotateOp.sigs;
 
     // add signature attachments to the exn message
     const sigers: Siger[] = sigs.map((sig) => new signify.Siger({qb64: sig}));
-    const ims = signify.d(signify.messagize(serder, sigers));
-    const atc = ims.substring(serder.size); // extract just the attachments
+    const ims = signify.d(signify.messagize(body, sigers));
+    const atc = ims.substring(body.size); // extract just the attachments
     const embeds = {
-        rot: [serder, atc]
+        rot: [body, atc]
     };
     // signing member IDs (signing this rotation - must satisfy the current signing threshold and prior next)
     const smids = states.map((state: KeyState) => state['i']);
     const rmids = states.map((state: KeyState) => state['i']);
-    const payload = { gid: serder.pre, smids: smids, rmids: rmids};
+    const payload = { gid: body.pre, smids: smids, rmids: rmids};
     const recipients = [aid2State, aid3State].map((state: KeyState) => state['i']);
 
     console.log(`Sending multisig rotation exchange message to ${recipients}...`);

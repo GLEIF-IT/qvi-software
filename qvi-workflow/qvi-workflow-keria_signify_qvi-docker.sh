@@ -91,7 +91,6 @@ SCHEMA_SERVER=http://vlei-server:7723
 
 # Container configuration (name of the config dir in docker containers kli*)
 CONT_CONFIG_DIR=/config
-# CONT_DATA_DIR=/data
 CONT_INIT_CFG=qvi-workflow-init-config-dev-docker-compose.json #witness and schemas(5) oobis
 CONT_ICP_CFG=/config/single-sig-incept-config.json #Created by create_icp_config()
 
@@ -121,13 +120,9 @@ GIDA_PT2_PASSCODE=2pNNtRkSx8jFd7HWlikcg
 
 GEDA_MS=dagonet
 GEDA_PRE=EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv
-# GEDA_MS_SALT=0ABLokRLKfPg4n49ztPuSPG1
-# GEDA_MS_PASSCODE=7e6b659da2ff7c4f40fef
 
 GIDA_MS=gareth
 GIDA_PRE=EBsmQ6zMqopxMWhfZ27qXVpRKIsRNKbTS_aXMtWt67eb
-# GIDA_MS_SALT=0AAOfZHXD6eerQUNzTHUOe8S
-# GIDA_MS_PASSCODE=fwULUwdzavFxpcuD9c96z
 
 # QAR AIDs - filled in later after KERIA setup
 QAR_PT1=galahad
@@ -141,8 +136,6 @@ QAR_PT3_SALT=0AAzX0tS638c9SEf5LnxTlj4
 
 QVI_MS=percival
 QVI_PRE=
-# QVI_MS_SALT=0AA2sMML7K-XdQLrgzOfIvf3
-# QVI_MS_PASSCODE=97542531221a214cc0a55
 
 # Person AID
 PERSON_NAME="Mordred Delacqs"
@@ -238,7 +231,7 @@ function create_aid() {
 
     # TODO Check if makes sense to replace kli with KLI_CMD?
     # Check if exists
-    exists=$(kli list --name "${NAME}" --passcode "${PASSCODE}")
+    exists=$(${KLI_CMD:-kli} list --name "${NAME}" --passcode "${PASSCODE}")
     if [[ ! "$exists" =~ "Keystore must already exist" ]]; then
         print_dark_gray "AID ${NAME} already exists"
         return
@@ -290,11 +283,8 @@ function create_aids() {
     create_aid "${GEDA_PT2}" "${GEDA_PT2_SALT}" "${GEDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
     create_aid "${GIDA_PT1}" "${GIDA_PT1_SALT}" "${GIDA_PT1_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
     create_aid "${GIDA_PT2}" "${GIDA_PT2_SALT}" "${GIDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
-    # create_aid "${SALLY}"    "${SALLY_SALT}"    "${SALLY_PASSCODE}"    "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
 }
 create_aids
-
-read -p "press enter to continue (sally)"
 
 # 3. GAR: OOBI resolutions between single sig AIDs
 function resolve_oobis() {
@@ -972,6 +962,42 @@ function create_and_grant_le_credential() {
 }
 create_and_grant_le_credential
 
+read -p "Press [ENTER] to present the LE credential to Sally"
+
+function present_le_cred_to_sally() {
+  print_yellow "[QVI] Presenting LE Credential to Sally"
+  set -xe
+
+  tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+    "${ENVIRONMENT}" \
+    "${QVI_MS}" \
+    "${SIGTS_AIDS}" \
+    "${LE_SCHEMA}" \
+    "${QVI_PRE}" \
+    "${GIDA_PRE}"\
+    "${SALLY_PRE}"
+  set +xe
+
+  start=$EPOCHSECONDS
+  present_result=0
+  print_dark_gray "[QVI] Waiting for Sally to receive the LE Credential"
+  while [ $present_result -ne 200 ]; do
+    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${GIDA_PRE}")
+    print_dark_gray "[QVI] received ${present_result} from Sally"
+    sleep 1
+    if (( EPOCHSECONDS-start > 25 )); then
+      print_red "[QVI] TIMEOUT - Sally did not receive the LE Credential for ${GIDA_MS} | ${GIDA_PRE}"
+      break;
+    fi # 25 seconds timeout
+  done
+
+  print_green "[PERSON] LE Credential presented to Sally"
+
+}
+present_le_cred_to_sally
+
+read -p "Press [enter] to admit LE credential"
+
 # 19.4. GIDA (LE): Admit LE credential from QVI
 function admit_le_credential() {
     VC_SAID=$(kli vc list \
@@ -1180,8 +1206,6 @@ function create_ecr_auth_credential() {
 }
 create_ecr_auth_credential
 
-# read -p "Press [ENTER] to grant the ECR Auth credential"
-
 # 21.4 Grant ECR Auth credential to QVI
 function grant_ecr_auth_credential() {
     # This relies on there being only one grant in the list for the GEDA
@@ -1354,8 +1378,6 @@ function create_oor_auth_credential() {
 }
 create_oor_auth_credential
 
-# read -p "Press [ENTER] to grant the OOR Auth credential"
-
 # 21.8 Grant OOR Auth credential to QVI
 function grant_oor_auth_credential() {
     # This relies on the last grant being the OOR Auth credential
@@ -1416,10 +1438,7 @@ function grant_oor_auth_credential() {
 }
 grant_oor_auth_credential
 
-# read -p "Press [ENTER] to admit OOR Auth credential"
-
 #######################################################################
-
 
 # 22. QVI: Admit OOR Auth credential
 function admit_oor_auth_credential() {
@@ -1458,8 +1477,6 @@ function admit_oor_auth_credential() {
     echo
 }
 admit_oor_auth_credential
-
-#read -p "Press [ENTER] to  issue the ECR credential"
 
 # 23. QVI: Create and Issue ECR credential to Person
 # 23.1 Prepare ECR Auth edge data
@@ -1503,10 +1520,7 @@ EOM
 }
 prepare_ecr_cred_data
 
-# TODO add a Typescript script to resolve the QVI OOBI for the person
-# kli oobi resolve --name "${PERSON}"   --oobi-alias "${QVI_MS}" --passcode "${PERSON_PASSCODE}"   --oobi "${QVI_OOBI}"
-
-#read -p "Press [ENTER] to issue and grant the ECR credential"
+read -p "Press [ENTER] to issue the ECR credential"
 
 # 23.3 Create ECR credential in QVI, issued to the Person
 # 23.4 QVI Grant ECR credential to PERSON
@@ -1550,7 +1564,7 @@ function create_and_grant_ecr_credential() {
 }
 create_and_grant_ecr_credential
 
-#read -p "Press [ENTER] to admit the ECR credential"
+read -p "Press [ENTER] to admit the ECR credential"
 
 # 23.5. Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
@@ -1635,8 +1649,6 @@ EOM
 }
 prepare_oor_cred_data
 
-#read -p "Press [ENTER] to issue and grant the OOR credential"
-
 # 24.3 Create OOR credential in QVI, issued to the Person
 function create_and_grant_oor_credential() {
     # Check if OOR credential already exists
@@ -1677,10 +1689,6 @@ function create_and_grant_oor_credential() {
     echo
 }
 create_and_grant_oor_credential
-
-# read -p "Press [ENTER] to admit the OOR credential"
-
-
 
 ######################################################################
 
@@ -1737,37 +1745,7 @@ admit_oor_credential
 #     "${SALLY_INFO}"
 #     )
 
-read -p "Press [ENTER] to present the LE credential to Sally"
 
-function present_le_cred_to_sally() {
-  print_yellow "[QVI] Presenting LE Credential to Sally"
-
-  tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
-    "${ENVIRONMENT}" \
-    "${QVI_MS}" \
-    "${SIGTS_AIDS}" \
-    "${LE_SCHEMA}" \
-    "${QVI_PRE}" \
-    "${GIDA_PRE}"\
-    "${SALLY_PRE}"
-
-  start=$EPOCHSECONDS
-  present_result=0
-  print_dark_gray "[QVI] Waiting for Sally to receive the LE Credential"
-  while [ $present_result -ne 200 ]; do
-    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${GIDA_PRE}")
-    print_dark_gray "[QVI] received ${present_result} from Sally"
-    sleep 1
-    if (( EPOCHSECONDS-start > 25 )); then
-      print_red "[QVI] TIMEOUT - Sally did not receive the LE Credential for ${GIDA_MS} | ${GIDA_PRE}"
-      break;
-    fi # 25 seconds timeout
-  done
-
-  print_green "[PERSON] OOR Credential presented to Sally"
-
-}
-present_le_cred_to_sally
 
 read -p "Press [ENTER] to present the OOR credential to Sally"
 
