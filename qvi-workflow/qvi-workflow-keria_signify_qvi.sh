@@ -129,8 +129,7 @@ SALLY_HOST=http://127.0.0.1:9723
 SALLY=sally
 SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
-#SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm # sally 0.9.4
+SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm
 
 # Credentials
 GEDA_REGISTRY=vLEI-external
@@ -143,32 +142,7 @@ OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
 ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
 OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
 
-# Assume Sally and Webhook are already running
-#function sally_setup() {
-#    print_yellow "[GLEIF] setting up sally"
-#    print_yellow "[GLEIF] setting up webhook"
-#    sally hook demo & # For the webhook Sally will call upon credential presentation
-#    WEBHOOK_PID=$!
-#
-#    sleep 3
-#
-#    print_yellow "[GLEIF] starting sally"
-#    # This will use the config file located at ./scripts/keri/cf/sally.json
-#    sally server start \
-#        --name $SALLY \
-#        --alias $SALLY \
-#        --salt "${SALLY_SALT}" \
-#        --passcode "${SALLY_PASSCODE}" \
-#        -c scripts \
-#        -f sally.json \
-#        --web-hook ${WEBHOOK_HOST} \
-#        --auth "${GEDA_PRE}" \
-#        -l INFO & # who will be presenting the credential
-#    SALLY_PID=$!
-#
-#    sleep 5
-#}
-#sally_setup
+# Assume Sally and Webhook are already running via Docker Compose and entrypoints
 
 # ensure services are up
 function test_dependencies() {
@@ -335,9 +309,8 @@ function resolve_oobis() {
     GEDA2_OOBI="${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}"
     GIDA1_OOBI="${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}"
     GIDA2_OOBI="${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}"
-    SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi
-#    SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI
-#    SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # sally 0.9.4
+#    SALLY_OOBI="${SALLY_HOST}/oobi" # TODO switch to direct mode self-oobi once it is ready
+    SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
 
     OOBIS_FOR_KERIA="geda1|$GEDA1_OOBI,geda2|$GEDA2_OOBI,gida1|$GIDA1_OOBI,gida2|$GIDA2_OOBI,sally|$SALLY_OOBI"
 
@@ -732,14 +705,14 @@ print_green "QVI Agent OOBI: ${QVI_OOBI}"
 
 #read -p "Press [ENTER] to rotate the QVI AID"
 
-# 18.1 QVI: Delegated multisig rotation() {
+# 18.1 QVI: Delegated multisig rotation
 function qvi_rotate() {
   QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
       "${ENVIRONMENT}" \
       "${QVI_MS}" \
       "${SIGTS_AIDS}"
       )
-    if [[ "$QVI_MULTISIG_SEQ_NO" -gt 1 ]]; then
+    if [[ "$QVI_MULTISIG_SEQ_NO" -ge 1 ]]; then
         print_dark_gray "[QVI] Multisig AID ${QVI_MS} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
         return
     fi
@@ -751,7 +724,6 @@ function qvi_rotate() {
     QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
     print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
 
-#    read -p "Press [enter] to have GEDA query new keystate from QARs"
 
     # GEDA participants Query keystate from QARs
     print_yellow "[GEDA] Query QVI multisig participants to discover new delegated rotation and complete delegation for KERIpy 1.1.x+"
@@ -780,30 +752,13 @@ function qvi_rotate() {
 
     wait $PID_LIST
 
-    # create interaction event
-    read -r -d '' ANCHOR << EOM
-{"i": "$QVI_PREFIX","s": "1","d": "$QVI_PREFIX"}
-EOM
-
-    # create temporary file to store json
-    temp_anchor=$(mktemp)
-
-    # write JSON content to the temp file
-    echo "$ANCHOR" > "$temp_anchor"
-
-    print_bg_blue "[QVI] QVI Multisig rotation anchor"
-    cat $temp_anchor | jq
-
-#    read -p "Press [ENTER] to confirm the QVI rotation"
     print_yellow "GEDA1 confirm delegated rotation"
     kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
-#    kli multisig interact --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} --data "$ANCHOR" &
     pid=$!
     PID_LIST+=" $pid"
 
     print_yellow "GEDA2 confirm delegated rotation"
     kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
-#    kli multisig interact --name ${GEDA_PT2} --alias ${GEDA_MS} --passcode ${GEDA_PT2_PASSCODE} --data "$ANCHOR" &
     pid=$!
     PID_LIST+=" $pid"
 
@@ -816,7 +771,6 @@ EOM
 
     print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
     sleep 8
-    rm "$temp_anchor"
 }
 qvi_rotate
 
@@ -848,9 +802,8 @@ function resolve_qvi_oobi() {
 resolve_qvi_oobi
 
 function qvi_resolve_sally_oobi() {
-  SALLY_OOBI="${SALLY_HOST}/oobi"
-#  SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller"
-#  SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
+  # SALLY_OOBI="${SALLY_HOST}/oobi" # TODO switch to direct mode self-oobi once it is ready
+  SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
   alias="sally"
 
   tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" \

@@ -71,7 +71,7 @@ services:
       - PYTHONUNBUFFERED=1     # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
     volumes:
-      - ./config/keria/keria.json:/keria/config/keri/cf/keria.json
+      - ./config/keria/keria-docker.json:/keria/config/keri/cf/keria-docker.json
     command: --config-dir /keria/config --config-file keria --name agent --loglevel INFO
     healthcheck:
       test: ["CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml"]

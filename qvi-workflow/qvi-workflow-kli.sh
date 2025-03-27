@@ -14,16 +14,38 @@
 # and from the vLEI repo run:
 #   > vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/
 # This script runs the "sally" program so it must be installed and available on the path
+#
+# WARNING: This currently depends on v0.10.0+ of Sally being available on the PATH which uses a different
+#          version of KERI (1.2.4) than the KLI (1.1.32) here uses. Be sure to install the KLI first and
+#          then install sally globally on your machine prior to running this script.
+#
 # in order to complete successfully. This script also runs the webhook with "sally hook demo" that
 # Sally sends a webhook call to.
 
+SALLY_PID=""
+WEBHOOK_PID=""
 
-trap cleanup INT
+# send sigterm to sally PID
+function sally_teardown() {
+  if [ -n "$SALLY_PID" ]; then
+    kill -SIGTERM $SALLY_PID
+  fi
+  if [ -n "$WEBHOOK_PID" ]; then
+    kill -SIGTERM $WEBHOOK_PID
+  fi
+}
+
+trap interrupt INT
+
+function interrupt() {
+  # Triggered on Control + C, cleans up resources the script uses
+  print_red "Caught Ctrl+C, Exiting script..."
+  cleanup
+  exit 0
+}
+
 function cleanup() {
-    # Triggered on Control + C, cleans up resources the script uses
-    echo
-    print_red "Caught Ctrl+C, Exiting script..."
-    exit 0
+    sally_teardown
 }
 
 source ./script-utils.sh
@@ -36,12 +58,10 @@ KEYSTORE_DIR=${1:-$HOME/.keri}
 print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
 
 CONFIG_DIR=./config
-DATA_DIR=./data
 INIT_CFG=qvi-workflow-init-config-dev-local.json
 WAN_PRE=BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha
 WIT_HOST=http://127.0.0.1:5642
 SCHEMA_SERVER=http://127.0.0.1:7723
-
 
 GEDA_LEI=254900OPPU84GM83MG36 # GLEIF Americas
 
@@ -58,9 +78,6 @@ GEDA_PT2_PASSCODE=b26ef3dd5c85f67c51be8
 
 GEDA_MS=dagonet
 GEDA_PRE=EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv
-GEDA_MS_SALT=0ABLokRLKfPg4n49ztPuSPG1
-GEDA_MS_PASSCODE=7e6b659da2ff7c4f40fef
-
 
 # GIDA AIDs - GLEIF Internal Delegated AID
 GIDA_PT1=elaine
@@ -75,9 +92,6 @@ GIDA_PT2_PASSCODE=2pNNtRkSx8jFd7HWlikcg
 
 GIDA_MS=gareth
 GIDA_PRE=EBsmQ6zMqopxMWhfZ27qXVpRKIsRNKbTS_aXMtWt67eb
-GIDA_MS_SALT=0AAOfZHXD6eerQUNzTHUOe8S
-GIDA_MS_PASSCODE=fwULUwdzavFxpcuD9c96z
-
 
 # QAR AIDs
 QAR_PT1=galahad
@@ -92,9 +106,6 @@ QAR_PT2_PASSCODE=bdf1565a750ff3f76e4fc
 
 QVI_MS=percival
 QVI_PRE=EAwP4xBP4C8KzoKCYV2e6767OTnmR5Bt8zmwhUJr9jHh
-QVI_MS_SALT=0AA2sMML7K-XdQLrgzOfIvf3
-QVI_MS_PASSCODE=97542531221a214cc0a55
-
 
 # Person AID
 PERSON_NAME="Mordred Delacqs"
@@ -104,7 +115,6 @@ PERSON_SALT=0ABlXAYDE2TkaNDk4UXxxtaN
 PERSON_PASSCODE=c4479ae785625c8e50a7e
 PERSON_ECR="Consultant"
 PERSON_OOR="Advisor"
-
 
 # Sally - vLEI Reporting API
 SALLY=sally
@@ -686,6 +696,30 @@ EOM
     print_green "[QVI] Multisig AID ${QVI_MS} with prefix: ${ms_prefix}"
 }
 create_qvi_multisig
+
+# 12.5 QVI & GEDA: perform multisig delegated rotation
+
+function qvi_rotate() {
+    QVI_MULTISIG_SEQ_NO=$(kli status --name ${QAR_PT1} --alias ${QVI_MS} --passcode ${QAR_PT1_PASSCODE} | awk '/Seq No:/ {print $3}')
+    if [[ "$QVI_MULTISIG_SEQ_NO" -gt 0 ]]; then
+        print_yellow "[QVI] Multisig AID ${QVI_MS} already rotated"
+        return
+    fi
+
+    print_yellow "[QVI] Rotating delegated multisig AID"
+    kli multisig rotate --name ${QAR_PT1} --alias ${QVI_MS} --passcode ${QAR_PT1_PASSCODE} --auto &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    kli multisig rotate --name ${QAR_PT2} --alias ${QVI_MS} --passcode ${QAR_PT2_PASSCODE} --auto &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    wait $PID_LIST
+
+}
+# TODO test this and finish it off
+#qvi_rotate
 
 # 13. QVI: (skip) Perform endpoint role authorizations
 
@@ -1587,8 +1621,6 @@ function create_oor_auth_credential() {
 }
 create_oor_auth_credential
 
-
-
 # 21.8 Grant OOR Auth credential to QVI
 function grant_oor_auth_credential() {
     # This relies on the last grant being the OOR Auth credential
@@ -1713,7 +1745,6 @@ function admit_oor_auth_credential() {
     echo
 }
 admit_oor_auth_credential
-
 
 # 23. QVI: Create and Issue ECR credential to Person
 # 23.1 Prepare ECR Auth edge data
@@ -2033,7 +2064,6 @@ function create_oor_credential() {
 }
 create_oor_credential
 
-
 # 24.4 QVI Grant OOR credential to PERSON
 function grant_oor_credential() {
     # This only works the last grant is the OOR credential
@@ -2137,15 +2167,7 @@ admit_oor_credential
 
 # 25. QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
 
-SALLY_PID=""
-WEBHOOK_PID=""
 function sally_setup() {
-    # Supposedly not needed
-    # kli oobi resolve --name $SALLY \
-    #     --alias $SALLY \
-    #     --oobi-alias ${QVI_MS} \
-    #     --oobi ${QVI_OOBI}
-    print_yellow "[GLEIF] setting up sally"
     print_yellow "[GLEIF] setting up webhook"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
@@ -2154,6 +2176,10 @@ function sally_setup() {
     sally server start \
         --name $SALLY \
         --alias $SALLY \
+        --salt $SALLY_SALT \
+        --config-dir sally \
+        --config-file sally-habery.json \
+        --incept-file sally-incept.json \
         --passcode $SALLY_PASSCODE \
         --web-hook http://127.0.0.1:9923 \
         --auth "${GEDA_PRE}" & # who will be presenting the credential
@@ -2162,6 +2188,8 @@ function sally_setup() {
     sleep 5
 }
 sally_setup
+
+read -p "Press [enter] to present LE to Sally"
 
 function present_le_cred_to_sally() {
     print_yellow "[QVI] Presenting LE Credential to Sally"
@@ -2188,21 +2216,51 @@ function present_le_cred_to_sally() {
     PID_LIST+=" $pid"
     wait $PID_LIST
 
-    sleep 30
     print_green "[QVI] LE Credential presented to Sally"
+    print_dark_gray "[QVI] Waiting 15 s for Sally to call webhook"
+    sleep 15
 }
 present_le_cred_to_sally
 
-# send sigterm to sally PID
-function sally_teardown() {
-    kill -SIGTERM $SALLY_PID
-    kill -SIGTERM $WEBHOOK_PID
+read -p "Press [enter] to present OOR to Sally"
+
+function present_oor_cred_to_sally() {
+  # remember to add the --issued flag to find the issued credential in the QVI's registry
+  OOR_SAID=$(kli vc list \
+      --name "${QAR_PT1}" \
+      --alias "${QVI_MS}" \
+      --passcode "${QAR_PT1_PASSCODE}" \
+      --issued \
+      --said \
+      --schema "${OOR_SCHEMA}")
+
+  PID_LIST=""
+  kli ipex grant \
+      --name "${QAR_PT1}" \
+      --alias "${QVI_MS}" \
+      --passcode "${QAR_PT1_PASSCODE}" \
+      --said "${OOR_SAID}" \
+      --recipient "${SALLY}" &
+  pid=$!
+  PID_LIST+=" $pid"
+
+  kli ipex join \
+      --name "${QAR_PT2}" \
+      --passcode "${QAR_PT2_PASSCODE}" \
+      --auto &
+  pid=$!
+  PID_LIST+=" $pid"
+  wait $PID_LIST
+
+  print_green "[QVI] OOR Credential presented to Sally"
+  print_dark_gray "[QVI] Waiting 15 s for Sally to call webhook"
+  sleep 15
 }
-sally_teardown
+present_oor_cred_to_sally
 
-# 26. QVI: Revoke ECR Auth and OOR Auth credentials
-
-# 27. QVI: Present revoked credentials to Sally
-
-
+read -p "press [enter] to teardown"
+cleanup
 print_lcyan "Full chain workflow completed"
+
+# TODO 26. QVI: Revoke ECR Auth and OOR Auth credentials
+# TODO 27. QVI: Present revoked credentials to Sally
