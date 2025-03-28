@@ -75,7 +75,14 @@ export async function issueCredentialMultisig(
     kargsIss: CredentialData,
     isInitiator: boolean = false
 ) {
-    if (!isInitiator) await waitAndMarkNotification(client, '/multisig/iss');
+    if (!isInitiator) {
+        try {
+            await waitAndMarkNotification(client, '/multisig/iss');
+            console.log(`/multisig/iss notification marked for ${aid.name} : ${aid.prefix}`)
+        } catch (e) {
+            console.error(`No notification found for ${aid.name}: ${aid.prefix}. ${e}`);
+        }
+    }
 
     const credResult = await client
         .credentials()

@@ -83,12 +83,49 @@ async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerP
             issuerPrefix,
             admitTime
         );
-        await waitAndMarkNotification(QAR1Client, '/multisig/exn');
-        await waitAndMarkNotification(QAR2Client, '/multisig/exn');
-        await waitAndMarkNotification(QAR3Client, '/multisig/exn');
-        await waitAndMarkNotification(QAR1Client, '/exn/ipex/admit');
-        await waitAndMarkNotification(QAR2Client, '/exn/ipex/admit');
-        await waitAndMarkNotification(QAR3Client, '/exn/ipex/admit');
+        try {
+            await waitAndMarkNotification(QAR1Client, '/multisig/exn');
+            console.log(`/multisig/exn notification marked for QAR1`);
+        } catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR1: ${e}`);
+        }
+        try {
+            await waitAndMarkNotification(QAR2Client, '/multisig/exn');
+            console.log(`/multisig/exn notification marked for QAR2`);
+        }
+        catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR2: ${e}`);
+        }
+        try {
+            await waitAndMarkNotification(QAR3Client, '/multisig/exn');
+            console.log(`/multisig/exn notification marked for QAR3`);
+        } catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR3: ${e}`);
+        }
+        try {
+            await waitAndMarkNotification(QAR1Client, '/exn/ipex/admit');
+            console.log(`/exn/ipex/admit notification marked for QAR1`);
+        } catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR1: ${e}`);
+        }
+        try {
+            await waitAndMarkNotification(QAR2Client, '/exn/ipex/admit');
+            console.log(`/exn/ipex/admit notification marked for QAR2`);
+        } catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR2: ${e}`);
+        }
+        try {
+            await waitAndMarkNotification(QAR3Client, '/exn/ipex/admit');
+            console.log(`/exn/ipex/admit notification marked for QAR3`);
+        } catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR3: ${e}`);
+        }
 
         credByQAR1 = await waitForCredential(QAR1Client, credSAID);
         credByQAR2 = await waitForCredential(QAR2Client, credSAID);

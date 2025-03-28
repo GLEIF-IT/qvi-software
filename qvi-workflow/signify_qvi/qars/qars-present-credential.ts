@@ -62,19 +62,19 @@ export async function grantCredential(
     // grant credential
     const credbyQAR1 = await getIssuedCredential(
         QAR1Client,
-        qviAID.prefix,
+        issuerPrefix,
         issueePrefix,
         schemaSAID
     );
     const credbyQAR2 = await getIssuedCredential(
         QAR2Client,
-        qviAID.prefix,
+        issuerPrefix,
         issueePrefix,
         schemaSAID
     );
     const credbyQAR3 = await getIssuedCredential(
         QAR3Client,
-        qviAID.prefix,
+        issuerPrefix,
         issueePrefix,
         schemaSAID
     );

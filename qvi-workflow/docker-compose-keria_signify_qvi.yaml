@@ -6,7 +6,7 @@
 # x-keri11-image: &keri11-image
 #     image: kentbull/keri:1.1.27a
 # x-keri12-image: &keri12-image
-#     image: kentbull/keri:1.2.1a    
+#     image: kentbull/keri:1.2.1a
 x-witness-demo-image: &witness-demo-image
   image: weboftrust/keri:1.1.32
 x-keria-image: &keria-image
@@ -34,6 +34,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - PYTHONWARNINGS=ignore::SyntaxWarning
     command: [ 'vLEI-server', '-s', './schema/acdc', '-c', './schema/acdc', '-o', './samples/oobis' ]
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao" ]
@@ -71,6 +72,7 @@ services:
       - KERI_AGENT_CORS=True # Enable CORS for the KERI agent
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - PYTHONWARNINGS=ignore::SyntaxWarning
     volumes:
       - ./config/keria/keria-docker.json:/keria/config/keri/cf/keria.json
     command: --config-dir /keria/config --config-file keria --name agent --loglevel INFO
@@ -93,6 +95,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - PYTHONWARNINGS=ignore::SyntaxWarning
     # volumes:
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9923/health" ]
@@ -111,6 +114,7 @@ services:
       - SALLY_PASSCODE=${SALLY_PASSCODE}
       - WEBHOOK_HOST=${WEBHOOK_HOST}
       - GEDA_PRE=${GEDA_PRE}
+      - PYTHONWARNINGS=ignore::SyntaxWarning
     volumes:
       - ./sally/keri/cf/sally-habery-docker.json:/sally/conf/keri/cf/sally-habery.json
       - ./sally/sally-incept.json:/sally/conf/sally-incept.json

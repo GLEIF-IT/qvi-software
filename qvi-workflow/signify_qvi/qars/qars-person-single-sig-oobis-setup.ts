@@ -44,22 +44,23 @@ async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: 
         getOrCreateContact(QAR1Client, GEDA2.position, GEDA2.oobi),
         getOrCreateContact(QAR1Client, GIDA1.position, GIDA1.oobi),
         getOrCreateContact(QAR1Client, GIDA2.position, GIDA2.oobi),
+        getOrCreateContact(QAR1Client, SALLY.position, SALLY.oobi),
 
         getOrCreateContact(QAR2Client, GEDA1.position, GEDA1.oobi),
         getOrCreateContact(QAR2Client, GEDA2.position, GEDA2.oobi),
         getOrCreateContact(QAR2Client, GIDA1.position, GIDA1.oobi),
         getOrCreateContact(QAR2Client, GIDA2.position, GIDA2.oobi),
+        getOrCreateContact(QAR2Client, SALLY.position, SALLY.oobi),
 
         getOrCreateContact(QAR3Client, GEDA1.position, GEDA1.oobi),
         getOrCreateContact(QAR3Client, GEDA2.position, GEDA2.oobi),
         getOrCreateContact(QAR3Client, GIDA1.position, GIDA1.oobi),
         getOrCreateContact(QAR3Client, GIDA2.position, GIDA2.oobi),
+        getOrCreateContact(QAR3Client, SALLY.position, SALLY.oobi),
 
         getOrCreateContact(personClient, GIDA1.position, GIDA1.oobi),
         getOrCreateContact(personClient, GIDA2.position, GIDA2.oobi),
-        // TODO SALLY resolution
-        // getOrCreateContact(personClient, SALLY.position, SALLY.oobi),
-
+        getOrCreateContact(personClient, SALLY.position, SALLY.oobi),
     ])
 }
 await resolveOobis(args[1], args[2], env);
