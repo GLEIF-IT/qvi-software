@@ -3,10 +3,10 @@
 # - keria configured to use the demo witnesses
 # - vLEI server for credential schema caching
 
-# x-keri11-image: &keri11-image
-#     image: kentbull/keri:1.1.27a
-# x-keri12-image: &keri12-image
-#     image: kentbull/keri:1.2.1a
+x-keri_1_2-image: &keri_1_2-image
+  image: weboftrust/keri:1.2.4
+x-keri_1_1-image: &keri_1_1-image
+  image: weboftrust/keri:1.1.32
 
 # Witness Images
 x-gar-witness-image: &gar-witness-image
@@ -19,7 +19,8 @@ x-sally-witness-image: &sally-witness-image
   image: weboftrust/keri:1.1.32
 
 x-keria-image: &keria-image
-  image: weboftrust/keria:0.2.0-rc2
+#  image: weboftrust/keria:0.2.0-rc2
+  image: kentbull/keria-provenant:0.1.3
 x-vlei-image: &vlei-image
   image: gleif/vlei:0.2.0
 x-sally-image: &sally-image
@@ -39,6 +40,14 @@ networks:
   default:
     external: true
     name: vlei
+
+volumes:
+  gar-wit-vol:
+  qar-wit-vol:
+  person-wit-vol:
+  sally-wit-vol:
+  keria-vol:
+  sally-vol:
 
 services:
   # vLEI schema caching server
@@ -61,11 +70,13 @@ services:
     environment:
       <<: *witness-env
     healthcheck:
-      test: curl -f http://127.0.0.1:5642/oobi
+      # healthcheck needs to be different in 1.2.4+ because it uses the Alpine base image and curl is not present
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5642/oobi" ]
       <<: *healthcheck
     command: witness demo
     volumes:
       - ./config/gar-witnesses:/keripy/scripts/keri/cf/main
+      - gar-wit-vol:/usr/local/var/keri
     ports:
       - "5642:5642" # witness named wan
     depends_on:
@@ -83,6 +94,7 @@ services:
     command: witness demo
     volumes:
       - ./config/qar-witnesses:/keripy/scripts/keri/cf/main
+      - qar-wit-vol:/usr/local/var/keri
     ports:
       - "5643:5643" # witness named wil
     depends_on:
@@ -100,6 +112,7 @@ services:
     command: witness demo
     volumes:
       - ./config/person-witnesses:/keripy/scripts/keri/cf/main
+      - person-wit-vol:/usr/local/var/keri
     ports:
       - "5644:5644" # witness named wes
     depends_on:
@@ -112,11 +125,13 @@ services:
     environment:
       <<: *witness-env
     healthcheck:
-      test: curl -f http://127.0.0.1:5645/oobi
+      # healthcheck needs to be different in 1.2.4+ because it uses the Alpine base image and curl is not present
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5645/oobi" ]
       <<: *healthcheck
     command: witness demo
     volumes:
       - ./config/sally-witnesses:/keripy/scripts/keri/cf/main
+      - sally-wit-vol:/usr/local/var/keri
     ports:
       - "5645:5645" # witness named wit
     depends_on:
@@ -130,8 +145,10 @@ services:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
       - PYTHONWARNINGS=ignore::SyntaxWarning
+      - KERIA_RELEASER_TIMEOUT=3600
     volumes:
       - ./config/keria/keria-qvi-witnesses-docker.json:/keria/config/keri/cf/keria.json
+      - keria-vol:/usr/local/var/keri
     command: --config-dir /keria/config --config-file keria --name agent --loglevel INFO
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
@@ -180,6 +197,7 @@ services:
       - ./sally/keri/cf/sally-habery-docker.json:/sally/conf/keri/cf/sally-habery.json
       - ./sally/sally-incept.json:/sally/conf/sally-incept.json
       - ./sally/entry-point.sh:/sally/entry-point.sh
+      - sally-vol:/usr/local/var/keri
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9723/health" ]
       <<: *healthcheck
@@ -192,4 +210,22 @@ services:
       vlei-server:
         condition: service_healthy
       sally-witnesses:
+        condition: service_healthy
+
+  kli:
+    <<: *keri_1_1-image
+    environment:
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - PYTHONWARNINGS=ignore::SyntaxWarning
+    env_file:
+      - ./keria-signify-docker.env
+    volumes:
+      - ${KEYSTORE_DIR:-./docker-keystores}:/usr/local/var/keri
+    tty: true
+    entrypoint: /bin/bash
+    depends_on:
+      gar-witnesses:
+        condition: service_healthy
+      qar-witnesses:
         condition: service_healthy

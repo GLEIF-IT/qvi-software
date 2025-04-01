@@ -31,3 +31,5 @@ qvi-workflow/signify_qvi/qvi_data/qvi-oobi.json
 qvi-workflow/signify_qvi/qvi_data/qvi-registry-info.json
 qvi-workflow/signify_qvi/qvi_data/oor-cred-info.json
 qvi-workflow/signify_qvi/qvi_data/ecr-cred-info.json
+!qvi-workflow/docker-keystores/.gitkeep
+qvi-workflow/docker-keystores/*

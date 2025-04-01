@@ -70,7 +70,7 @@ docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
 ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
 
 # Not used in this script, just for display. see kli-commands.sh
-KEYSTORE_DIR=${1:-$HOME/.qvi_workflow_docker} 
+KEYSTORE_DIR=${1:-./docker-keystores}
 
 print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
 print_yellow "Using $ENVIRONMENT configuration files"
@@ -314,6 +314,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QAR2_OOBI}"  #>/dev/null 2>&1
     kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT3}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QAR3_OOBI}" #>/dev/null 2>&1
     kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT1_PASSCODE}" --oobi "${PERSON_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${SALLY}"    --passcode "${GEDA_PT1_PASSCODE}" --oobi "${SALLY_OOBI}" #>/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for GEDA 2"
     kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${GEDA1_OOBI}" #>/dev/null 2>&1
@@ -323,6 +324,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QAR2_OOBI}" #>/dev/null 2>&1
     kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT3}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QAR3_OOBI}" #>/dev/null 2>&1
     kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT2_PASSCODE}" --oobi "${PERSON_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${SALLY}"    --passcode "${GEDA_PT2_PASSCODE}" --oobi "${SALLY_OOBI}" #>/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for GIDA 1"
     kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${GIDA2_OOBI}" #>/dev/null 2>&1
@@ -853,7 +855,53 @@ function admit_qvi_credential() {
 }
 admit_qvi_credential
 
-function present_qvi_cred_to_sally() {
+read -p "Press [ENTER] to have the KLI present the QVI credential to Sally from LARs"
+function present_qvi_cred_to_sally_kli() {
+    SAID=$(kli vc list \
+        --name "${GEDA_PT1}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --alias "${GEDA_MS}" \
+        --issued \
+        --said \
+        --schema "${QVI_SCHEMA}" | tr -d '[:space:]')
+
+    echo
+    print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto Sally'" ${SALLY_PRE}"
+    KLI_TIME=$(kli time | tr -d '[:space:]')
+    klid geda1 ipex grant \
+        --name "${GEDA_PT1}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --alias "${GEDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${SALLY_PRE}" \
+        --time "${KLI_TIME}"
+
+    klid geda2 ipex grant \
+        --name "${GEDA_PT2}" \
+        --passcode "${GEDA_PT2_PASSCODE}" \
+        --alias "${GEDA_MS}" \
+        --said "${SAID}" \
+        --recipient "${SALLY_PRE}" \
+        --time "${KLI_TIME}"
+
+    echo
+    print_yellow "[External] Waiting for IPEX messages to be witnessed"
+    echo
+    print_dark_gray "waiting on Docker containers geda1 and geda2"
+    docker wait geda1 geda2
+    docker logs geda1
+    docker logs geda2
+    docker rm geda1 geda2
+
+
+    echo
+    print_green "[External] QVI Credential issued to QVI"
+    echo
+}
+present_qvi_cred_to_sally_kli
+
+read -p "Press [ENTER] to present from KERIA"
+function present_qvi_cred_to_sally_signify() {
   print_yellow "[QVI] Presenting QVI Credential to Sally"
 
   tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
@@ -881,7 +929,7 @@ function present_qvi_cred_to_sally() {
   print_green "[QVI] QVI Credential presented to Sally"
 
 }
-present_qvi_cred_to_sally
+present_qvi_cred_to_sally_signify
 
 
 ############################ LE Credential ##################################
