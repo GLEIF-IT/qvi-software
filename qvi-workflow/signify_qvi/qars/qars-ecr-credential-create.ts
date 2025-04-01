@@ -30,6 +30,8 @@ const ECR_SCHEMA_SAID = 'EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw';
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
 async function createECRCredential(multisigName: string, aidInfo: string, personPrefix: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
+    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -39,18 +41,18 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
     ] = await getOrCreateClients(3, [QAR1.salt, QAR2.salt, QAR3.salt], environment);
 
     // get AIDs
-    const kargsAID = {
-        toad: witnessIds.length,
-        wits: witnessIds,
+    const aidConfigQARs = {
+        toad: 1,
+        wits: [WIL],
     };
     const [
             QAR1Id,
             QAR2Id,
             QAR3Id,
     ] = await Promise.all([
-        getOrCreateAID(QAR1Client, QAR1.name, kargsAID),
-        getOrCreateAID(QAR2Client, QAR2.name, kargsAID),
-        getOrCreateAID(QAR3Client, QAR3.name, kargsAID),
+        getOrCreateAID(QAR1Client, QAR1.name, aidConfigQARs),
+        getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
+        getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
     ]);
 
     const qviAID = await QAR1Client.identifiers().get(multisigName);

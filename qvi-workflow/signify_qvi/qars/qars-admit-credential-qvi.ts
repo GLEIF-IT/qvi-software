@@ -9,7 +9,7 @@ const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
 const multisigName = args[1]
 const aidInfoArg = args[2]
-const gedaPrefix = args[3]
+const issuerPrefix = args[3]
 const credSAID = args[4]
 
 // resolve witness IDs for QVI multisig AID configuration
@@ -27,6 +27,8 @@ const {witnessIds} = resolveEnvironment(env);
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
 async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerPrefix: string, witnessIds: Array<string>, credSAID: string, environment: TestEnvironmentPreset) {
+    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -36,18 +38,18 @@ async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerP
     ] = await getOrCreateClients(3, [QAR1.salt, QAR2.salt, QAR3.salt], environment);
 
     // get AIDs
-    const kargsAID = {
-        toad: witnessIds.length,
-        wits: witnessIds,
+    const aidConfigQARs = {
+        toad: 1,
+        wits: [WIL],
     };
     const [
             QAR1Id,
             QAR2Id,
             QAR3Id,
     ] = await Promise.all([
-        getOrCreateAID(QAR1Client, QAR1.name, kargsAID),
-        getOrCreateAID(QAR2Client, QAR2.name, kargsAID),
-        getOrCreateAID(QAR3Client, QAR3.name, kargsAID),
+        getOrCreateAID(QAR1Client, QAR1.name, aidConfigQARs),
+        getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
+        getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
     ]);
 
     // Get the QVI multisig AID
@@ -133,6 +135,6 @@ async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerP
     }
     
 }
-const admitResult: any = await admitCredentialQvi(multisigName, aidInfoArg, gedaPrefix, witnessIds, credSAID, env);
+const admitResult: any = await admitCredentialQvi(multisigName, aidInfoArg, issuerPrefix, witnessIds, credSAID, env);
 
 console.log(`credential ${credSAID} admitted`);

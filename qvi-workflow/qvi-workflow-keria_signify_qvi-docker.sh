@@ -67,7 +67,7 @@ source ./kli-commands.sh ${1:-}
 docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
 
 # NOTE: (used by resolve-env.ts)
-ENVIRONMENT=docker
+ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
 
 # Not used in this script, just for display. see kli-commands.sh
 KEYSTORE_DIR=${1:-$HOME/.qvi_workflow_docker} 
@@ -83,19 +83,26 @@ print_yellow "Using $ENVIRONMENT configuration files"
 QVI_SIGNIFY_DIR=$(dirname "$0")/signify_qvi
 QVI_DATA_DIR="${QVI_SIGNIFY_DIR}/qvi_data"
 
-WAN_PRE=BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha
-WIT_HOST=http://witness-demo:5642
 SCHEMA_SERVER=http://vlei-server:7723
-# KERIA_SERVER=http://keria:3903
 
+#### Witness Hosts ####
+# Wan 5642
+WIT_HOST_GAR=http://gar-witnesses:5642
+WAN_PRE=BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha
+# Wil 5643
+WIT_HOST_QAR=http://qar-witnesses:5643
+WIL_PRE=BLskRTInXnMxWaGqcpSyMgo0nYbalW99cGZESrz3zapM
+# Wes 5644
+WIT_HOST_PERSON=http://person-witnesses:5644
+WES_PRE=BIKKuvBwpmDVA4Ds-EpL5bt9OqPzWPja2LigFYZN2YfX
+# Wit 5645
+WIT_HOST_SALLY=http://sally-witnesses:5645
+WIT_PRE=BM35JN8XeJSEfpxopjn5jr7tAHCE5749f0OobhMLCorE
 
 # Container configuration (name of the config dir in docker containers kli*)
 CONT_CONFIG_DIR=/config
-CONT_INIT_CFG=qvi-workflow-init-config-dev-docker-compose.json #witness and schemas(5) oobis
-CONT_ICP_CFG=/config/single-sig-incept-config.json #Created by create_icp_config()
 
-GEDA_LEI=254900OPPU84GM83MG36 # GLEIF Americas
-
+#### Identifier Information ####
 # GEDA AIDs - GLEIF External Delegated AID
 GEDA_PT1=accolon
 GEDA_PT1_PRE=ENFbr9MI0K7f4Wz34z4hbzHmCTxIPHR9Q_gWjLJiv20h
@@ -107,23 +114,24 @@ GEDA_PT2_PRE=EJ7F9XcRW85_S-6F2HIUgXcIcywAy0Nv-GilEBSRnicR
 GEDA_PT2_SALT=0ADD292rR7WEU4GPpaYK4Z6h
 GEDA_PT2_PASSCODE=b26ef3dd5c85f67c51be8
 
+GEDA_MS=dagonet
+GEDA_PRE=EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv
+
 # GIDA AIDs - GLEIF Internal Delegated AID
 GIDA_PT1=elaine
-GIDA_PT1_PRE=ELTDtBrcFsHTMpfYHIJFvuH6awXY1rKq4w6TBlGyucoF
+GIDA_PT1_PRE=EP2ddbbIgPHNAkUs8nWz4lMCvHlhpiFE7dZpAJ0HeTno
 GIDA_PT1_SALT=0AB90ainJghoJa8BzFmGiEWa
 GIDA_PT1_PASSCODE=tcc6Yj4JM8MfTDs1IiidP
 
 GIDA_PT2=finn
-GIDA_PT2_PRE=EBpwQouCaOlglS6gYo0uD0zLbuAto5sUyy7AK9_O0aI1
+GIDA_PT2_PRE=ENKuOCG5wpyqs6XRof4LGwCwOgpw09PXPHY6H7dtSPr_
 GIDA_PT2_SALT=0AA4m2NxBxn0w5mM9oZR2kHz
 GIDA_PT2_PASSCODE=2pNNtRkSx8jFd7HWlikcg
 
-GEDA_MS=dagonet
-GEDA_PRE=EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv
-
 GIDA_MS=gareth
-GIDA_PRE=EBsmQ6zMqopxMWhfZ27qXVpRKIsRNKbTS_aXMtWt67eb
+GIDA_PRE=EBlUXdxJQ7dUhvjIcHPNlggZm1cLkv0clhKe4MrLcPts
 
+#### KERIA and Signify Identifiers ####
 # QAR AIDs - filled in later after KERIA setup
 QAR_PT1=galahad
 QAR_PT1_SALT=0ACgCmChLaw_qsLycbqBoxDK
@@ -138,23 +146,23 @@ QVI_MS=percival
 QVI_PRE=
 
 # Person AID
-PERSON_NAME="Mordred Delacqs"
 PERSON=mordred
 PERSON_SALT=0ABlXAYDE2TkaNDk4UXxxtaN
+
+#### Credential data ####
+GEDA_LEI=254900OPPU84GM83MG36 # GLEIF Americas
+PERSON_NAME="Mordred Delacqs"
 PERSON_ECR="Consultant"
 PERSON_OOR="Advisor"
 
 # Sally - vLEI Reporting API
-SALLY_HOST=http://sally:9723
 WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
 export WEBHOOK_HOST=http://hook:9923
 export SALLY=sally
 export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
 export GEDA_PRE # Required to start sally container
-# SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
-SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm # sally 0.9.4
-# SALLY_PRE=EOz6PBDx1-1P0PC8dsUt7BDN7APYwcC-8fBSLvtQG-gy
+SALLY_PRE=EA69Z5sR2kr-05QmZ7v3VuMq8MdhVupve3caHXbhom0D # Different here because Sally uses witness Wit instead of Wan
 
 # Credentials
 GEDA_REGISTRY=vLEI-external
@@ -200,21 +208,14 @@ QAR3_OOBI=$(echo $qvi_setup_data | jq -r ".QAR3.agentOobi" | tr -d '"')
 PERSON_OOBI=$(echo $qvi_setup_data | jq -r ".PERSON.agentOobi" | tr -d '"')
 
 # Show dyncamic, extracted Signify identifiers and OOBIs
-print_green "QAR1 Prefix: $QAR_PT1_PRE"
-print_dark_gray "QAR1 OOBI: $QAR1_OOBI"
-print_green "QAR2 Prefix: $QAR_PT2_PRE"
-print_dark_gray "QAR2 OOBI: $QAR2_OOBI"
-print_green "QAR3 Prefix: $QAR_PT3_PRE"
-print_dark_gray "QAR3 OOBI: $QAR3_OOBI"
-print_green "Person Prefix: $PERSON_PRE"
+print_green     "QAR1 Prefix: $QAR_PT1_PRE"
+print_dark_gray   "QAR1 OOBI: $QAR1_OOBI"
+print_green     "QAR2 Prefix: $QAR_PT2_PRE"
+print_dark_gray   "QAR2 OOBI: $QAR2_OOBI"
+print_green     "QAR3 Prefix: $QAR_PT3_PRE"
+print_dark_gray   "QAR3 OOBI: $QAR3_OOBI"
+print_green   "Person Prefix: $PERSON_PRE"
 print_dark_gray "Person OOBI: $PERSON_OOBI"
-
-# Creates inception config file for KERIpy identifiers
-function create_icp_config() {
-    jq ".wits = [\"$WAN_PRE\"]" ./config/template-single-sig-incept-config.jq > ./config/single-sig-incept-config.json
-    print_lcyan "Single sig inception config JSON:"
-    print_lcyan "$(cat ./config/single-sig-incept-config.json)"
-}
 
 # initializes a keystore and creates a single sig AID
 function create_aid() {
@@ -233,18 +234,21 @@ function create_aid() {
         return
     fi
 
+    echo
+    print_dark_gray "Creating Habery for ${NAME} with config file ${CONFIG_FILE}"
     ${KLI_CMD:-kli} init \
         --name "${NAME}" \
         --salt "${SALT}" \
         --passcode "${PASSCODE}" \
         --config-dir "${CONFIG_DIR}" \
-        --config-file "${CONFIG_FILE}" >/dev/null 2>&1
+        --config-file "${CONFIG_FILE}" #>/dev/null 2>&1
 
+    print_dark_gray "Creating AID ${NAME} with config file ${ICP_FILE}"
     ${KLI_CMD:-kli} incept \
         --name "${NAME}" \
         --alias "${NAME}" \
         --passcode "${PASSCODE}" \
-        --file "${ICP_FILE}" >/dev/null 2>&1
+        --file "${ICP_FILE}" #>/dev/null 2>&1
     PREFIX=$(${KLI_CMD:-kli} status  --name "${NAME}"  --alias "${NAME}"  --passcode "${PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
     # Need this since resolving with bootstrap config file isn't working
     print_dark_gray "Created AID: ${NAME}"
@@ -263,22 +267,21 @@ function resolve_credential_oobis() {
     ${KLI_CMD:-kli} oobi resolve \
         --name "${NAME}" \
         --passcode "${PASSCODE}" \
-        --oobi "${SCHEMA_SERVER}/oobi/${LE_SCHEMA}" >/dev/null 2>&1
+        --oobi "${SCHEMA_SERVER}/oobi/${LE_SCHEMA}" #>/dev/null 2>&1
     # LE ECR
     ${KLI_CMD:-kli} oobi resolve \
         --name "${NAME}" \
         --passcode "${PASSCODE}" \
-        --oobi "${SCHEMA_SERVER}/oobi/${ECR_SCHEMA}" >/dev/null 2>&1
+        --oobi "${SCHEMA_SERVER}/oobi/${ECR_SCHEMA}" #>/dev/null 2>&1
 }
 
 # 2. GAR: Create single Sig AIDs (2)
 function create_aids() {
     print_green "-----Creating AIDs-----"
-    create_icp_config    
-    create_aid "${GEDA_PT1}" "${GEDA_PT1_SALT}" "${GEDA_PT1_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
-    create_aid "${GEDA_PT2}" "${GEDA_PT2_SALT}" "${GEDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
-    create_aid "${GIDA_PT1}" "${GIDA_PT1_SALT}" "${GIDA_PT1_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
-    create_aid "${GIDA_PT2}" "${GIDA_PT2_SALT}" "${GIDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
+    create_aid "${GEDA_PT1}" "${GEDA_PT1_SALT}" "${GEDA_PT1_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" "/config/incept-cfg-gars.json"
+    create_aid "${GEDA_PT2}" "${GEDA_PT2_SALT}" "${GEDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" "/config/incept-cfg-gars.json"
+    create_aid "${GIDA_PT1}" "${GIDA_PT1_SALT}" "${GIDA_PT1_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" "/config/incept-cfg-qars.json"
+    create_aid "${GIDA_PT2}" "${GIDA_PT2_SALT}" "${GIDA_PT2_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" "/config/incept-cfg-qars.json"
 }
 create_aids
 
@@ -290,13 +293,13 @@ function resolve_oobis() {
         return
     fi
 
-    GEDA1_OOBI="${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}"
-    GEDA2_OOBI="${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}"
-    GIDA1_OOBI="${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}"
-    GIDA2_OOBI="${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}"   
+    GEDA1_OOBI="${WIT_HOST_GAR}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}"
+    GEDA2_OOBI="${WIT_HOST_GAR}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}"
+    GIDA1_OOBI="${WIT_HOST_QAR}/oobi/${GIDA_PT1_PRE}/witness/${WIL_PRE}"
+    GIDA2_OOBI="${WIT_HOST_QAR}/oobi/${GIDA_PT2_PRE}/witness/${WIL_PRE}"
     # SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi
     # SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI
-    SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # sally 0.9.4
+    SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${SALLY_PRE}/witness/${WIT_PRE}" # sally 0.9.4
     OOBIS_FOR_KERIA="geda1|$GEDA1_OOBI,geda2|$GEDA2_OOBI,gida1|$GIDA1_OOBI,gida2|$GIDA2_OOBI,sally|$SALLY_OOBI"
 
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT $SIGTS_AIDS $OOBIS_FOR_KERIA
@@ -304,40 +307,40 @@ function resolve_oobis() {
     echo
     print_lcyan "-----Resolving OOBIs-----"
     print_yellow "Resolving OOBIs for GEDA 1"
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${GEDA2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${GIDA1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${GIDA2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QAR1_OOBI}"  >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QAR2_OOBI}"  >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT3}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QAR3_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT1_PASSCODE}" --oobi "${PERSON_OOBI}" >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${GEDA2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${GIDA1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${GIDA2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QAR1_OOBI}"  #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QAR2_OOBI}"  #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT3}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QAR3_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT1_PASSCODE}" --oobi "${PERSON_OOBI}" #>/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for GEDA 2"
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${GEDA1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${GIDA1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${GIDA2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QAR1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QAR2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT3}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QAR3_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT2_PASSCODE}" --oobi "${PERSON_OOBI}" >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${GEDA1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${GIDA1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${GIDA2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QAR1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QAR2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT3}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QAR3_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT2_PASSCODE}" --oobi "${PERSON_OOBI}" #>/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for GIDA 1"
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${GIDA2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${GEDA1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${GEDA2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QAR1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QAR2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT3}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QAR3_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT1_PASSCODE}" --oobi "${PERSON_OOBI}" >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${GIDA2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${GEDA1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${GEDA2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QAR1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QAR2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT3}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QAR3_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT1_PASSCODE}" --oobi "${PERSON_OOBI}" #>/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for GIDA 2"
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${GIDA1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${GEDA1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${GEDA2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QAR1_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QAR2_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT3}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QAR3_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT2_PASSCODE}" --oobi "${PERSON_OOBI}" >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${GIDA1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${GEDA1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${GEDA2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QAR1_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QAR2_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT3}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QAR3_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT2_PASSCODE}" --oobi "${PERSON_OOBI}" #>/dev/null 2>&1
     
     echo
 }
@@ -355,9 +358,10 @@ function challenge_response() {
 function create_multisig_icp_config() {
     PRE1=$1
     PRE2=$2
+    local wit_pre=$3
     cat ./config/template-multi-sig-incept-config.jq | \
         jq ".aids = [\"$PRE1\",\"$PRE2\"]" | \
-        jq ".wits = [\"$WAN_PRE\"]" > ./config/multi-sig-incept-config.json
+        jq ".wits = [\"$wit_pre\"]" > ./config/multi-sig-incept-config.json
 
     print_lcyan "Multisig inception config JSON:"
     print_lcyan "$(cat ./config/multi-sig-incept-config.json)"
@@ -373,7 +377,7 @@ function create_geda_multisig() {
     echo
     print_yellow "[External] Multisig Inception for GEDA"
 
-    create_multisig_icp_config "${GEDA_PT1_PRE}" "${GEDA_PT2_PRE}"
+    create_multisig_icp_config "${GEDA_PT1_PRE}" "${GEDA_PT2_PRE}" "${WAN_PRE}"
 
     # The following multisig commands run in parallel in Docker
     print_yellow "[External] Multisig Inception from ${GEDA_PT1}: ${GEDA_PT1_PRE}"
@@ -420,7 +424,7 @@ function create_gida_multisig() {
     echo
     print_yellow "[Internal] Multisig Inception for GIDA"
 
-    create_multisig_icp_config "${GIDA_PT1_PRE}" "${GIDA_PT2_PRE}"
+    create_multisig_icp_config "${GIDA_PT1_PRE}" "${GIDA_PT2_PRE}" "${WIL_PRE}"
 
     # Follow commands run in parallel
     print_yellow "[Internal] Multisig Inception from ${GIDA_PT1}: ${GIDA_PT1_PRE}"
@@ -626,10 +630,10 @@ function resolve_qvi_oobi() {
     echo
     echo "QVI OOBI: ${QVI_OOBI}"
     print_yellow "Resolving QVI OOBI for GEDA and GIDA"
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QVI_MS}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QVI_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QVI_MS}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QVI_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QVI_MS}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QVI_OOBI}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QVI_MS}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QVI_OOBI}" >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QVI_MS}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QVI_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QVI_MS}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QVI_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QVI_MS}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QVI_OOBI}" #>/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QVI_MS}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QVI_OOBI}" #>/dev/null 2>&1
 
     print_yellow "Resolving QVI OOBI for Person"
     tsx "${QVI_SIGNIFY_DIR}/person-resolve-qvi-oobi.ts" \

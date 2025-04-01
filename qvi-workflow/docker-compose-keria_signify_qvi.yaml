@@ -7,8 +7,17 @@
 #     image: kentbull/keri:1.1.27a
 # x-keri12-image: &keri12-image
 #     image: kentbull/keri:1.2.1a
-x-witness-demo-image: &witness-demo-image
+
+# Witness Images
+x-gar-witness-image: &gar-witness-image
   image: weboftrust/keri:1.1.32
+x-qar-witness-image: &qar-witness-image
+  image: weboftrust/keri:1.1.32
+x-person-witness-image: &person-witness-image
+  image: weboftrust/keri:1.1.32
+x-sally-witness-image: &sally-witness-image
+  image: weboftrust/keri:1.1.32
+
 x-keria-image: &keria-image
   image: weboftrust/keria:0.2.0-rc2
 x-vlei-image: &vlei-image
@@ -21,6 +30,10 @@ x-healthcheck: &healthcheck
   timeout: 5s
   retries: 3
   start_period: 2s
+x-witness-env: &witness-env
+  PYTHONUNBUFFERED: 1 # Ensure output is logged in real-time
+  PYTHONIOENCODING: UTF-8 # Ensure consistent logging encoding
+  PYTHONWARNINGS: ignore::SyntaxWarning # Ignore regular expression syntax warning
 
 networks:
   default:
@@ -42,26 +55,70 @@ services:
     ports:
       - "7723:7723"
 
-  # Six demo witnesses
-  witness-demo:
-    <<: *witness-demo-image
+  # GARs use one of the six demo witnesses, wan
+  gar-witnesses:
+    <<: *gar-witness-image
     environment:
-      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
-      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - PYTHONWARNINGS=ignore::SyntaxWarning # Ignore regular expression syntax warning
+      <<: *witness-env
     healthcheck:
       test: curl -f http://127.0.0.1:5642/oobi
       <<: *healthcheck
     command: witness demo
     volumes:
-      - ./config/witness-demo-docker:/keripy/scripts/keri/cf/main
+      - ./config/gar-witnesses:/keripy/scripts/keri/cf/main
     ports:
       - "5642:5642" # witness named wan
+    depends_on:
+      vlei-server:
+        condition: service_healthy
+
+  # GARs use one of the six demo witnesses, wan
+  qar-witnesses:
+    <<: *qar-witness-image
+    environment:
+      <<: *witness-env
+    healthcheck:
+      test: curl -f http://127.0.0.1:5643/oobi
+      <<: *healthcheck
+    command: witness demo
+    volumes:
+      - ./config/qar-witnesses:/keripy/scripts/keri/cf/main
+    ports:
       - "5643:5643" # witness named wil
+    depends_on:
+      vlei-server:
+        condition: service_healthy
+
+  # GARs use one of the six demo witnesses, wan
+  person-witnesses:
+    <<: *person-witness-image
+    environment:
+      <<: *witness-env
+    healthcheck:
+      test: curl -f http://127.0.0.1:5644/oobi
+      <<: *healthcheck
+    command: witness demo
+    volumes:
+      - ./config/person-witnesses:/keripy/scripts/keri/cf/main
+    ports:
       - "5644:5644" # witness named wes
+    depends_on:
+      vlei-server:
+        condition: service_healthy
+
+  # GARs use one of the six demo witnesses, wan
+  sally-witnesses:
+    <<: *sally-witness-image
+    environment:
+      <<: *witness-env
+    healthcheck:
+      test: curl -f http://127.0.0.1:5645/oobi
+      <<: *healthcheck
+    command: witness demo
+    volumes:
+      - ./config/sally-witnesses:/keripy/scripts/keri/cf/main
+    ports:
       - "5645:5645" # witness named wit
-      - "5646:5646" # witness named wub
-      - "5647:5647" # witness named wyz
     depends_on:
       vlei-server:
         condition: service_healthy
@@ -74,7 +131,7 @@ services:
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
       - PYTHONWARNINGS=ignore::SyntaxWarning
     volumes:
-      - ./config/keria/keria-docker.json:/keria/config/keri/cf/keria.json
+      - ./config/keria/keria-qvi-witnesses-docker.json:/keria/config/keri/cf/keria.json
     command: --config-dir /keria/config --config-file keria --name agent --loglevel INFO
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
@@ -87,9 +144,12 @@ services:
     depends_on:
       vlei-server:
         condition: service_healthy
-      witness-demo:
+      qar-witnesses:
+        condition: service_healthy
+      person-witnesses:
         condition: service_healthy
 
+  # Sample Webhook that will receive IPEX credential presentation bodies as JSON from Sally
   hook:
     <<: *sally-image
     environment:
@@ -104,6 +164,7 @@ services:
       - 9923:9923
     entrypoint: [ 'sally', 'hook', 'demo' ]
 
+  # The reporting endpoint service receiving IPEX credential presentations
   sally:
     <<: *sally-image
     environment:
@@ -130,5 +191,5 @@ services:
         condition: service_healthy
       vlei-server:
         condition: service_healthy
-      witness-demo:
+      sally-witnesses:
         condition: service_healthy

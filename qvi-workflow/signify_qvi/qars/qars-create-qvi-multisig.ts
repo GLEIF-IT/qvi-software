@@ -28,6 +28,8 @@ const {witnessIds} = resolveEnvironment(env);
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
 async function createQviMultisig(multisigName: string, aidInfo: string, delpre: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
+    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const [
@@ -37,18 +39,18 @@ async function createQviMultisig(multisigName: string, aidInfo: string, delpre: 
     ] = await getOrCreateClients(3, [QAR1.salt, QAR2.salt, QAR3.salt], environment);
 
     // get AIDs
-    const kargsAID = {
-        toad: witnessIds.length,
-        wits: witnessIds,
+    const aidConfigQARs = {
+        toad: 1,
+        wits: [WIL],
     };
     const [
             QAR1Id,
             QAR2Id,
             QAR3Id,
     ] = await Promise.all([
-        getOrCreateAID(QAR1Client, QAR1.name, kargsAID),
-        getOrCreateAID(QAR2Client, QAR2.name, kargsAID),
-        getOrCreateAID(QAR3Client, QAR3.name, kargsAID),
+        getOrCreateAID(QAR1Client, QAR1.name, aidConfigQARs),
+        getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
+        getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
     ]);
 
     // Create a multisig AID for the QVI.
@@ -70,8 +72,8 @@ async function createQviMultisig(multisigName: string, aidInfo: string, delpre: 
             algo: signify.Algos.group,
             isith: ['1/3', '1/3', '1/3'],
             nsith: ['1/3', '1/3', '1/3'],
-            toad: kargsAID.toad,
-            wits: kargsAID.wits,
+            toad: aidConfigQARs.toad,
+            wits: aidConfigQARs.wits,
             states: [...rstates],
             rstates: rstates,
         };
