@@ -1,0 +1,11 @@
+{
+    "keria": {
+        "dt": "2024-12-31T14:06:30.123456+00:00",
+        "curls": ["http://keria:3902/"]
+    },
+    "dt": "2024-12-31T14:06:30.123456+00:00",
+    "iurls": [
+        "http://qar-witnesses:5643/oobi/BLskRTInXnMxWaGqcpSyMgo0nYbalW99cGZESrz3zapM/controller?name=Wil&tag=witness&tag=sample",
+        "http://person-witnesses:5644/oobi/BIKKuvBwpmDVA4Ds-EpL5bt9OqPzWPja2LigFYZN2YfX/controller?name=Wes&tag=witness&tag=sample"
+    ]
+}

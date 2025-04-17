@@ -31,6 +31,8 @@ const {witnessIds} = resolveEnvironment(env);
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
 async function admitCredential(aidInfo: string, issuerPrefix: string, witnessIds: Array<string>, credSAID: string, environment: TestEnvironmentPreset) {
+    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+
     // get Clients
     const {QAR1, QAR2, QAR3, PERSON} = parseAidInfo(aidInfo);
     const [
@@ -41,11 +43,11 @@ async function admitCredential(aidInfo: string, issuerPrefix: string, witnessIds
     ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
 
     // get AIDs
-    const kargsAID = {
-        toad: witnessIds.length,
-        wits: witnessIds,
+    const aidConfigPerson = {
+        toad: 1,
+        wits: [WES],
     };
-    const PersonId = await getOrCreateAID(PersonClient, PERSON.name, kargsAID);
+    const PersonId = await getOrCreateAID(PersonClient, PERSON.name, aidConfigPerson);
 
     let credByQAR1 = await getReceivedCredential(PersonClient, credSAID);
     if (!(credByQAR1)) {

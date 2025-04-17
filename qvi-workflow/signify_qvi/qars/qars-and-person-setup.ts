@@ -40,37 +40,37 @@ const OOR_SCHEMA_URL=`${vleiServerUrl}/oobi/${OOR_SCHEMA}`;
 // aidInfoArg format: "qar1|Alice|salt1,qar2|Bob|salt2,qar3|Charlie|salt3,person|David|salt4"
 async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmentPreset) {
     const {QAR1, QAR2, QAR3, PERSON} = parseAidInfo(aidInfoArg);
+    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
 
-    // create SignifyTS Clients
+    // Create SignifyTS Clients
     const [
         QAR1Client,
         QAR2Client,
         QAR3Client,
         personClient,
     ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
-    console.log("QARs and Person SignifyClients created")
-    console.log(`QAR1 pre: ${QAR1Client.controller?.pre}`);
-    console.log(`QAR2 pre: ${QAR2Client.controller?.pre}`);
-    console.log(`QAR3 pre: ${QAR3Client.controller?.pre}`);
 
-    const kargsAID = {
-        toad: witnessIds.length,
-        wits: witnessIds,
+    // Create QAR AIDs
+    const aidConfigQARs = {
+        toad: 1,
+        wits: [WIL],
     };
-
-    // Create AIDs
     const [
         QAR1Id,
         QAR2Id,
         QAR3Id,
-        personId,
     ] = await Promise.all([
-        getOrCreateAID(QAR1Client, QAR1.name, kargsAID),
-        getOrCreateAID(QAR2Client, QAR2.name, kargsAID),
-        getOrCreateAID(QAR3Client, QAR3.name, kargsAID),
-        getOrCreateAID(personClient, PERSON.name, kargsAID),
+        getOrCreateAID(QAR1Client, QAR1.name, aidConfigQARs),
+        getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
+        getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
     ]);
-    console.log("QARs and Person AIDs created")
+
+    // Create Person AID
+    const aidConfigPerson = {
+        toad: 1,
+        wits: [WES],
+    };
+    const personId = await getOrCreateAID(personClient, PERSON.name, aidConfigPerson);
     
     // Get Witness and Agent OOBIs
     const WitnessRole = 'witness';
@@ -97,9 +97,6 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
         QAR3Client.oobis().get(QAR3.name, AgentRole),
         personClient.oobis().get(PERSON.name, AgentRole),
     ]);
-    console.log("QAR and Person witness and agent OOBIs created.");
-
-    // TODO perform challenge phrase exchange between QARs and between QARs and person
 
     // Perform all OOBI introductions between QAR participants and the person
     console.log("QAR and Person resolving OOBIs...")
