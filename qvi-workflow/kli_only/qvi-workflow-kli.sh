@@ -288,7 +288,7 @@ function resolve_oobis() {
 
     echo
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
-    print_yellow "Resolving OOBIs for GEDA 1"
+    print_yellow "Resolving OOBIs for GAR1"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${GAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
@@ -296,7 +296,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
-    print_yellow "Resolving OOBIs for GEDA 2"
+    print_yellow "Resolving OOBIs for GAR2"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
@@ -362,15 +362,15 @@ function challenge_response() {
 
     print_dark_gray "---Challenge responses for GEDA---"
 
-    print_dark_gray "Challenge: GEDA 1 -> GEDA 2"
-    words_geda1_to_geda2=$(kli challenge generate --out string)
-    kli challenge respond --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --recipient "${GAR1}" --words "${words_geda1_to_geda2}"
-    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${GAR2}"    --words "${words_geda1_to_geda2}"
+    print_dark_gray "Challenge: GAR1 -> GAR2"
+    words_gar1_to_gar2=$(kli challenge generate --out string)
+    kli challenge respond --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --recipient "${GAR1}" --words "${words_gar1_to_gar2}"
+    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${GAR2}"    --words "${words_gar1_to_gar2}"
 
-    print_dark_gray "Challenge: GEDA 2 -> GEDA 1"
-    words_geda2_to_geda1=$(kli challenge generate --out string)
-    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${GAR2}" --words "${words_geda2_to_geda1}"
-    kli challenge verify  --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --signer "${GAR1}"    --words "${words_geda2_to_geda1}"
+    print_dark_gray "Challenge: GAR2 -> GAR1"
+    words_gar2_to_gar1=$(kli challenge generate --out string)
+    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${GAR2}" --words "${words_gar2_to_gar1}"
+    kli challenge verify  --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --signer "${GAR1}"    --words "${words_gar2_to_gar1}"
 
     print_dark_gray "---Challenge responses for QAR---"
 
@@ -384,27 +384,27 @@ function challenge_response() {
     kli challenge respond --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --recipient "${QAR2}" --words "${words_qar2_to_qar1}"
     kli challenge verify  --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --signer "${QAR1}"    --words "${words_qar2_to_qar1}"
 
-    print_dark_gray "---Challenge responses between GEDA and QAR---"
+    print_dark_gray "---Challenge responses between GARs and QARs---"
     
-    print_dark_gray "Challenge: GEDA 1 -> QAR 1"
-    words_geda1_to_qar1=$(kli challenge generate --out string)
-    kli challenge respond --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --recipient "${GAR1}" --words "${words_geda1_to_qar1}"
-    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${QAR1}"    --words "${words_geda1_to_qar1}"
+    print_dark_gray "Challenge: GAR1 -> QAR 1"
+    words_gar1_to_qar1=$(kli challenge generate --out string)
+    kli challenge respond --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --recipient "${GAR1}" --words "${words_gar1_to_qar1}"
+    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${QAR1}"    --words "${words_gar1_to_qar1}"
 
-    print_dark_gray "Challenge: QAR 1 -> GEDA 1"
-    words_qar1_to_geda1=$(kli challenge generate --out string)
-    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${QAR1}" --words "${words_qar1_to_geda1}"
-    kli challenge verify  --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --signer "${GAR1}"    --words "${words_qar1_to_geda1}"
+    print_dark_gray "Challenge: QAR 1 -> GAR1"
+    words_qar1_to_gar1=$(kli challenge generate --out string)
+    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${QAR1}" --words "${words_qar1_to_gar1}"
+    kli challenge verify  --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --signer "${GAR1}"    --words "${words_qar1_to_gar1}"
 
-    print_dark_gray "Challenge: GEDA 2 -> QAR 2"
-    words_geda1_to_qar2=$(kli challenge generate --out string)
-    kli challenge respond --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --recipient "${GAR1}" --words "${words_geda1_to_qar2}"
-    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${QAR2}"    --words "${words_geda1_to_qar2}"
+    print_dark_gray "Challenge: GAR2 -> QAR 2"
+    words_gar1_to_qar2=$(kli challenge generate --out string)
+    kli challenge respond --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --recipient "${GAR1}" --words "${words_gar1_to_qar2}"
+    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${QAR2}"    --words "${words_gar1_to_qar2}"
 
-    print_dark_gray "Challenge: QAR 2 -> GEDA 1"
-    words_qar2_to_geda1=$(kli challenge generate --out string)
-    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${QAR2}" --words "${words_qar2_to_geda1}"
-    kli challenge verify  --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --signer "${GAR1}"    --words "${words_qar2_to_geda1}"
+    print_dark_gray "Challenge: QAR 2 -> GAR1"
+    words_qar2_to_gar1=$(kli challenge generate --out string)
+    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${QAR2}" --words "${words_qar2_to_gar1}"
+    kli challenge verify  --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --signer "${GAR1}"    --words "${words_qar2_to_gar1}"
 
     print_dark_gray "---Challenge responses for LE---"
 
@@ -610,12 +610,12 @@ EOM
     echo
 
 
-    print_lcyan "[External] GEDA 1 approves delegation"
+    print_lcyan "[External] GAR1 approves delegation"
     kli delegate confirm --name ${GAR1} --alias ${GAR1} --passcode ${GAR1_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
 
-    print_lcyan "[External] GEDA 2 approves delegation"
+    print_lcyan "[External] GAR 2 approves delegation"
     kli delegate confirm --name ${GAR2} --alias ${GAR2} --passcode ${GAR2_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -651,24 +651,73 @@ create_qvi_multisig
 function qvi_rotate() {
     QVI_MULTISIG_SEQ_NO=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Seq No:/ {print $3}')
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt 0 ]]; then
-        print_yellow "[QVI] Multisig AID ${QVI_NAME} already rotated"
+        print_yellow "[QVI] Multisig AID ${QVI_NAME} already rotated, at SN ${QVI_MULTISIG_SEQ_NO}"
         return
     fi
 
+    print_green "------------------------------QVI Multisig Rotation------------------------------"
+    print_lcyan "Rotating QAR single sigs"
+    # QARs rotate their single sig AIDs
+    kli rotate --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} >/dev/null 2>&1
+    kli rotate --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} >/dev/null 2>&1
+
+    # QARs query each other's keystate
+    print_lcyan "QARs update each other keystates"
+    kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${QAR2_PRE}" >/dev/null 2>&1
+    kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${QAR1_PRE}" >/dev/null 2>&1
+
+    # QARs begin rotation
     print_yellow "[QVI] Rotating delegated multisig AID"
-    kli multisig rotate --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} --auto &
+    kli multisig rotate \
+      --name ${QAR1} \
+      --alias ${QVI_NAME} \
+      --passcode ${QAR1_PASSCODE} \
+      --isith "2" \
+      --smids $QAR1_PRE --smids $QAR2_PRE \
+      --nsith "2" \
+      --rmids $QAR1_PRE --rmids $QAR2_PRE &
     pid=$!
     PID_LIST+=" $pid"
 
-    kli multisig rotate --name ${QAR2} --alias ${QVI_NAME} --passcode ${QAR2_PASSCODE} --auto &
+    kli multisig rotate \
+      --name ${QAR2} \
+      --alias ${QVI_NAME} \
+      --passcode ${QAR2_PASSCODE} \
+      --isith '2' \
+      --smids $QAR1_PRE --smids $QAR2_PRE \
+      --nsith '2' \
+      --rmids $QAR1_PRE --rmids $QAR2_PRE &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    print_yellow "[GEDA] GARs confirm delegated multisig rotation"
+    kli delegate confirm --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} --interact --auto &
+    pid=$!
+    PID_LIST+=" $pid"
+    kli delegate confirm --name ${GAR2} --alias ${GEDA_NAME} --passcode ${GAR2_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
 
     wait $PID_LIST
+    PID_LIST=""
 
+    # GARs query QARs latest keystate
+    print_lcyan "GARs query QARs latest keystate"
+    kli query --name ${GAR1} --alias ${GAR1} --passcode ${GAR1_PASSCODE} --prefix "${QAR1_PRE}" >/dev/null 2>&1
+    kli query --name ${GAR1} --alias ${GAR1} --passcode ${GAR1_PASSCODE} --prefix "${QAR2_PRE}" >/dev/null 2>&1
+
+    kli query --name ${GAR2} --alias ${GAR2} --passcode ${GAR2_PASSCODE} --prefix "${QAR1_PRE}" >/dev/null 2>&1
+    kli query --name ${GAR2} --alias ${GAR2} --passcode ${GAR2_PASSCODE} --prefix "${QAR2_PRE}" >/dev/null 2>&1
+
+    # QARs refresh keystate from GARs
+    print_lcyan "QARs refresh keystate from GARs"
+    kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${GAR1_PRE}" >/dev/null 2>&1
+    kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${GAR2_PRE}" >/dev/null 2>&1
+
+    kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${GAR1_PRE}" >/dev/null 2>&1
+    kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${GAR2_PRE}" >/dev/null 2>&1
 }
-# TODO test this and finish it off
-#qvi_rotate
+qvi_rotate
 
 # QVI: (skip) Perform endpoint role authorizations - done automatically in KLI
 
@@ -882,7 +931,6 @@ function grant_qvi_credential() {
     echo
 }
 grant_qvi_credential
-
 
 # QVI: Admit QVI credential from GEDA
 function admit_qvi_credential() {
