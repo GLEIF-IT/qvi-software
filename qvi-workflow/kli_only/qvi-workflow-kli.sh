@@ -24,9 +24,17 @@
 # in order to complete successfully. This script also runs the webhook with "sally hook demo" that
 # Sally sends a webhook call to.
 
+source ./color-printing.sh
+
+KEYSTORE_DIR=${1:-$HOME/.keri}
+NO_CHALLENGE=${2:-true}
+
+if $NO_CHALLENGE; then
+    print_dark_gray "skipping challenge and response"
+fi
+
 SALLY_PID=""
 WEBHOOK_PID=""
-NO_CHALLENGE=${1:-false}
 
 START_TIME=$(date +%s)
 
@@ -53,14 +61,13 @@ function cleanup() {
     sally_teardown
 }
 
-source ./color-printing.sh
 echo
 print_bg_blue "------------------------------vLEI QVI Workflow Script (KLI)------------------------------"
 echo
 
 # Prepare environment
-KEYSTORE_DIR=${1:-$HOME/.keri}
-print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
+print_dark_gray "KEYSTORE_DIR: ${KEYSTORE_DIR}"
+echo
 
 CONFIG_DIR=./config
 INIT_CFG=common-habery-config.json
@@ -140,6 +147,8 @@ ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
 OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
 ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
 
+SALLY_HOST=http://127.0.0.1:9723
+
 function test_dependencies() {
   # check that sally is installed and available on the PATH
   command -v kli >/dev/null 2>&1 || { print_red "kli is not installed or not available on the PATH. Aborting."; exit 1; }
@@ -147,22 +156,27 @@ function test_dependencies() {
   command -v jq >/dev/null 2>&1 || { print_red "jq is not installed or not available on the PATH. Aborting."; exit 1; }
   command -v sally >/dev/null 2>&1 || { print_red "sally is not installed or not available on the PATH. Aborting."; exit 1; }
 
+  # check that witnesses are up
   curl ${WIT_HOST}/oobi/${WAN_PRE} >/dev/null 2>&1
-    status=$?
-    if [ $status -ne 0 ]; then
-        print_red "Witness server not running at ${WIT_HOST}"
-        cleanup
-    fi
+  status=$?
+  if [ $status -ne 0 ]; then
+      print_red "Witness server not running at ${WIT_HOST}"
+      cleanup
+      exit 0
+  fi
 
-    curl ${SCHEMA_SERVER}/oobi/${QVI_SCHEMA} >/dev/null 2>&1
-    status=$?
-    if [ $status -ne 0 ]; then
-        print_red "Schema server not running at ${SCHEMA_SERVER}"
-        cleanup
-    fi
+  # Check that vLEI-server is up
+  curl ${SCHEMA_SERVER}/oobi/${QVI_SCHEMA} >/dev/null 2>&1
+  status=$?
+  if [ $status -ne 0 ]; then
+      print_red "vLEI-server not running at ${SCHEMA_SERVER}"
+      cleanup
+      exit 0
+  fi
 }
 test_dependencies
-# functions
+
+################# Functions
 temp_icp_config=""
 function create_temp_icp_cfg() {
     read -r -d '' ICP_CONFIG_JSON << EOM
@@ -223,9 +237,9 @@ function create_keystore_and_aid() {
     print_green $'\tPrefix:'" ${PREFIX}"
 }
 
-# 2. GAR: Create single Sig AIDs (2)
+# GAR: Create single Sig AIDs (2)
 function create_aids() {
-    print_green "-----Creating AIDs-----"
+    print_green "------------------------------Creating Autonomic Identifiers (AIDs)------------------------------"
     create_temp_icp_cfg
     create_keystore_and_aid "${GAR1}"   "${GAR1_SALT}"   "${GAR1_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     create_keystore_and_aid "${GAR2}"   "${GAR2_SALT}"   "${GAR2_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
@@ -239,7 +253,32 @@ function create_aids() {
 }
 create_aids
 
-# 3. GAR: OOBI resolutions between single sig AIDs
+function sally_setup() {
+    print_yellow "[GLEIF] setting up webhook"
+    sally hook demo & # For the webhook Sally will call upon credential presentation
+    WEBHOOK_PID=$!
+
+    print_yellow "[GLEIF] starting sally on ${SALLY_HOST}"
+    sally server start \
+        --name $SALLY \
+        --alias $SALLY \
+        --salt $SALLY_SALT \
+        --config-dir sally \
+        --config-file sally-habery.json \
+        --incept-file sally-incept.json \
+        --passcode $SALLY_PASSCODE \
+        --web-hook http://127.0.0.1:9923 \
+        --auth "${GEDA_PRE}" & # who will be presenting the credential
+    SALLY_PID=$!
+
+    print_yellow "[GLEIF] waiting for Sally to start..."
+    sleep 8
+}
+sally_setup
+
+print_yellow "[GLEIF] waiting for Sally to start..."
+
+# GAR: OOBI resolutions between single sig AIDs
 function resolve_oobis() {
     exists=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GAR2}")
     if [[ "$exists" =~ "${GAR2}" ]]; then
@@ -248,7 +287,7 @@ function resolve_oobis() {
     fi
 
     echo
-    print_lcyan "-----Resolving OOBIs-----"
+    print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
     print_yellow "Resolving OOBIs for GEDA 1"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${GAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
@@ -311,7 +350,7 @@ function resolve_oobis() {
 }
 resolve_oobis
 
-# 3.5 GAR: Challenge responses between single sig AIDs
+# GAR: Challenge responses between single sig AIDs
 function challenge_response() {
     chall_length=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq "select(.alias == \"${GAR2}\") | .challenges | length")
     if [[ "$chall_length" -gt 0 ]]; then
@@ -319,7 +358,7 @@ function challenge_response() {
         return
     fi
 
-    print_yellow "-----Challenge Responses-----"
+    print_green "------------------------------Authenticating Keystore control with Challenge Responses------------------------------"
 
     print_dark_gray "---Challenge responses for GEDA---"
 
@@ -409,8 +448,7 @@ else
     challenge_response
 fi
 
-
-# 4. GAR: Create Multisig AID (GEDA)
+# GAR: Create Multisig AID (GEDA)
 function create_geda_multisig() {
     exists=$(kli list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | grep "${GEDA_NAME}")
     if [[ "$exists" =~ "${GEDA_NAME}" ]]; then
@@ -481,79 +519,7 @@ EOM
 }
 create_geda_multisig
 
-# 45. Create Multisig Legal Entity identifier
-function create_le_multisig() {
-    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
-    if [[ "$exists" =~ "${LE_MS_NAME}" ]]; then
-        print_dark_gray "[Internal] LE Multisig AID ${LE_MS_NAME} already exists"
-        return
-    fi
-
-    echo
-    print_yellow "[Internal] Multisig Inception for LE"
-
-    echo
-    print_yellow "[Internal] Multisig Inception temp config file."
-    read -r -d '' MULTISIG_ICP_CONFIG_JSON << EOM
-{
-  "aids": [
-    "${LAR1_PRE}",
-    "${LAR2_PRE}"
-  ],
-  "transferable": true,
-  "wits": ["${WAN_PRE}"],
-  "toad": 1,
-  "isith": "2",
-  "nsith": "2"
-}
-EOM
-
-    print_lcyan "[Internal] Using temporary multisig config file as heredoc:"
-    print_lcyan "${MULTISIG_ICP_CONFIG_JSON}"
-
-    # create temporary file to store json
-    temp_multisig_config=$(mktemp)
-
-    # write JSON content to the temp file
-    echo "$MULTISIG_ICP_CONFIG_JSON" > "$temp_multisig_config"
-
-    # Follow commands run in parallel
-    print_yellow "[Internal] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
-    kli multisig incept --name ${LAR1} --alias ${LAR1} \
-        --passcode ${LAR1_PASSCODE} \
-        --group ${LE_MS_NAME} \
-        --file "${temp_multisig_config}" &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    echo
-
-    kli multisig join --name ${LAR2} \
-        --passcode ${LAR2_PASSCODE} \
-        --group ${LE_MS_NAME} \
-        --auto &
-    pid=$!
-    PID_LIST+=" $pid"
-
-    echo
-    print_yellow "[Internal] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
-    echo
-    wait $PID_LIST
-
-    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
-    if [[ ! "$exists" =~ "${LE_MS_NAME}" ]]; then
-        print_red "[Internal] LE Multisig inception failed"
-        exit 1
-    fi
-
-    ms_prefix=$(kli status --name ${LAR1} --alias ${LE_MS_NAME} --passcode ${LAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
-    print_green "[Internal] LE Multisig AID ${LE_MS_NAME} with prefix: ${ms_prefix}"
-
-    rm "$temp_multisig_config"
-}
-create_le_multisig
-
-# 9. QAR: Resolve GEDA OOBI
+# QAR: Resolve GEDA OOBI
 function resolve_geda_oobis() {
     exists=$(kli contacts list --name "${QAR1}" --passcode "${QAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GEDA_NAME}")
     if [[ "$exists" =~ "${GEDA_NAME}" ]]; then
@@ -568,9 +534,11 @@ function resolve_geda_oobis() {
 }
 resolve_geda_oobis
 
-# 10. QAR: Create delegated multisig QVI AID
-# 11. QVI: Create delegated AID with GEDA as delegator
-# 12. GEDA: delegate to QVI
+echo
+print_green "------------------------------GEDA Delegating to QVI identifier------------------------------"
+echo
+
+# QARs: Create delegated multisig QVI AID with GEDA as delegator
 function create_qvi_multisig() {
     exists=$(kli list --name "${QAR1}" --passcode "${QAR1_PASSCODE}" | grep "${QVI_NAME}")
     if [[ "$exists" =~ "${QVI_NAME}" ]]; then
@@ -679,8 +647,7 @@ EOM
 }
 create_qvi_multisig
 
-# 12.5 QVI & GEDA: perform multisig delegated rotation
-
+# QVI & GEDA: perform multisig delegated rotation
 function qvi_rotate() {
     QVI_MULTISIG_SEQ_NO=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Seq No:/ {print $3}')
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt 0 ]]; then
@@ -727,8 +694,7 @@ function resolve_qvi_oobi() {
 }
 resolve_qvi_oobi
 
-        
-# 15.5 GEDA: Create GEDA credential registry
+# GEDA: Create GEDA credential registry
 function create_geda_reg() {
     # Check if GEDA credential registry already exists
     REGISTRY=$(kli vc registry list \
@@ -770,7 +736,7 @@ function create_geda_reg() {
 }
 create_geda_reg
 
-# 16. GEDA: Create QVI credential
+# GEDA: Create QVI credential
 function prepare_qvi_cred_data() {
     print_bg_blue "[External] Preparing QVI credential data"
     read -r -d '' QVI_CRED_DATA << EOM
@@ -838,7 +804,7 @@ function create_qvi_credential() {
 }
 create_qvi_credential
 
-# 17. GEDA: IPEX Grant QVI credential to QVI
+# GEDA: IPEX Grant QVI credential to QVI
 function grant_qvi_credential() {
     QVI_GRANT_SAID=$(kli ipex list \
         --name "${QAR1}" \
@@ -918,7 +884,7 @@ function grant_qvi_credential() {
 grant_qvi_credential
 
 
-# 18. QVI: Admit QVI credential from GEDA
+# QVI: Admit QVI credential from GEDA
 function admit_qvi_credential() {
     VC_SAID=$(kli vc list \
         --name "${QAR2}" \
@@ -966,7 +932,40 @@ function admit_qvi_credential() {
 }
 admit_qvi_credential
 
-# 18.5 Create QVI credential registry
+# QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
+
+function present_qvi_cred_to_sally() {
+    print_yellow "[QVI] Presenting QVI Credential to Sally"
+    QVI_SAID=$(kli vc list --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --said --schema "${QVI_SCHEMA}")
+
+    PID_LIST=""
+    kli ipex grant \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --said "${QVI_SAID}" \
+        --recipient "${SALLY}" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    kli ipex join \
+        --name "${QAR2}" \
+        --passcode "${QAR2_PASSCODE}" \
+        --auto &
+    pid=$!
+    PID_LIST+=" $pid"
+    wait $PID_LIST
+
+    print_green "[QVI] QVI Credential presented to Sally"
+    print_dark_gray "[QVI] Waiting 15 s for Sally to call webhook"
+    sleep 15
+}
+present_qvi_cred_to_sally
+
+# Create QVI credential registry
 function create_qvi_reg() {
     # Check if QVI credential registry already exists
     REGISTRY=$(kli vc registry list \
@@ -1008,18 +1007,6 @@ function create_qvi_reg() {
 }
 create_qvi_reg
 
-# 18.6 QVI OOBIs with LE
-function resolve_le_and_qvi_oobis() {
-    echo
-    LE_OOBI=$(kli oobi generate --name ${LAR1} --passcode ${LAR1_PASSCODE} --alias ${LE_MS_NAME} --role witness)
-    echo "LE OOBI: ${LE_OOBI}"
-    kli oobi resolve --name "${QAR1}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR1_PASSCODE}" --oobi "${LE_OOBI}"
-    kli oobi resolve --name "${QAR2}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR2_PASSCODE}" --oobi "${LE_OOBI}"
-    
-    echo
-}
-resolve_le_and_qvi_oobis
-
 # QVI: Prepare, create, and Issue LE credential to GEDA
 
 # Prepare LE edge data
@@ -1047,7 +1034,91 @@ EOM
     print_lcyan "Legal Entity edge Data"
     print_lcyan "$(cat ./acdc-info/temp-data/qvi-edge.json | jq )"
 }
-prepare_qvi_edge    
+prepare_qvi_edge
+
+# Create Multisig Legal Entity identifier
+function create_le_multisig() {
+    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
+    if [[ "$exists" =~ "${LE_MS_NAME}" ]]; then
+        print_dark_gray "[Internal] LE Multisig AID ${LE_MS_NAME} already exists"
+        return
+    fi
+
+    echo
+    print_yellow "[Internal] Multisig Inception for LE"
+
+    echo
+    print_yellow "[Internal] Multisig Inception temp config file."
+    read -r -d '' MULTISIG_ICP_CONFIG_JSON << EOM
+{
+  "aids": [
+    "${LAR1_PRE}",
+    "${LAR2_PRE}"
+  ],
+  "transferable": true,
+  "wits": ["${WAN_PRE}"],
+  "toad": 1,
+  "isith": "2",
+  "nsith": "2"
+}
+EOM
+
+    print_lcyan "[Internal] Using temporary multisig config file as heredoc:"
+    print_lcyan "${MULTISIG_ICP_CONFIG_JSON}"
+
+    # create temporary file to store json
+    temp_multisig_config=$(mktemp)
+
+    # write JSON content to the temp file
+    echo "$MULTISIG_ICP_CONFIG_JSON" > "$temp_multisig_config"
+
+    # Follow commands run in parallel
+    print_yellow "[Internal] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
+    kli multisig incept --name ${LAR1} --alias ${LAR1} \
+        --passcode ${LAR1_PASSCODE} \
+        --group ${LE_MS_NAME} \
+        --file "${temp_multisig_config}" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    echo
+
+    kli multisig join --name ${LAR2} \
+        --passcode ${LAR2_PASSCODE} \
+        --group ${LE_MS_NAME} \
+        --auto &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    echo
+    print_yellow "[Internal] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
+    echo
+    wait $PID_LIST
+
+    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
+    if [[ ! "$exists" =~ "${LE_MS_NAME}" ]]; then
+        print_red "[Internal] LE Multisig inception failed"
+        exit 1
+    fi
+
+    ms_prefix=$(kli status --name ${LAR1} --alias ${LE_MS_NAME} --passcode ${LAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_green "[Internal] LE Multisig AID ${LE_MS_NAME} with prefix: ${ms_prefix}"
+
+    rm "$temp_multisig_config"
+}
+create_le_multisig
+
+# QVI OOBIs with LE
+function resolve_le_and_qvi_oobis() {
+    echo
+    LE_OOBI=$(kli oobi generate --name ${LAR1} --passcode ${LAR1_PASSCODE} --alias ${LE_MS_NAME} --role witness)
+    echo "LE OOBI: ${LE_OOBI}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR1_PASSCODE}" --oobi "${LE_OOBI}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR2_PASSCODE}" --oobi "${LE_OOBI}"
+
+    echo
+}
+resolve_le_and_qvi_oobis
 
 # LE: Create LE credential registry
 function create_le_reg() {
@@ -1091,7 +1162,7 @@ function create_le_reg() {
 }
 create_le_reg
 
-# 19.2 Prepare LE credential data
+# Prepare LE credential data
 function prepare_le_cred_data() {
     print_yellow "[QVI] Preparing LE credential data"
     read -r -d '' LE_CRED_DATA << EOM
@@ -1107,7 +1178,7 @@ EOM
 }
 prepare_le_cred_data
 
-# 19.3 Create LE credential in QVI
+# Create LE credential in QVI
 function create_le_credential() {
     # Check if LE credential already exists
     SAID=$(kli vc list \
@@ -1246,7 +1317,7 @@ function grant_le_credential() {
 }
 grant_le_credential
 
-# 20. GEDA: Admit LE credential from QVI
+# LE: Admit LE credential from QVI
 function admit_le_credential() {
     VC_SAID=$(kli vc list \
         --name "${LAR2}" \
@@ -1295,9 +1366,9 @@ function admit_le_credential() {
 }
 admit_le_credential
 
-# 21. GEDA: Prepare, create, and Issue ECR Auth & OOR Auth credential to QVI
+# LE: Prepare, create, and Issue ECR Auth & OOR Auth credential to QVI
 
-# 21.1 prepare LE edge to ECR auth cred
+# prepare LE edge to ECR auth cred
 function prepare_le_edge() {
     LE_SAID=$(kli vc list \
         --name ${LAR1} \
@@ -1324,7 +1395,7 @@ EOM
 }
 prepare_le_edge
 
-# 21.2 Prepare ECR Auth credential data
+# Prepare ECR Auth credential data
 function prepare_ecr_auth_data() {
     read -r -d '' ECR_AUTH_DATA_JSON << EOM
 {
@@ -1341,7 +1412,7 @@ EOM
 }
 prepare_ecr_auth_data
 
-# 21.3 Create ECR Auth credential
+# Create ECR Auth credential
 function create_ecr_auth_credential() {
     # Check if ECR auth credential already exists
     SAID=$(kli vc list \
@@ -1398,7 +1469,7 @@ function create_ecr_auth_credential() {
 }
 create_ecr_auth_credential
 
-# 21.4 Grant ECR Auth credential to QVI
+# Grant ECR Auth credential to QVI
 function grant_ecr_auth_credential() {
     # This relies on there being only one grant in the list for the GEDA
     GRANT_COUNT=$(kli ipex list \
@@ -1522,7 +1593,7 @@ function admit_ecr_auth_credential() {
 }
 admit_ecr_auth_credential
 
-# 21.6 Prepare OOR Auth credential data
+# Prepare OOR Auth credential data
 function prepare_oor_auth_data() {
     read -r -d '' OOR_AUTH_DATA_JSON << EOM
 {
@@ -1539,7 +1610,7 @@ EOM
 }
 prepare_oor_auth_data
 
-# 21.7 Create OOR Auth credential
+# Create OOR Auth credential
 function create_oor_auth_credential() {
     # Check if OOR auth credential already exists
     SAID=$(kli vc list \
@@ -1596,7 +1667,7 @@ function create_oor_auth_credential() {
 }
 create_oor_auth_credential
 
-# 21.8 Grant OOR Auth credential to QVI
+# Grant OOR Auth credential to QVI
 function grant_oor_auth_credential() {
     # This relies on the last grant being the OOR Auth credential
     GRANT_COUNT=$(kli ipex list \
@@ -1671,7 +1742,7 @@ function grant_oor_auth_credential() {
 }
 grant_oor_auth_credential
 
-# 22. QVI: Admit OOR Auth credential
+# QVI: Admit OOR Auth credential
 function admit_oor_auth_credential() {
     VC_SAID=$(kli vc list \
         --name "${QAR2}" \
@@ -1721,8 +1792,8 @@ function admit_oor_auth_credential() {
 }
 admit_oor_auth_credential
 
-# 23. QVI: Create and Issue ECR credential to Person
-# 23.1 Prepare ECR Auth edge data
+# QVI: Create and Issue ECR credential to Person
+# Prepare ECR Auth edge data
 function prepare_ecr_auth_edge() {
     ECR_AUTH_SAID=$(kli vc list \
         --name "${QAR1}" \
@@ -1750,7 +1821,7 @@ EOM
 }
 prepare_ecr_auth_edge      
 
-# 23.2 Prepare ECR credential data
+# Prepare ECR credential data
 function prepare_ecr_cred_data() {
     print_bg_blue "[QVI] Preparing ECR credential data"
     read -r -d '' ECR_CRED_DATA << EOM
@@ -1768,7 +1839,7 @@ EOM
 }
 prepare_ecr_cred_data
 
-# 23.3 Create ECR credential in QVI, issued to the Person
+# Create ECR credential in QVI, issued to the Person
 function create_ecr_credential() {
     # Check if ECR credential already exists
     SAID=$(kli vc list \
@@ -1832,7 +1903,7 @@ function create_ecr_credential() {
 }
 create_ecr_credential
 
-# 23.4 QVI Grant ECR credential to PERSON
+# QVI Grant ECR credential to PERSON
 function grant_ecr_credential() {
     # This only works the last grant is the ECR credential
     ECR_GRANT_SAID=$(kli ipex list \
@@ -1897,7 +1968,7 @@ function grant_ecr_credential() {
 }
 grant_ecr_credential
 
-# 23.5. Person: Admit ECR credential from QVI
+# Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
     VC_SAID=$(kli vc list \
         --name "${PERSON}" \
@@ -1936,8 +2007,8 @@ function admit_ecr_credential() {
 }
 admit_ecr_credential
 
-# 24. QVI: Issue, grant OOR to Person and Person admits OOR
-# 24.1 Prepare OOR Auth edge data
+# QVI: Issue, grant OOR to Person and Person admits OOR
+# Prepare OOR Auth edge data
 function prepare_oor_auth_edge() {
     OOR_AUTH_SAID=$(kli vc list \
         --name ${QAR1} \
@@ -1965,7 +2036,7 @@ EOM
 }
 prepare_oor_auth_edge      
 
-# 24.2 Prepare OOR credential data
+# Prepare OOR credential data
 function prepare_oor_cred_data() {
     print_bg_blue "[QVI] Preparing OOR credential data"
     read -r -d '' OOR_CRED_DATA << EOM
@@ -1983,7 +2054,7 @@ EOM
 }
 prepare_oor_cred_data
 
-# 24.3 Create OOR credential in QVI, issued to the Person
+# Create OOR credential in QVI, issued to the Person
 function create_oor_credential() {
     # Check if OOR credential already exists
     SAID=$(kli vc list \
@@ -2039,7 +2110,7 @@ function create_oor_credential() {
 }
 create_oor_credential
 
-# 24.4 QVI Grant OOR credential to PERSON
+# QVI Grant OOR credential to PERSON
 function grant_oor_credential() {
     # This only works the last grant is the OOR credential
     GRANT_COUNT=$(kli ipex list \
@@ -2101,7 +2172,7 @@ function grant_oor_credential() {
 }
 grant_oor_credential
 
-# 24.5. Person: Admit OOR credential from QVI
+# Person: Admit OOR credential from QVI
 function admit_oor_credential() {
     VC_SAID=$(kli vc list \
         --name "${PERSON}" \
@@ -2140,29 +2211,7 @@ function admit_oor_credential() {
 }
 admit_oor_credential
 
-# 25. QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
-
-function sally_setup() {
-    print_yellow "[GLEIF] setting up webhook"
-    sally hook demo & # For the webhook Sally will call upon credential presentation
-    WEBHOOK_PID=$!
-
-    print_yellow "[GLEIF] starting sally"
-    sally server start \
-        --name $SALLY \
-        --alias $SALLY \
-        --salt $SALLY_SALT \
-        --config-dir sally \
-        --config-file sally-habery.json \
-        --incept-file sally-incept.json \
-        --passcode $SALLY_PASSCODE \
-        --web-hook http://127.0.0.1:9923 \
-        --auth "${GEDA_PRE}" & # who will be presenting the credential
-    SALLY_PID=$!
-
-    sleep 8
-}
-sally_setup
+# QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
 
 function present_le_cred_to_sally() {
     print_yellow "[QVI] Presenting LE Credential to Sally"
