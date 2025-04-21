@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # qvi-workflow-kli.sh
-# Runs the entire QVI issuance workflow end to end starting from multisig AID creatin including the
-# GLEIF External Delegated AID (GEDA) creation all the way to OOR and ECR credential issuance to the
-# Person AID for usage in the iXBRL data attestation.
+# See the README.md document accompanying this script for more information.
+# Runs the entire QVI issuance workflow end to end starting from multisig AID creation of the
+# GLEIF External Delegated multisig AID (GEDA) and Qualified vLEI Issuer (QVI) multisig AID,
+# all the way to OOR and ECR credential issuance to the Person AID for usage in presenting
+# credentials to the vLEI Reporting API (Sally).
 #
 # Note:
 # This is designed to work with a local installation of the necessary components.
@@ -16,7 +18,7 @@
 # This script runs the "sally" program so it must be installed and available on the path
 #
 # WARNING: This currently depends on v0.10.0+ of Sally being available on the PATH which uses a different
-#          version of KERI (1.2.4) than the KLI (1.1.32) here uses. Be sure to install the KLI first and
+#          version of KERI (1.2.6) than the KLI (1.1.32) here uses. Be sure to install the KLI first and
 #          then install sally globally on your machine prior to running this script.
 #
 # in order to complete successfully. This script also runs the webhook with "sally hook demo" that
@@ -24,6 +26,9 @@
 
 SALLY_PID=""
 WEBHOOK_PID=""
+NO_CHALLENGE=${1:-false}
+
+START_TIME=$(date +%s)
 
 # send sigterm to sally PID
 function sally_teardown() {
@@ -48,17 +53,17 @@ function cleanup() {
     sally_teardown
 }
 
-source ./script-utils.sh
+source ./color-printing.sh
 echo
 print_bg_blue "------------------------------vLEI QVI Workflow Script (KLI)------------------------------"
 echo
 
-# 1. GAR: Prepare environment
+# Prepare environment
 KEYSTORE_DIR=${1:-$HOME/.keri}
 print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
 
 CONFIG_DIR=./config
-INIT_CFG=qvi-workflow-init-config-dev-local.json
+INIT_CFG=common-habery-config.json
 WAN_PRE=BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha
 WIT_HOST=http://127.0.0.1:5642
 SCHEMA_SERVER=http://127.0.0.1:7723
@@ -128,10 +133,10 @@ GIDA_REGISTRY=vLEI-internal
 QVI_REGISTRY=vLEI-qvi
 QVI_SCHEMA=EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao
 LE_SCHEMA=ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY
-ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
 OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
-ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
+ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
 OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
+ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
 
 function test_dependencies() {
   # check that sally is installed and available on the PATH
@@ -180,7 +185,7 @@ EOM
 }
 
 # creates a single sig AID
-function create_aid() {
+function create_keystore_and_aid() {
     NAME=$1
     SALT=$2
     PASSCODE=$3
@@ -195,53 +200,39 @@ function create_aid() {
         return
     fi
 
+    echo
+    print_lcyan "Bootstrapping keystore (Habery) for ${NAME}..."
     kli init \
         --name "${NAME}" \
         --salt "${SALT}" \
         --passcode "${PASSCODE}" \
         --config-dir "${CONFIG_DIR}" \
-        --config-file "${CONFIG_FILE}" >/dev/null 2>&1
+        --config-file "${CONFIG_FILE}" # >/dev/null 2>&1
+    echo
+    print_lcyan "Creating single signature identifier for ${NAME}..."
     kli incept \
         --name "${NAME}" \
         --alias "${NAME}" \
         --passcode "${PASSCODE}" \
-        --file "${ICP_FILE}" >/dev/null 2>&1
+        --file "${ICP_FILE}" # >/dev/null 2>&1
     PREFIX=$(kli status  --name "${NAME}"  --alias "${NAME}"  --passcode "${PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
     # Need this since resolving with bootstrap config file isn't working
     print_dark_gray "Created AID: ${NAME} with prefix: ${PREFIX}"
     print_green $'\tPrefix:'" ${PREFIX}"
-    resolve_credential_oobis "${NAME}" "${PASSCODE}"    
-}
-
-function resolve_credential_oobis() {
-    # Need this function because for some reason resolving more than 8 OOBIs with the bootstrap config file doesn't work
-    NAME=$1
-    PASSCODE=$2
-    print_dark_gray "Resolving credential OOBIs for ${NAME}"
-    # LE
-    kli oobi resolve \
-        --name "${NAME}" \
-        --passcode "${PASSCODE}" \
-        --oobi "${SCHEMA_SERVER}/oobi/${LE_SCHEMA}" >/dev/null 2>&1
-    # LE ECR
-    kli oobi resolve \
-        --name "${NAME}" \
-        --passcode "${PASSCODE}" \
-        --oobi "${SCHEMA_SERVER}/oobi/${ECR_SCHEMA}" >/dev/null 2>&1
 }
 
 # 2. GAR: Create single Sig AIDs (2)
 function create_aids() {
     print_green "-----Creating AIDs-----"
     create_temp_icp_cfg
-    create_aid "${GEDA_PT1}" "${GEDA_PT1_SALT}" "${GEDA_PT1_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_aid "${GEDA_PT2}" "${GEDA_PT2_SALT}" "${GEDA_PT2_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_aid "${GIDA_PT1}" "${GIDA_PT1_SALT}" "${GIDA_PT1_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_aid "${GIDA_PT2}" "${GIDA_PT2_SALT}" "${GIDA_PT2_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_aid "${QAR_PT1}"  "${QAR_PT1_SALT}"  "${QAR_PT1_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_aid "${QAR_PT2}"  "${QAR_PT2_SALT}"  "${QAR_PT2_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_aid "${PERSON}"   "${PERSON_SALT}"   "${PERSON_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_aid "${SALLY}"    "${SALLY_SALT}"    "${SALLY_PASSCODE}"    "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${GEDA_PT1}" "${GEDA_PT1_SALT}" "${GEDA_PT1_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${GEDA_PT2}" "${GEDA_PT2_SALT}" "${GEDA_PT2_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${GIDA_PT1}" "${GIDA_PT1_SALT}" "${GIDA_PT1_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${GIDA_PT2}" "${GIDA_PT2_SALT}" "${GIDA_PT2_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${QAR_PT1}"  "${QAR_PT1_SALT}"  "${QAR_PT1_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${QAR_PT2}"  "${QAR_PT2_SALT}"  "${QAR_PT2_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${PERSON}"   "${PERSON_SALT}"   "${PERSON_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${SALLY}"    "${SALLY_SALT}"    "${SALLY_PASSCODE}"    "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     rm "$temp_icp_config"
 }
 create_aids
@@ -257,62 +248,62 @@ function resolve_oobis() {
     echo
     print_lcyan "-----Resolving OOBIs-----"
     print_yellow "Resolving OOBIs for GEDA 1"
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for GEDA 2"
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for GIDA 1"
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for GIDA 2"
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for QAR 1"
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${QAR_PT2}"   --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GEDA_PT1}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GEDA_PT2}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${PERSON}"    --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GIDA_PT1}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GIDA_PT2}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "$SALLY"       --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${QAR_PT2}"   --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GEDA_PT1}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GEDA_PT2}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${PERSON}"    --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GIDA_PT1}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GIDA_PT2}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "$SALLY"       --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for QAR 2"
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${QAR_PT1}"   --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GEDA_PT2}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GEDA_PT1}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${PERSON}"    --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GIDA_PT1}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GIDA_PT2}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "$SALLY"       --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${QAR_PT1}"   --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GEDA_PT2}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GEDA_PT1}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${PERSON}"    --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GIDA_PT1}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GIDA_PT2}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "$SALLY"       --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
 
     print_yellow "Resolving OOBIs for Person"
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR_PT1}"   --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR_PT2}"   --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GEDA_PT1}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GEDA_PT2}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GIDA_PT1}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GIDA_PT2}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR_PT1}"   --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR_PT2}"   --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GEDA_PT1}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GEDA_PT2}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GIDA_PT1}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GIDA_PT2}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
     
     echo
 }
@@ -410,7 +401,12 @@ function challenge_response() {
 
     print_green "-----Finished challenge and response-----"
 }
-#challenge_response
+if [[ $NO_CHALLENGE ]]; then
+    print_yellow "Skipping challenge and response"
+else
+    challenge_response
+fi
+
 
 # 4. GAR: Create Multisig AID (GEDA)
 function create_geda_multisig() {
@@ -558,18 +554,6 @@ EOM
     touch $HOME/.keri/full-chain-gida-ms
 }
 create_gida_multisig
-
-# 5. GAR: Generate OOBI for GEDA to send to QVI
-# done in step 9 below in the function
-
-# 6. QAR: Create identifiers (2)
-# created in step 2
-
-# 7. QAR: OOBI and Challenge QAR single sig AIDs
-# completed in step 3.5
-
-# 8. QAR: OOBI and Challenge GAR single sig AIDs
-# completed in step 3.5
 
 # 9. QAR: Resolve GEDA OOBI
 function resolve_geda_oobis() {
@@ -797,10 +781,10 @@ function prepare_qvi_cred_data() {
 }
 EOM
 
-    echo "$QVI_CRED_DATA" > ./qvi-cred-data.json
+    echo "$QVI_CRED_DATA" > ./acdc-info/temp-data/qvi-cred-data.json
 
     print_lcyan "QVI Credential Data"
-    print_lcyan "$(cat ./qvi-cred-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/qvi-cred-data.json)"
 }
 prepare_qvi_cred_data
 
@@ -823,28 +807,28 @@ function create_qvi_credential() {
     KLI_TIME=$(kli time)
     PID_LIST=""
     kli vc create \
-        --name ${GEDA_PT1} \
-        --alias ${GEDA_MS} \
-        --passcode ${GEDA_PT1_PASSCODE} \
-        --registry-name ${GEDA_REGISTRY} \
+        --name "${GEDA_PT1}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
+        --registry-name "${GEDA_REGISTRY}" \
         --schema "${QVI_SCHEMA}" \
-        --recipient ${QVI_PRE} \
-        --data @./qvi-cred-data.json \
-        --rules @./rules.json \
-        --time ${KLI_TIME} &
+        --recipient "${QVI_PRE}" \
+        --data @./acdc-info/temp-data/qvi-cred-data.json \
+        --rules @./acdc-info/rules/qvi-cred-rules.json \
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name ${GEDA_PT2} \
-        --alias ${GEDA_MS} \
-        --passcode ${GEDA_PT2_PASSCODE} \
-        --registry-name ${GEDA_REGISTRY} \
+        --name "${GEDA_PT2}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT2_PASSCODE}" \
+        --registry-name "${GEDA_REGISTRY}" \
         --schema "${QVI_SCHEMA}" \
-        --recipient ${QVI_PRE} \
-        --data @./qvi-cred-data.json \
-        --rules @./rules.json \
-        --time ${KLI_TIME} &
+        --recipient "${QVI_PRE}" \
+        --data @./acdc-info/temp-data/qvi-cred-data.json \
+        --rules @./acdc-info/rules/qvi-cred-rules.json \
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
@@ -1065,12 +1049,12 @@ function prepare_qvi_edge() {
     }
 }
 EOM
-    echo "$QVI_EDGE_JSON" > ./qvi-edge.json
+    echo "$QVI_EDGE_JSON" > ./acdc-info/temp-data/qvi-edge.json
 
-    kli saidify --file ./qvi-edge.json
+    kli saidify --file ./acdc-info/temp-data/qvi-edge.json
     
     print_lcyan "Legal Entity edge Data"
-    print_lcyan "$(cat ./qvi-edge.json | jq )"
+    print_lcyan "$(cat ./acdc-info/temp-data/qvi-edge.json | jq )"
 }
 prepare_qvi_edge    
 
@@ -1125,10 +1109,10 @@ function prepare_le_cred_data() {
 }
 EOM
 
-    echo "$LE_CRED_DATA" > ./legal-entity-data.json
+    echo "$LE_CRED_DATA" > ./acdc-info/temp-data/legal-entity-data.json
 
     print_lcyan "[QVI] Legal Entity Credential Data"
-    print_lcyan "$(cat ./legal-entity-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-data.json)"
 }
 prepare_le_cred_data
 
@@ -1159,9 +1143,9 @@ function create_le_credential() {
         --registry-name ${QVI_REGISTRY} \
         --schema "${LE_SCHEMA}" \
         --recipient ${GIDA_PRE} \
-        --data @./legal-entity-data.json \
-        --edges @./qvi-edge.json \
-        --rules @./rules.json \
+        --data @./acdc-info/temp-data/legal-entity-data.json \
+        --edges @./acdc-info/temp-data/qvi-edge.json \
+        --rules @./acdc-info/rules/qvi-cred-rules.json \
         --time ${KLI_TIME} &
 
     pid=$!
@@ -1174,9 +1158,9 @@ function create_le_credential() {
         --registry-name ${QVI_REGISTRY} \
         --schema "${LE_SCHEMA}" \
         --recipient ${GIDA_PRE} \
-        --data @./legal-entity-data.json \
-        --edges @./qvi-edge.json \
-        --rules @./rules.json \
+        --data @./acdc-info/temp-data/legal-entity-data.json \
+        --edges @./acdc-info/temp-data/qvi-edge.json \
+        --rules @./acdc-info/rules/qvi-cred-rules.json \
         --time ${KLI_TIME} &
     pid=$!
     PID_LIST+=" $pid"
@@ -1341,11 +1325,11 @@ function prepare_le_edge() {
 }
 EOM
 
-    echo "$LE_EDGE_JSON" > ./legal-entity-edge.json
-    kli saidify --file ./legal-entity-edge.json
+    echo "$LE_EDGE_JSON" > ./acdc-info/temp-data/legal-entity-edge.json
+    kli saidify --file ./acdc-info/temp-data/legal-entity-edge.json
     
     print_lcyan "[Internal] Legal Entity edge JSON"
-    print_lcyan "$(cat ./legal-entity-edge.json | jq)"
+    print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-edge.json | jq)"
 }
 prepare_le_edge
 
@@ -1360,9 +1344,9 @@ function prepare_ecr_auth_data() {
 }
 EOM
 
-    echo "$ECR_AUTH_DATA_JSON" > ./ecr-auth-data.json
+    echo "$ECR_AUTH_DATA_JSON" > ./acdc-info/temp-data/ecr-auth-data.json
     print_lcyan "[Internal] ECR Auth data JSON"
-    print_lcyan "$(cat ./ecr-auth-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/ecr-auth-data.json)"
 }
 prepare_ecr_auth_data
 
@@ -1393,9 +1377,9 @@ function create_ecr_auth_credential() {
         --registry-name ${GIDA_REGISTRY} \
         --schema ${ECR_AUTH_SCHEMA} \
         --recipient ${QVI_PRE} \
-        --data @./ecr-auth-data.json \
-        --edges @./legal-entity-edge.json \
-        --rules @./ecr-auth-rules.json \
+        --data @./acdc-info/temp-data/ecr-auth-data.json \
+        --edges @./acdc-info/temp-data/legal-entity-edge.json \
+        --rules @./acdc-info/rules/ecr-auth-rules.json \
         --time ${KLI_TIME} &
 
     pid=$!
@@ -1408,9 +1392,9 @@ function create_ecr_auth_credential() {
         --registry-name ${GIDA_REGISTRY} \
         --schema ${ECR_AUTH_SCHEMA} \
         --recipient ${QVI_PRE} \
-        --data @./ecr-auth-data.json \
-        --edges @./legal-entity-edge.json \
-        --rules @./ecr-auth-rules.json \
+        --data @./acdc-info/temp-data/ecr-auth-data.json \
+        --edges @./acdc-info/temp-data/legal-entity-edge.json \
+        --rules @./acdc-info/rules/ecr-auth-rules.json \
         --time ${KLI_TIME} &
     pid=$!
     PID_LIST+=" $pid"
@@ -1558,9 +1542,9 @@ function prepare_oor_auth_data() {
 }
 EOM
 
-    echo "$OOR_AUTH_DATA_JSON" > ./oor-auth-data.json
+    echo "$OOR_AUTH_DATA_JSON" > ./acdc-info/temp-data/oor-auth-data.json
     print_lcyan "[Internal] OOR Auth data JSON"
-    print_lcyan "$(cat ./oor-auth-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/oor-auth-data.json)"
 }
 prepare_oor_auth_data
 
@@ -1591,9 +1575,9 @@ function create_oor_auth_credential() {
         --registry-name ${GIDA_REGISTRY} \
         --schema ${OOR_AUTH_SCHEMA} \
         --recipient ${QVI_PRE} \
-        --data @./oor-auth-data.json \
-        --edges @./legal-entity-edge.json \
-        --rules @./rules.json \
+        --data @./acdc-info/temp-data/oor-auth-data.json \
+        --edges @./acdc-info/temp-data/legal-entity-edge.json \
+        --rules @./acdc-info/rules/qvi-cred-rules.json \
         --time ${KLI_TIME} &
 
     pid=$!
@@ -1606,9 +1590,9 @@ function create_oor_auth_credential() {
         --registry-name ${GIDA_REGISTRY} \
         --schema ${OOR_AUTH_SCHEMA} \
         --recipient ${QVI_PRE} \
-        --data @./oor-auth-data.json \
-        --edges @./legal-entity-edge.json \
-        --rules @./rules.json \
+        --data @./acdc-info/temp-data/oor-auth-data.json \
+        --edges @./acdc-info/temp-data/legal-entity-edge.json \
+        --rules @./acdc-info/rules/qvi-cred-rules.json \
         --time ${KLI_TIME} &
     pid=$!
     PID_LIST+=" $pid"
@@ -1766,12 +1750,12 @@ function prepare_ecr_auth_edge() {
     }
 }
 EOM
-    echo "$ECR_AUTH_EDGE_JSON" > ./ecr-auth-edge.json
+    echo "$ECR_AUTH_EDGE_JSON" > ./acdc-info/temp-data/ecr-auth-edge.json
 
-    kli saidify --file ./ecr-auth-edge.json
+    kli saidify --file ./acdc-info/temp-data/ecr-auth-edge.json
     
     print_lcyan "[QVI] ECR Auth edge Data"
-    print_lcyan "$(cat ./ecr-auth-edge.json | jq )"
+    print_lcyan "$(cat ./acdc-info/temp-data/ecr-auth-edge.json | jq )"
 }
 prepare_ecr_auth_edge      
 
@@ -1786,10 +1770,10 @@ function prepare_ecr_cred_data() {
 }
 EOM
 
-    echo "${ECR_CRED_DATA}" > ./ecr-data.json
+    echo "${ECR_CRED_DATA}" > ./acdc-info/temp-data/ecr-data.json
 
     print_lcyan "[QVI] ECR Credential Data"
-    print_lcyan "$(cat ./ecr-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/ecr-data.json)"
 }
 prepare_ecr_cred_data
 
@@ -1825,9 +1809,9 @@ function create_ecr_credential() {
         --registry-name "${QVI_REGISTRY}" \
         --schema "${ECR_SCHEMA}" \
         --recipient "${PERSON_PRE}" \
-        --data @./ecr-data.json \
-        --edges @./ecr-auth-edge.json \
-        --rules @./ecr-rules.json \
+        --data @./acdc-info/temp-data/ecr-data.json \
+        --edges @./acdc-info/temp-data/ecr-auth-edge.json \
+        --rules @./acdc-info/rules/ecr-rules.json \
         --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
@@ -1842,9 +1826,9 @@ function create_ecr_credential() {
         --registry-name "${QVI_REGISTRY}" \
         --schema "${ECR_SCHEMA}" \
         --recipient "${PERSON_PRE}" \
-        --data @./ecr-data.json \
-        --edges @./ecr-auth-edge.json \
-        --rules @./ecr-rules.json \
+        --data @./acdc-info/temp-data/ecr-data.json \
+        --edges @./acdc-info/temp-data/ecr-auth-edge.json \
+        --rules @./acdc-info/rules/ecr-rules.json \
         --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
@@ -1981,12 +1965,12 @@ function prepare_oor_auth_edge() {
     }
 }
 EOM
-    echo "$OOR_AUTH_EDGE_JSON" > ./oor-auth-edge.json
+    echo "$OOR_AUTH_EDGE_JSON" > ./acdc-info/temp-data/oor-auth-edge.json
 
-    kli saidify --file ./oor-auth-edge.json
+    kli saidify --file ./acdc-info/temp-data/oor-auth-edge.json
     
     print_lcyan "[QVI] OOR Auth edge Data"
-    print_lcyan "$(cat ./oor-auth-edge.json | jq )"
+    print_lcyan "$(cat ./acdc-info/temp-data/oor-auth-edge.json | jq )"
 }
 prepare_oor_auth_edge      
 
@@ -2001,10 +1985,10 @@ function prepare_oor_cred_data() {
 }
 EOM
 
-    echo "${OOR_CRED_DATA}" > ./oor-data.json
+    echo "${OOR_CRED_DATA}" > ./acdc-info/temp-data/oor-data.json
 
     print_lcyan "[QVI] OOR Credential Data"
-    print_lcyan "$(cat ./oor-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/oor-data.json)"
 }
 prepare_oor_cred_data
 
@@ -2035,9 +2019,9 @@ function create_oor_credential() {
         --registry-name "${QVI_REGISTRY}" \
         --schema "${OOR_SCHEMA}" \
         --recipient "${PERSON_PRE}" \
-        --data @./oor-data.json \
-        --edges @./oor-auth-edge.json \
-        --rules @./oor-rules.json \
+        --data @./acdc-info/temp-data/oor-data.json \
+        --edges @./acdc-info/temp-data/oor-auth-edge.json \
+        --rules @./acdc-info/rules/oor-rules.json \
         --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
@@ -2049,9 +2033,9 @@ function create_oor_credential() {
         --registry-name "${QVI_REGISTRY}" \
         --schema "${OOR_SCHEMA}" \
         --recipient "${PERSON_PRE}" \
-        --data @./oor-data.json \
-        --edges @./oor-auth-edge.json \
-        --rules @./oor-rules.json \
+        --data @./acdc-info/temp-data/oor-data.json \
+        --edges @./acdc-info/temp-data/oor-auth-edge.json \
+        --rules @./acdc-info/rules/oor-rules.json \
         --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
@@ -2185,11 +2169,9 @@ function sally_setup() {
         --auth "${GEDA_PRE}" & # who will be presenting the credential
     SALLY_PID=$!
 
-    sleep 5
+    sleep 8
 }
 sally_setup
-
-read -p "Press [enter] to present LE to Sally"
 
 function present_le_cred_to_sally() {
     print_yellow "[QVI] Presenting LE Credential to Sally"
@@ -2221,8 +2203,6 @@ function present_le_cred_to_sally() {
     sleep 15
 }
 present_le_cred_to_sally
-
-read -p "Press [enter] to present OOR to Sally"
 
 function present_oor_cred_to_sally() {
   # remember to add the --issued flag to find the issued credential in the QVI's registry
@@ -2258,9 +2238,11 @@ function present_oor_cred_to_sally() {
 }
 present_oor_cred_to_sally
 
-read -p "press [enter] to teardown"
 cleanup
 print_lcyan "Full chain workflow completed"
+END_TIME=$(date)
+SCRIPT_TIME=$(($END_TIME - $START_TIME))
+print_lcyan "The Script took ${SCRIPT_TIME} seconds to run"
 
 # TODO 26. QVI: Revoke ECR Auth and OOR Auth credentials
 # TODO 27. QVI: Present revoked credentials to Sally
