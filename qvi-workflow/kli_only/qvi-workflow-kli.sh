@@ -17,7 +17,7 @@
 #   > vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/
 # This script runs the "sally" program so it must be installed and available on the path
 #
-# WARNING: This currently depends on v0.10.0+ of Sally being available on the PATH which uses a different
+# WARNING: This currently depends on v0.10.1+ of Sally being available on the PATH which uses a different
 #          version of KERI (1.2.6) than the KLI (1.1.32) here uses. Be sure to install the KLI first and
 #          then install sally globally on your machine prior to running this script.
 #
@@ -71,46 +71,46 @@ SCHEMA_SERVER=http://127.0.0.1:7723
 GEDA_LEI=254900OPPU84GM83MG36 # GLEIF Americas
 
 # GEDA AIDs - GLEIF External Delegated AID
-GEDA_PT1=accolon
-GEDA_PT1_PRE=ENFbr9MI0K7f4Wz34z4hbzHmCTxIPHR9Q_gWjLJiv20h
-GEDA_PT1_SALT=0AA2-S2YS4KqvlSzO7faIEpH
-GEDA_PT1_PASSCODE=18b2c88fd050851c45c67
+GAR1=accolon
+GAR1_PRE=ENFbr9MI0K7f4Wz34z4hbzHmCTxIPHR9Q_gWjLJiv20h
+GAR1_SALT=0AA2-S2YS4KqvlSzO7faIEpH
+GAR1_PASSCODE=18b2c88fd050851c45c67
 
-GEDA_PT2=bedivere
-GEDA_PT2_PRE=EJ7F9XcRW85_S-6F2HIUgXcIcywAy0Nv-GilEBSRnicR
-GEDA_PT2_SALT=0ADD292rR7WEU4GPpaYK4Z6h
-GEDA_PT2_PASSCODE=b26ef3dd5c85f67c51be8
+GAR2=bedivere
+GAR2_PRE=EJ7F9XcRW85_S-6F2HIUgXcIcywAy0Nv-GilEBSRnicR
+GAR2_SALT=0ADD292rR7WEU4GPpaYK4Z6h
+GAR2_PASSCODE=b26ef3dd5c85f67c51be8
 
-GEDA_MS=dagonet
+GEDA_NAME=dagonet
 GEDA_PRE=EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv
 
-# GIDA AIDs - GLEIF Internal Delegated AID
-GIDA_PT1=elaine
-GIDA_PT1_PRE=ELTDtBrcFsHTMpfYHIJFvuH6awXY1rKq4w6TBlGyucoF
-GIDA_PT1_SALT=0AB90ainJghoJa8BzFmGiEWa
-GIDA_PT1_PASSCODE=tcc6Yj4JM8MfTDs1IiidP
-
-GIDA_PT2=finn
-GIDA_PT2_PRE=EBpwQouCaOlglS6gYo0uD0zLbuAto5sUyy7AK9_O0aI1
-GIDA_PT2_SALT=0AA4m2NxBxn0w5mM9oZR2kHz
-GIDA_PT2_PASSCODE=2pNNtRkSx8jFd7HWlikcg
-
-GIDA_MS=gareth
-GIDA_PRE=EBsmQ6zMqopxMWhfZ27qXVpRKIsRNKbTS_aXMtWt67eb
-
 # QAR AIDs
-QAR_PT1=galahad
-QAR_PT1_PRE=ELPwNB8R_CsMNHw_amyp-xnLvpxxTgREjEIvc7oJgqfW
-QAR_PT1_SALT=0ACgCmChLaw_qsLycbqBoxDK
-QAR_PT1_PASSCODE=e6b3402845de8185abe94
+QAR1=galahad
+QAR1_PRE=ELPwNB8R_CsMNHw_amyp-xnLvpxxTgREjEIvc7oJgqfW
+QAR1_SALT=0ACgCmChLaw_qsLycbqBoxDK
+QAR1_PASSCODE=e6b3402845de8185abe94
 
-QAR_PT2=lancelot
-QAR_PT2_PRE=ENlxz3lZXjEo73a-JBrW1eL8nxSWyLU49-VkuqQZKMtt
-QAR_PT2_SALT=0ACaYJJv0ERQmy7xUfKgR6a4
-QAR_PT2_PASSCODE=bdf1565a750ff3f76e4fc
+QAR2=lancelot
+QAR2_PRE=ENlxz3lZXjEo73a-JBrW1eL8nxSWyLU49-VkuqQZKMtt
+QAR2_SALT=0ACaYJJv0ERQmy7xUfKgR6a4
+QAR2_PASSCODE=bdf1565a750ff3f76e4fc
 
-QVI_MS=percival
+QVI_NAME=percival
 QVI_PRE=EAwP4xBP4C8KzoKCYV2e6767OTnmR5Bt8zmwhUJr9jHh
+
+# Legal Entity AIDs
+LAR1=elaine
+LAR1_PRE=ELTDtBrcFsHTMpfYHIJFvuH6awXY1rKq4w6TBlGyucoF
+LAR1_SALT=0AB90ainJghoJa8BzFmGiEWa
+LAR1_PASSCODE=tcc6Yj4JM8MfTDs1IiidP
+
+LAR2=finn
+LAR2_PRE=EBpwQouCaOlglS6gYo0uD0zLbuAto5sUyy7AK9_O0aI1
+LAR2_SALT=0AA4m2NxBxn0w5mM9oZR2kHz
+LAR2_PASSCODE=2pNNtRkSx8jFd7HWlikcg
+
+LE_MS_NAME=gareth
+LE_MS_PRE=EBsmQ6zMqopxMWhfZ27qXVpRKIsRNKbTS_aXMtWt67eb
 
 # Person AID
 PERSON_NAME="Mordred Delacqs"
@@ -127,10 +127,12 @@ SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
 SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm
 
-# Credentials
+# Registries
 GEDA_REGISTRY=vLEI-external
-GIDA_REGISTRY=vLEI-internal
 QVI_REGISTRY=vLEI-qvi
+LE_REGISTRY=vLEI-internal
+
+# Credentials
 QVI_SCHEMA=EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao
 LE_SCHEMA=ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY
 OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
@@ -207,14 +209,14 @@ function create_keystore_and_aid() {
         --salt "${SALT}" \
         --passcode "${PASSCODE}" \
         --config-dir "${CONFIG_DIR}" \
-        --config-file "${CONFIG_FILE}" # >/dev/null 2>&1
+        --config-file "${CONFIG_FILE}"
     echo
     print_lcyan "Creating single signature identifier for ${NAME}..."
     kli incept \
         --name "${NAME}" \
         --alias "${NAME}" \
         --passcode "${PASSCODE}" \
-        --file "${ICP_FILE}" # >/dev/null 2>&1
+        --file "${ICP_FILE}"
     PREFIX=$(kli status  --name "${NAME}"  --alias "${NAME}"  --passcode "${PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
     # Need this since resolving with bootstrap config file isn't working
     print_dark_gray "Created AID: ${NAME} with prefix: ${PREFIX}"
@@ -225,22 +227,22 @@ function create_keystore_and_aid() {
 function create_aids() {
     print_green "-----Creating AIDs-----"
     create_temp_icp_cfg
-    create_keystore_and_aid "${GEDA_PT1}" "${GEDA_PT1_SALT}" "${GEDA_PT1_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_keystore_and_aid "${GEDA_PT2}" "${GEDA_PT2_SALT}" "${GEDA_PT2_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_keystore_and_aid "${GIDA_PT1}" "${GIDA_PT1_SALT}" "${GIDA_PT1_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_keystore_and_aid "${GIDA_PT2}" "${GIDA_PT2_SALT}" "${GIDA_PT2_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_keystore_and_aid "${QAR_PT1}"  "${QAR_PT1_SALT}"  "${QAR_PT1_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_keystore_and_aid "${QAR_PT2}"  "${QAR_PT2_SALT}"  "${QAR_PT2_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_keystore_and_aid "${PERSON}"   "${PERSON_SALT}"   "${PERSON_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_keystore_and_aid "${SALLY}"    "${SALLY_SALT}"    "${SALLY_PASSCODE}"    "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${GAR1}"   "${GAR1_SALT}"   "${GAR1_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${GAR2}"   "${GAR2_SALT}"   "${GAR2_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${LAR1}"   "${LAR1_SALT}"   "${LAR1_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${LAR2}"   "${LAR2_SALT}"   "${LAR2_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${QAR1}"   "${QAR1_SALT}"   "${QAR1_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${QAR2}"   "${QAR2_SALT}"   "${QAR2_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${PERSON}" "${PERSON_SALT}" "${PERSON_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
+    create_keystore_and_aid "${SALLY}"  "${SALLY_SALT}"  "${SALLY_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     rm "$temp_icp_config"
 }
 create_aids
 
 # 3. GAR: OOBI resolutions between single sig AIDs
 function resolve_oobis() {
-    exists=$(kli contacts list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GEDA_PT2}")
-    if [[ "$exists" =~ "${GEDA_PT2}" ]]; then
+    exists=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GAR2}")
+    if [[ "$exists" =~ "${GAR2}" ]]; then
         print_yellow "OOBIs already resolved"
         return
     fi
@@ -248,62 +250,62 @@ function resolve_oobis() {
     echo
     print_lcyan "-----Resolving OOBIs-----"
     print_yellow "Resolving OOBIs for GEDA 1"
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${GAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for GEDA 2"
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${GIDA_PT2}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
-    print_yellow "Resolving OOBIs for GIDA 1"
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GIDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    print_yellow "Resolving OOBIs for LE 1"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${PERSON}" --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
-    print_yellow "Resolving OOBIs for GIDA 2"
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GIDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT1}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${GEDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT1}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QAR_PT2}"  --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${PERSON}"   --passcode "${GIDA_PT2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    print_yellow "Resolving OOBIs for LE 2"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${PERSON}" --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for QAR 1"
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${QAR_PT2}"   --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GEDA_PT1}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GEDA_PT2}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${PERSON}"    --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GIDA_PT1}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GIDA_PT2}"  --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "$SALLY"       --passcode "${QAR_PT1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${QAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${GAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${GAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${LAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${LAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${PERSON}" --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "$SALLY"    --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for QAR 2"
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${QAR_PT1}"   --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GEDA_PT2}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GEDA_PT1}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${PERSON}"    --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GIDA_PT1}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GIDA_PT2}"  --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "$SALLY"       --passcode "${QAR_PT2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${QAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${GAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${GAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${PERSON}" --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "$SALLY"    --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for Person"
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR_PT1}"   --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR_PT2}"   --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GEDA_PT1}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GEDA_PT2}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GIDA_PT1}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GIDA_PT1_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GIDA_PT2}"  --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GIDA_PT2_PRE}/witness/${WAN_PRE}" # >/dev/null 2>&1
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${LAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${LAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
     
     echo
 }
@@ -311,7 +313,7 @@ resolve_oobis
 
 # 3.5 GAR: Challenge responses between single sig AIDs
 function challenge_response() {
-    chall_length=$(kli contacts list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | jq "select(.alias == \"${GEDA_PT2}\") | .challenges | length")
+    chall_length=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq "select(.alias == \"${GAR2}\") | .challenges | length")
     if [[ "$chall_length" -gt 0 ]]; then
         print_yellow "Challenges already processed"
         return
@@ -323,81 +325,81 @@ function challenge_response() {
 
     print_dark_gray "Challenge: GEDA 1 -> GEDA 2"
     words_geda1_to_geda2=$(kli challenge generate --out string)
-    kli challenge respond --name "${GEDA_PT2}" --alias "${GEDA_PT2}" --passcode "${GEDA_PT2_PASSCODE}" --recipient "${GEDA_PT1}" --words "${words_geda1_to_geda2}"
-    kli challenge verify  --name "${GEDA_PT1}" --alias "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --signer "${GEDA_PT2}"    --words "${words_geda1_to_geda2}"
+    kli challenge respond --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --recipient "${GAR1}" --words "${words_geda1_to_geda2}"
+    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${GAR2}"    --words "${words_geda1_to_geda2}"
 
     print_dark_gray "Challenge: GEDA 2 -> GEDA 1"
     words_geda2_to_geda1=$(kli challenge generate --out string)
-    kli challenge respond --name "${GEDA_PT1}" --alias "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --recipient "${GEDA_PT2}" --words "${words_geda2_to_geda1}"
-    kli challenge verify  --name "${GEDA_PT2}" --alias "${GEDA_PT2}" --passcode "${GEDA_PT2_PASSCODE}" --signer "${GEDA_PT1}"    --words "${words_geda2_to_geda1}"
+    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${GAR2}" --words "${words_geda2_to_geda1}"
+    kli challenge verify  --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --signer "${GAR1}"    --words "${words_geda2_to_geda1}"
 
     print_dark_gray "---Challenge responses for QAR---"
 
     print_dark_gray "Challenge: QAR 1 -> QAR 2"
     words_qar1_to_qar2=$(kli challenge generate --out string)
-    kli challenge respond --name "${QAR_PT2}" --alias "${QAR_PT2}" --passcode "${QAR_PT2_PASSCODE}" --recipient "${QAR_PT1}" --words "${words_qar1_to_qar2}"
-    kli challenge verify  --name "${QAR_PT1}" --alias "${QAR_PT1}" --passcode "${QAR_PT1_PASSCODE}" --signer "${QAR_PT2}"    --words "${words_qar1_to_qar2}"
+    kli challenge respond --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --recipient "${QAR1}" --words "${words_qar1_to_qar2}"
+    kli challenge verify  --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --signer "${QAR2}"    --words "${words_qar1_to_qar2}"
 
     print_dark_gray "Challenge: QAR 2 -> QAR 1"
     words_qar2_to_qar1=$(kli challenge generate --out string)
-    kli challenge respond --name "${QAR_PT1}" --alias "${QAR_PT1}" --passcode "${QAR_PT1_PASSCODE}" --recipient "${QAR_PT2}" --words "${words_qar2_to_qar1}"
-    kli challenge verify  --name "${QAR_PT2}" --alias "${QAR_PT2}" --passcode "${QAR_PT2_PASSCODE}" --signer "${QAR_PT1}"    --words "${words_qar2_to_qar1}"
+    kli challenge respond --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --recipient "${QAR2}" --words "${words_qar2_to_qar1}"
+    kli challenge verify  --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --signer "${QAR1}"    --words "${words_qar2_to_qar1}"
 
     print_dark_gray "---Challenge responses between GEDA and QAR---"
     
     print_dark_gray "Challenge: GEDA 1 -> QAR 1"
     words_geda1_to_qar1=$(kli challenge generate --out string)
-    kli challenge respond --name "${QAR_PT1}" --alias "${QAR_PT1}" --passcode "${QAR_PT1_PASSCODE}" --recipient "${GEDA_PT1}" --words "${words_geda1_to_qar1}"
-    kli challenge verify  --name "${GEDA_PT1}" --alias "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --signer "${QAR_PT1}"    --words "${words_geda1_to_qar1}"
+    kli challenge respond --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --recipient "${GAR1}" --words "${words_geda1_to_qar1}"
+    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${QAR1}"    --words "${words_geda1_to_qar1}"
 
     print_dark_gray "Challenge: QAR 1 -> GEDA 1"
     words_qar1_to_geda1=$(kli challenge generate --out string)
-    kli challenge respond --name "${GEDA_PT1}" --alias "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --recipient "${QAR_PT1}" --words "${words_qar1_to_geda1}"
-    kli challenge verify  --name "${QAR_PT1}" --alias "${QAR_PT1}" --passcode "${QAR_PT1_PASSCODE}" --signer "${GEDA_PT1}"    --words "${words_qar1_to_geda1}"
+    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${QAR1}" --words "${words_qar1_to_geda1}"
+    kli challenge verify  --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --signer "${GAR1}"    --words "${words_qar1_to_geda1}"
 
     print_dark_gray "Challenge: GEDA 2 -> QAR 2"
     words_geda1_to_qar2=$(kli challenge generate --out string)
-    kli challenge respond --name "${QAR_PT2}" --alias "${QAR_PT2}" --passcode "${QAR_PT2_PASSCODE}" --recipient "${GEDA_PT1}" --words "${words_geda1_to_qar2}"
-    kli challenge verify  --name "${GEDA_PT1}" --alias "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --signer "${QAR_PT2}"    --words "${words_geda1_to_qar2}"
+    kli challenge respond --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --recipient "${GAR1}" --words "${words_geda1_to_qar2}"
+    kli challenge verify  --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --signer "${QAR2}"    --words "${words_geda1_to_qar2}"
 
     print_dark_gray "Challenge: QAR 2 -> GEDA 1"
     words_qar2_to_geda1=$(kli challenge generate --out string)
-    kli challenge respond --name "${GEDA_PT1}" --alias "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" --recipient "${QAR_PT2}" --words "${words_qar2_to_geda1}"
-    kli challenge verify  --name "${QAR_PT2}" --alias "${QAR_PT2}" --passcode "${QAR_PT2_PASSCODE}" --signer "${GEDA_PT1}"    --words "${words_qar2_to_geda1}"
+    kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${QAR2}" --words "${words_qar2_to_geda1}"
+    kli challenge verify  --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --signer "${GAR1}"    --words "${words_qar2_to_geda1}"
 
-    print_dark_gray "---Challenge responses for GIDA (LE)---"
+    print_dark_gray "---Challenge responses for LE---"
 
-    print_dark_gray "Challenge: GIDA 1 -> GIDA 2"
-    words_gida1_to_gida2=$(kli challenge generate --out string)
-    kli challenge respond --name "${GIDA_PT2}" --alias "${GIDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --recipient "${GIDA_PT1}" --words "${words_gida1_to_gida2}"
-    kli challenge verify  --name "${GIDA_PT1}" --alias "${GIDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --signer "${GIDA_PT2}"    --words "${words_gida1_to_gida2}"
+    print_dark_gray "Challenge: LAR 1 -> LAR 2"
+    words_lar1_to_lar2=$(kli challenge generate --out string)
+    kli challenge respond --name "${LAR2}" --alias "${LAR2}" --passcode "${LAR2_PASSCODE}" --recipient "${LAR1}" --words "${words_lar1_to_lar2}"
+    kli challenge verify  --name "${LAR1}" --alias "${LAR1}" --passcode "${LAR1_PASSCODE}" --signer "${LAR2}"    --words "${words_lar1_to_lar2}"
 
-    print_dark_gray "Challenge: GIDA 2 -> GIDA 1"
-    words_gida2_to_gida1=$(kli challenge generate --out string)
-    kli challenge respond --name "${GIDA_PT1}" --alias "${GIDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --recipient "${GIDA_PT2}" --words "${words_gida2_to_gida1}"
-    kli challenge verify  --name "${GIDA_PT2}" --alias "${GIDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --signer "${GIDA_PT1}"    --words "${words_gida2_to_gida1}"
+    print_dark_gray "Challenge: LAR 2 -> LAR 1"
+    words_lar2_to_lar1=$(kli challenge generate --out string)
+    kli challenge respond --name "${LAR1}" --alias "${LAR1}" --passcode "${LAR1_PASSCODE}" --recipient "${LAR2}" --words "${words_lar2_to_lar1}"
+    kli challenge verify  --name "${LAR2}" --alias "${LAR2}" --passcode "${LAR2_PASSCODE}" --signer "${LAR1}"    --words "${words_lar2_to_lar1}"
 
-    print_dark_gray "---Challenge responses between QAR and GIDA (LE)---"
+    print_dark_gray "---Challenge responses between QAR and LE---"
 
-    print_dark_gray "Challenge: QAR 1 -> GIDA 1"
-    words_qar1_to_gida1=$(kli challenge generate --out string)
-    kli challenge respond --name "${GIDA_PT1}" --alias "${GIDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --recipient "${QAR_PT1}" --words "${words_qar1_to_gida1}"
-    kli challenge verify  --name "${QAR_PT1}" --alias "${QAR_PT1}" --passcode "${QAR_PT1_PASSCODE}" --signer "${GIDA_PT1}"    --words "${words_qar1_to_gida1}"
+    print_dark_gray "Challenge: QAR 1 -> LAR 1"
+    words_qar1_to_lar1=$(kli challenge generate --out string)
+    kli challenge respond --name "${LAR1}" --alias "${LAR1}" --passcode "${LAR1_PASSCODE}" --recipient "${QAR1}" --words "${words_qar1_to_lar1}"
+    kli challenge verify  --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --signer "${LAR1}"    --words "${words_qar1_to_lar1}"
 
-    print_dark_gray "Challenge: GIDA 1 -> QAR 1"
-    words_gida1_to_qar1=$(kli challenge generate --out string)
-    kli challenge respond --name "${QAR_PT1}" --alias "${QAR_PT1}" --passcode "${QAR_PT1_PASSCODE}" --recipient "${GIDA_PT1}" --words "${words_gida1_to_qar1}"
-    kli challenge verify  --name "${GIDA_PT1}" --alias "${GIDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" --signer "${QAR_PT1}"    --words "${words_gida1_to_qar1}"
+    print_dark_gray "Challenge: LAR 1 -> QAR 1"
+    words_lar1_to_qar1=$(kli challenge generate --out string)
+    kli challenge respond --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --recipient "${LAR1}" --words "${words_lar1_to_qar1}"
+    kli challenge verify  --name "${LAR1}" --alias "${LAR1}" --passcode "${LAR1_PASSCODE}" --signer "${QAR1}"    --words "${words_lar1_to_qar1}"
 
-    print_dark_gray "Challenge: QAR 2 -> GIDA 2"
-    words_qar2_to_gida2=$(kli challenge generate --out string)
-    kli challenge respond --name "${GIDA_PT2}" --alias "${GIDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --recipient "${QAR_PT2}" --words "${words_qar2_to_gida2}"
-    kli challenge verify  --name "${QAR_PT2}" --alias "${QAR_PT2}" --passcode "${QAR_PT2_PASSCODE}" --signer "${GIDA_PT2}"    --words "${words_qar2_to_gida2}"
+    print_dark_gray "Challenge: QAR 2 -> LAR 2"
+    words_qar2_to_lar2=$(kli challenge generate --out string)
+    kli challenge respond --name "${LAR2}" --alias "${LAR2}" --passcode "${LAR2_PASSCODE}" --recipient "${QAR2}" --words "${words_qar2_to_lar2}"
+    kli challenge verify  --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --signer "${LAR2}"    --words "${words_qar2_to_lar2}"
 
-    print_dark_gray "Challenge: GIDA 2 -> QAR 2"
-    words_gida2_to_qar2=$(kli challenge generate --out string)
-    kli challenge respond --name "${QAR_PT2}" --alias "${QAR_PT2}" --passcode "${QAR_PT2_PASSCODE}" --recipient "${GIDA_PT2}" --words "${words_gida2_to_qar2}"
-    kli challenge verify  --name "${GIDA_PT2}" --alias "${GIDA_PT2}" --passcode "${GIDA_PT2_PASSCODE}" --signer "${QAR_PT2}"    --words "${words_gida2_to_qar2}" 
+    print_dark_gray "Challenge: LAR 2 -> QAR 2"
+    words_lar2_to_qar2=$(kli challenge generate --out string)
+    kli challenge respond --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --recipient "${LAR2}" --words "${words_lar2_to_qar2}"
+    kli challenge verify  --name "${LAR2}" --alias "${LAR2}" --passcode "${LAR2_PASSCODE}" --signer "${QAR2}"    --words "${words_lar2_to_qar2}"
 
     print_green "-----Finished challenge and response-----"
 }
@@ -410,9 +412,9 @@ fi
 
 # 4. GAR: Create Multisig AID (GEDA)
 function create_geda_multisig() {
-    exists=$(kli list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | grep "${GEDA_MS}")
-    if [[ "$exists" =~ "${GEDA_MS}" ]]; then
-        print_dark_gray "[External] GEDA Multisig AID ${GEDA_MS} already exists"
+    exists=$(kli list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | grep "${GEDA_NAME}")
+    if [[ "$exists" =~ "${GEDA_NAME}" ]]; then
+        print_dark_gray "[External] GEDA Multisig AID ${GEDA_NAME} already exists"
         return
     fi
 
@@ -423,8 +425,8 @@ function create_geda_multisig() {
     read -r -d '' MULTISIG_ICP_CONFIG_JSON << EOM
 {
   "aids": [
-    "${GEDA_PT1_PRE}",
-    "${GEDA_PT2_PRE}"
+    "${GAR1_PRE}",
+    "${GAR2_PRE}"
   ],
   "transferable": true,
   "wits": ["${WAN_PRE}"],
@@ -444,61 +446,59 @@ EOM
     echo "$MULTISIG_ICP_CONFIG_JSON" > "$temp_multisig_config"
 
     # The following multisig commands run in parallel
-    print_yellow "[External] Multisig Inception from ${GEDA_PT1}: ${GEDA_PT1_PRE}"
-    kli multisig incept --name ${GEDA_PT1} --alias ${GEDA_PT1} \
-        --passcode ${GEDA_PT1_PASSCODE} \
-        --group ${GEDA_MS} \
+    print_yellow "[External] Multisig Inception from ${GAR1}: ${GAR1_PRE}"
+    kli multisig incept --name ${GAR1} --alias ${GAR1} \
+        --passcode ${GAR1_PASSCODE} \
+        --group ${GEDA_NAME} \
         --file "${temp_multisig_config}" &
     pid=$!
     PID_LIST+=" $pid"
 
     echo
 
-    kli multisig join --name ${GEDA_PT2} \
-        --passcode ${GEDA_PT2_PASSCODE} \
-        --group ${GEDA_MS} \
+    kli multisig join --name ${GAR2} \
+        --passcode ${GAR2_PASSCODE} \
+        --group ${GEDA_NAME} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
 
     echo
-    print_yellow "[External] Multisig Inception { ${GEDA_PT1}, ${GEDA_PT2} } - wait for signatures"
+    print_yellow "[External] Multisig Inception { ${GAR1}, ${GAR2} } - wait for signatures"
     echo
     wait $PID_LIST
 
-    exists=$(kli list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | grep "${GEDA_MS}")
-    if [[ ! "$exists" =~ "${GEDA_MS}" ]]; then
+    exists=$(kli list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | grep "${GEDA_NAME}")
+    if [[ ! "$exists" =~ "${GEDA_NAME}" ]]; then
         print_red "[External] GEDA Multisig inception failed"
         exit 1
     fi
 
-    ms_prefix=$(kli status --name ${GEDA_PT1} --alias ${GEDA_MS} --passcode ${GEDA_PT1_PASSCODE} | awk '/Identifier:/ {print $2}')
-    print_green "[External] GEDA Multisig AID ${GEDA_MS} with prefix: ${ms_prefix}"
+    ms_prefix=$(kli status --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_green "[External] GEDA Multisig AID ${GEDA_NAME} with prefix: ${ms_prefix}"
 
     rm "$temp_multisig_config"
-
-    touch $HOME/.keri/full-chain-geda-ms
 }
 create_geda_multisig
 
-# 45. Create Multisig GLEIF Internal Delegated AID (GIDA), acts as legal entity
-function create_gida_multisig() {
-    exists=$(kli list --name "${GIDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" | grep "${GIDA_MS}")
-    if [[ "$exists" =~ "${GIDA_MS}" ]]; then
-        print_dark_gray "[Internal] GIDA Multisig AID ${GIDA_MS} already exists"
+# 45. Create Multisig Legal Entity identifier
+function create_le_multisig() {
+    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
+    if [[ "$exists" =~ "${LE_MS_NAME}" ]]; then
+        print_dark_gray "[Internal] LE Multisig AID ${LE_MS_NAME} already exists"
         return
     fi
 
     echo
-    print_yellow "[Internal] Multisig Inception for GIDA"
+    print_yellow "[Internal] Multisig Inception for LE"
 
     echo
     print_yellow "[Internal] Multisig Inception temp config file."
     read -r -d '' MULTISIG_ICP_CONFIG_JSON << EOM
 {
   "aids": [
-    "${GIDA_PT1_PRE}",
-    "${GIDA_PT2_PRE}"
+    "${LAR1_PRE}",
+    "${LAR2_PRE}"
   ],
   "transferable": true,
   "wits": ["${WAN_PRE}"],
@@ -518,55 +518,53 @@ EOM
     echo "$MULTISIG_ICP_CONFIG_JSON" > "$temp_multisig_config"
 
     # Follow commands run in parallel
-    print_yellow "[Internal] Multisig Inception from ${GIDA_PT1}: ${GIDA_PT1_PRE}"
-    kli multisig incept --name ${GIDA_PT1} --alias ${GIDA_PT1} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --group ${GIDA_MS} \
+    print_yellow "[Internal] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
+    kli multisig incept --name ${LAR1} --alias ${LAR1} \
+        --passcode ${LAR1_PASSCODE} \
+        --group ${LE_MS_NAME} \
         --file "${temp_multisig_config}" &
     pid=$!
     PID_LIST+=" $pid"
 
     echo
 
-    kli multisig join --name ${GIDA_PT2} \
-        --passcode ${GIDA_PT2_PASSCODE} \
-        --group ${GIDA_MS} \
+    kli multisig join --name ${LAR2} \
+        --passcode ${LAR2_PASSCODE} \
+        --group ${LE_MS_NAME} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
 
     echo
-    print_yellow "[Internal] Multisig Inception { ${GIDA_PT1}, ${GIDA_PT2} } - wait for signatures"
+    print_yellow "[Internal] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
     echo
     wait $PID_LIST
 
-    exists=$(kli list --name "${GIDA_PT1}" --passcode "${GIDA_PT1_PASSCODE}" | grep "${GIDA_MS}")
-    if [[ ! "$exists" =~ "${GIDA_MS}" ]]; then
-        print_red "[Internal] GIDA Multisig inception failed"
+    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
+    if [[ ! "$exists" =~ "${LE_MS_NAME}" ]]; then
+        print_red "[Internal] LE Multisig inception failed"
         exit 1
     fi
 
-    ms_prefix=$(kli status --name ${GIDA_PT1} --alias ${GIDA_MS} --passcode ${GIDA_PT1_PASSCODE} | awk '/Identifier:/ {print $2}')
-    print_green "[Internal] GIDA Multisig AID ${GIDA_MS} with prefix: ${ms_prefix}"
+    ms_prefix=$(kli status --name ${LAR1} --alias ${LE_MS_NAME} --passcode ${LAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_green "[Internal] LE Multisig AID ${LE_MS_NAME} with prefix: ${ms_prefix}"
 
     rm "$temp_multisig_config"
-
-    touch $HOME/.keri/full-chain-gida-ms
 }
-create_gida_multisig
+create_le_multisig
 
 # 9. QAR: Resolve GEDA OOBI
 function resolve_geda_oobis() {
-    exists=$(kli contacts list --name "${QAR_PT1}" --passcode "${QAR_PT1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GEDA_MS}")
-    if [[ "$exists" =~ "${GEDA_MS}" ]]; then
+    exists=$(kli contacts list --name "${QAR1}" --passcode "${QAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GEDA_NAME}")
+    if [[ "$exists" =~ "${GEDA_NAME}" ]]; then
         print_yellow "GEDA OOBIs already resolved"
         return
     fi
 
-    GEDA_OOBI=$(kli oobi generate --name ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --alias ${GEDA_MS} --role witness)
+    GEDA_OOBI=$(kli oobi generate --name ${GAR1} --passcode ${GAR1_PASSCODE} --alias ${GEDA_NAME} --role witness)
     echo "GEDA OOBI: ${GEDA_OOBI}"
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GEDA_MS}" --passcode "${QAR_PT1_PASSCODE}" --oobi "${GEDA_OOBI}"
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GEDA_MS}" --passcode "${QAR_PT2_PASSCODE}" --oobi "${GEDA_OOBI}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${GEDA_NAME}" --passcode "${QAR1_PASSCODE}" --oobi "${GEDA_OOBI}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${GEDA_NAME}" --passcode "${QAR2_PASSCODE}" --oobi "${GEDA_OOBI}"
 }
 resolve_geda_oobis
 
@@ -574,22 +572,22 @@ resolve_geda_oobis
 # 11. QVI: Create delegated AID with GEDA as delegator
 # 12. GEDA: delegate to QVI
 function create_qvi_multisig() {
-    exists=$(kli list --name "${QAR_PT1}" --passcode "${QAR_PT1_PASSCODE}" | grep "${QVI_MS}")
-    if [[ "$exists" =~ "${QVI_MS}" ]]; then
-        print_dark_gray "[QVI] Multisig AID ${QVI_MS} already exists"
+    exists=$(kli list --name "${QAR1}" --passcode "${QAR1_PASSCODE}" | grep "${QVI_NAME}")
+    if [[ "$exists" =~ "${QVI_NAME}" ]]; then
+        print_dark_gray "[QVI] Multisig AID ${QVI_NAME} already exists"
         return
     fi
 
     echo
-    print_yellow "[QVI] delegated multisig inception from ${GEDA_MS} | ${GEDA_PRE}"
+    print_yellow "[QVI] delegated multisig inception from ${GEDA_NAME} | ${GEDA_PRE}"
 
     echo
     read -r -d '' MULTISIG_ICP_CONFIG_JSON << EOM
 {
   "delpre": "${GEDA_PRE}",
   "aids": [
-    "${QAR_PT1_PRE}",
-    "${QAR_PT2_PRE}"
+    "${QAR1_PRE}",
+    "${QAR2_PRE}"
   ],
   "transferable": true,
   "wits": ["${WAN_PRE}"],
@@ -610,32 +608,32 @@ EOM
 
     # Follow commands run in parallel
     echo
-    print_yellow "[QVI] delegated multisig inception started by ${QAR_PT1}: ${QAR_PT1_PRE}"
+    print_yellow "[QVI] delegated multisig inception started by ${QAR1}: ${QAR1_PRE}"
 
     PID_LIST=""
-    kli multisig incept --name ${QAR_PT1} --alias ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --group ${QVI_MS} \
+    kli multisig incept --name ${QAR1} --alias ${QAR1} \
+        --passcode ${QAR1_PASSCODE} \
+        --group ${QVI_NAME} \
         --file "${temp_multisig_config}" &
     pid=$!
     PID_LIST+=" $pid"
 
     echo
 
-    kli multisig incept --name ${QAR_PT2} --alias ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
-        --group ${QVI_MS} \
+    kli multisig incept --name ${QAR2} --alias ${QAR2} \
+        --passcode ${QAR2_PASSCODE} \
+        --group ${QVI_NAME} \
         --file "${temp_multisig_config}" &
     pid=$!
     PID_LIST+=" $pid"
 
     echo
-    print_yellow "[QVI] delegated multisig Inception { ${QAR_PT1}, ${QAR_PT2} } - wait for signatures"
+    print_yellow "[QVI] delegated multisig Inception { ${QAR1}, ${QAR2} } - wait for signatures"
     sleep 5
     echo
 
-    exists=$(kli list --name "${QAR_PT1} --passcode ${QAR_PT1_PASSCODE}" | grep "${QVI_MS}")
-    if [ ! $exists == "*${QVI_MS}*" ]; then
+    exists=$(kli list --name "${QAR1} --passcode ${QAR1_PASSCODE}" | grep "${QVI_NAME}")
+    if [ ! $exists == "*${QVI_NAME}*" ]; then
         print_red "[QVI] Multisig inception failed"
         exit 1
     fi
@@ -645,22 +643,22 @@ EOM
 
 
     print_lcyan "[External] GEDA 1 approves delegation"
-    kli delegate confirm --name ${GEDA_PT1} --alias ${GEDA_PT1} --passcode ${GEDA_PT1_PASSCODE} --interact --auto &
+    kli delegate confirm --name ${GAR1} --alias ${GAR1} --passcode ${GAR1_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
 
     print_lcyan "[External] GEDA 2 approves delegation"
-    kli delegate confirm --name ${GEDA_PT2} --alias ${GEDA_PT2} --passcode ${GEDA_PT2_PASSCODE} --interact --auto &
+    kli delegate confirm --name ${GAR2} --alias ${GAR2} --passcode ${GAR2_PASSCODE} --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
 
     print_yellow "[QVI] Query GEDA multisig participants to discover anchor and complete delegation for KERIpy 1.2.x+"
     print_yellow "[QVI] QAR1 querying GEDA multisig for delegation anchor"
-    kli query --name ${QAR_PT1} --alias ${QAR_PT1} --passcode ${QAR_PT1_PASSCODE} --prefix "${GEDA_PRE}" &
+    kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${GEDA_PRE}" &
     pid=$!
     PID_LIST+=" $pid"
     print_yellow "[QVI] QAR2 querying GEDA multisig for delegation anchor"
-    kli query --name ${QAR_PT2} --alias ${QAR_PT2} --passcode ${QAR_PT2_PASSCODE} --prefix "${GEDA_PRE}" &
+    kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${GEDA_PRE}" &
     pid=$!
     PID_LIST+=" $pid"
 
@@ -672,30 +670,30 @@ EOM
     # only needed for KERIpy 1.2.x+ though won't hurt for 1.1.x and lower
 
     echo
-    print_lcyan "[QVI] Show multisig status for ${QAR_PT1}"
-    kli status --name ${QAR_PT1} --alias ${QVI_MS} --passcode ${QAR_PT1_PASSCODE}
+    print_lcyan "[QVI] Show multisig status for ${QAR1}"
+    kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE}
     echo
 
-    ms_prefix=$(kli status --name ${QAR_PT1} --alias ${QVI_MS} --passcode ${QAR_PT1_PASSCODE} | awk '/Identifier:/ {print $2}')
-    print_green "[QVI] Multisig AID ${QVI_MS} with prefix: ${ms_prefix}"
+    ms_prefix=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${ms_prefix}"
 }
 create_qvi_multisig
 
 # 12.5 QVI & GEDA: perform multisig delegated rotation
 
 function qvi_rotate() {
-    QVI_MULTISIG_SEQ_NO=$(kli status --name ${QAR_PT1} --alias ${QVI_MS} --passcode ${QAR_PT1_PASSCODE} | awk '/Seq No:/ {print $3}')
+    QVI_MULTISIG_SEQ_NO=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Seq No:/ {print $3}')
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt 0 ]]; then
-        print_yellow "[QVI] Multisig AID ${QVI_MS} already rotated"
+        print_yellow "[QVI] Multisig AID ${QVI_NAME} already rotated"
         return
     fi
 
     print_yellow "[QVI] Rotating delegated multisig AID"
-    kli multisig rotate --name ${QAR_PT1} --alias ${QVI_MS} --passcode ${QAR_PT1_PASSCODE} --auto &
+    kli multisig rotate --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} --auto &
     pid=$!
     PID_LIST+=" $pid"
 
-    kli multisig rotate --name ${QAR_PT2} --alias ${QVI_MS} --passcode ${QAR_PT2_PASSCODE} --auto &
+    kli multisig rotate --name ${QAR2} --alias ${QVI_NAME} --passcode ${QAR2_PASSCODE} --auto &
     pid=$!
     PID_LIST+=" $pid"
 
@@ -705,26 +703,26 @@ function qvi_rotate() {
 # TODO test this and finish it off
 #qvi_rotate
 
-# 13. QVI: (skip) Perform endpoint role authorizations
+# QVI: (skip) Perform endpoint role authorizations - done automatically in KLI
 
-# 14. QVI: Generate OOBI for QVI to send to GEDA
-QVI_OOBI=$(kli oobi generate --name ${QAR_PT1} --passcode ${QAR_PT1_PASSCODE} --alias ${QVI_MS} --role witness)
+# QVI: Generate OOBI for QVI to send to GEDA and LE
+QVI_OOBI=$(kli oobi generate --name ${QAR1} --passcode ${QAR1_PASSCODE} --alias ${QVI_NAME} --role witness)
 
-# 15. GEDA and GIDA: Resolve QVI OOBI
+# GEDA and LE: Resolve QVI OOBI
 function resolve_qvi_oobi() {
-    exists=$(kli contacts list --name "${GEDA_PT1}" --passcode "${GEDA_PT1_PASSCODE}" | jq .alias | tr -d '"' | grep "${QVI_MS}")
-    if [[ "$exists" =~ "${QVI_MS}" ]]; then
+    exists=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${QVI_NAME}")
+    if [[ "$exists" =~ "${QVI_NAME}" ]]; then
         print_yellow "QVI OOBIs already resolved"
         return
     fi
 
     echo
     echo "QVI OOBI: ${QVI_OOBI}"
-    kli oobi resolve --name "${GEDA_PT1}" --oobi-alias "${QVI_MS}" --passcode "${GEDA_PT1_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${GEDA_PT2}" --oobi-alias "${QVI_MS}" --passcode "${GEDA_PT2_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${GIDA_PT1}" --oobi-alias "${QVI_MS}" --passcode "${GIDA_PT1_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${GIDA_PT2}" --oobi-alias "${QVI_MS}" --passcode "${GIDA_PT2_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${PERSON}"   --oobi-alias "${QVI_MS}" --passcode "${PERSON_PASSCODE}"   --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${PERSON}"   --oobi-alias "${QVI_NAME}" --passcode "${PERSON_PASSCODE}"   --oobi "${QVI_OOBI}"
     echo
 }
 resolve_qvi_oobi
@@ -734,8 +732,8 @@ resolve_qvi_oobi
 function create_geda_reg() {
     # Check if GEDA credential registry already exists
     REGISTRY=$(kli vc registry list \
-        --name "${GEDA_PT1}" \
-        --passcode "${GEDA_PT1_PASSCODE}" | awk '{print $1}')
+        --name "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" | awk '{print $1}')
     if [ ! -z "${REGISTRY}" ]; then
         print_dark_gray "GEDA registry already created"
         return
@@ -746,9 +744,9 @@ function create_geda_reg() {
     NONCE=$(kli nonce)
     PID_LIST=""
     kli vc registry incept \
-        --name ${GEDA_PT1} \
-        --alias ${GEDA_MS} \
-        --passcode ${GEDA_PT1_PASSCODE} \
+        --name ${GAR1} \
+        --alias ${GEDA_NAME} \
+        --passcode ${GAR1_PASSCODE} \
         --usage "QVI Credential Registry for GEDA" \
         --nonce ${NONCE} \
         --registry-name ${GEDA_REGISTRY} &
@@ -756,9 +754,9 @@ function create_geda_reg() {
     PID_LIST+=" $pid"
 
     kli vc registry incept \
-        --name ${GEDA_PT2} \
-        --alias ${GEDA_MS} \
-        --passcode ${GEDA_PT2_PASSCODE} \
+        --name ${GAR2} \
+        --alias ${GEDA_NAME} \
+        --passcode ${GAR2_PASSCODE} \
         --usage "QVI Credential Registry for GEDA" \
         --nonce ${NONCE} \
         --registry-name ${GEDA_REGISTRY} & 
@@ -791,9 +789,9 @@ prepare_qvi_cred_data
 function create_qvi_credential() {
     # Check if QVI credential already exists
     SAID=$(kli vc list \
-        --name "${GEDA_PT1}" \
-        --alias "${GEDA_MS}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
+        --name "${GAR1}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR1_PASSCODE}" \
         --issued \
         --said \
         --schema "${QVI_SCHEMA}")
@@ -807,9 +805,9 @@ function create_qvi_credential() {
     KLI_TIME=$(kli time)
     PID_LIST=""
     kli vc create \
-        --name "${GEDA_PT1}" \
-        --alias "${GEDA_MS}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
+        --name "${GAR1}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR1_PASSCODE}" \
         --registry-name "${GEDA_REGISTRY}" \
         --schema "${QVI_SCHEMA}" \
         --recipient "${QVI_PRE}" \
@@ -820,9 +818,9 @@ function create_qvi_credential() {
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name "${GEDA_PT2}" \
-        --alias "${GEDA_MS}" \
-        --passcode "${GEDA_PT2_PASSCODE}" \
+        --name "${GAR2}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR2_PASSCODE}" \
         --registry-name "${GEDA_REGISTRY}" \
         --schema "${QVI_SCHEMA}" \
         --recipient "${QVI_PRE}" \
@@ -843,9 +841,9 @@ create_qvi_credential
 # 17. GEDA: IPEX Grant QVI credential to QVI
 function grant_qvi_credential() {
     QVI_GRANT_SAID=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --poll \
         --said)
     if [ ! -z "${QVI_GRANT_SAID}" ]; then
@@ -853,9 +851,9 @@ function grant_qvi_credential() {
         return
     fi
     SAID=$(kli vc list \
-        --name "${GEDA_PT1}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
-        --alias "${GEDA_MS}" \
+        --name "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --alias "${GEDA_NAME}" \
         --issued \
         --said \
         --schema "${QVI_SCHEMA}")
@@ -864,9 +862,9 @@ function grant_qvi_credential() {
     print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
     KLI_TIME=$(kli time)
     kli ipex grant \
-        --name ${GEDA_PT1} \
-        --passcode ${GEDA_PT1_PASSCODE} \
-        --alias ${GEDA_MS} \
+        --name ${GAR1} \
+        --passcode ${GAR1_PASSCODE} \
+        --alias ${GEDA_NAME} \
         --said ${SAID} \
         --recipient ${QVI_PRE} \
         --time ${KLI_TIME} &
@@ -874,8 +872,8 @@ function grant_qvi_credential() {
     PID_LIST+=" $pid"
 
     kli ipex join \
-        --name ${GEDA_PT2} \
-        --passcode ${GEDA_PT2_PASSCODE} \
+        --name ${GAR2} \
+        --passcode ${GAR2_PASSCODE} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -887,11 +885,11 @@ function grant_qvi_credential() {
     sleep 5
 
     echo
-    print_green "[QVI] Polling for QVI Credential in ${QAR_PT1}..."
+    print_green "[QVI] Polling for QVI Credential in ${QAR1}..."
     kli ipex list \
-            --name "${QAR_PT1}" \
-            --alias "${QVI_MS}" \
-            --passcode "${QAR_PT1_PASSCODE}" \
+            --name "${QAR1}" \
+            --alias "${QVI_NAME}" \
+            --passcode "${QAR1_PASSCODE}" \
             --poll \
             --said
     QVI_GRANT_SAID=$?
@@ -900,11 +898,11 @@ function grant_qvi_credential() {
         exit 1
     fi
 
-    print_green "[QVI] Polling for QVI Credential in ${QAR_PT2}..."
+    print_green "[QVI] Polling for QVI Credential in ${QAR2}..."
     kli ipex list \
-            --name "${QAR_PT2}" \
-            --alias "${QVI_MS}" \
-            --passcode "${QAR_PT2_PASSCODE}" \
+            --name "${QAR2}" \
+            --alias "${QVI_NAME}" \
+            --passcode "${QAR2_PASSCODE}" \
             --poll \
             --said
     QVI_GRANT_SAID=$?
@@ -923,9 +921,9 @@ grant_qvi_credential
 # 18. QVI: Admit QVI credential from GEDA
 function admit_qvi_credential() {
     VC_SAID=$(kli vc list \
-        --name "${QAR_PT2}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+        --name "${QAR2}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR2_PASSCODE}" \
         --said \
         --schema "${QVI_SCHEMA}")
     if [ ! -z "${VC_SAID}" ]; then
@@ -933,9 +931,9 @@ function admit_qvi_credential() {
         return
     fi
     SAID=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --poll \
         --said)
 
@@ -944,18 +942,18 @@ function admit_qvi_credential() {
 
     KLI_TIME=$(kli time)
     kli ipex admit \
-        --name ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --alias ${QVI_MS} \
+        --name ${QAR1} \
+        --passcode ${QAR1_PASSCODE} \
+        --alias ${QVI_NAME} \
         --said ${SAID} \
         --time "${KLI_TIME}" & 
     pid=$!
     PID_LIST+=" $pid"
 
-    print_green "[QVI] Admitting QVI Credential as ${QVI_MS} from GEDA"
+    print_green "[QVI] Admitting QVI Credential as ${QVI_NAME} from GEDA"
     kli ipex join \
-        --name ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
+        --name ${QAR2} \
+        --passcode ${QAR2_PASSCODE} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -972,8 +970,8 @@ admit_qvi_credential
 function create_qvi_reg() {
     # Check if QVI credential registry already exists
     REGISTRY=$(kli vc registry list \
-        --name "${QAR_PT1}" \
-        --passcode "${QAR_PT1_PASSCODE}" | awk '{print $1}')
+        --name "${QAR1}" \
+        --passcode "${QAR1_PASSCODE}" | awk '{print $1}')
     if [ ! -z "${REGISTRY}" ]; then
         print_dark_gray "[QVI] QVI registry already created"
         return
@@ -984,9 +982,9 @@ function create_qvi_reg() {
     NONCE=$(kli nonce)
     PID_LIST=""
     kli vc registry incept \
-        --name ${QAR_PT1} \
-        --alias ${QVI_MS} \
-        --passcode ${QAR_PT1_PASSCODE} \
+        --name ${QAR1} \
+        --alias ${QVI_NAME} \
+        --passcode ${QAR1_PASSCODE} \
         --usage "Credential Registry for QVI" \
         --nonce ${NONCE} \
         --registry-name ${QVI_REGISTRY} &
@@ -994,9 +992,9 @@ function create_qvi_reg() {
     PID_LIST+=" $pid"
 
     kli vc registry incept \
-        --name ${QAR_PT2} \
-        --alias ${QVI_MS} \
-        --passcode ${QAR_PT2_PASSCODE} \
+        --name ${QAR2} \
+        --alias ${QVI_NAME} \
+        --passcode ${QAR2_PASSCODE} \
         --usage "Credential Registry for QVI" \
         --nonce ${NONCE} \
         --registry-name ${QVI_REGISTRY} & 
@@ -1010,33 +1008,26 @@ function create_qvi_reg() {
 }
 create_qvi_reg
 
-# 18.6 QVI OOBIs with GIDA
-function resolve_gida_and_qvi_oobis() {
-    if test -f $HOME/.keri/full-chain-gida-qvi-oobi; then
-        print_dark_gray "GIDA and QVI OOBIs already resolved"
-        return
-    fi
-
+# 18.6 QVI OOBIs with LE
+function resolve_le_and_qvi_oobis() {
     echo
-    GIDA_OOBI=$(kli oobi generate --name ${GIDA_PT1} --passcode ${GIDA_PT1_PASSCODE} --alias ${GIDA_MS} --role witness)
-    echo "GIDA OOBI: ${GIDA_OOBI}"
-    kli oobi resolve --name "${QAR_PT1}" --oobi-alias "${GIDA_MS}" --passcode "${QAR_PT1_PASSCODE}" --oobi "${GIDA_OOBI}"
-    kli oobi resolve --name "${QAR_PT2}" --oobi-alias "${GIDA_MS}" --passcode "${QAR_PT2_PASSCODE}" --oobi "${GIDA_OOBI}"
+    LE_OOBI=$(kli oobi generate --name ${LAR1} --passcode ${LAR1_PASSCODE} --alias ${LE_MS_NAME} --role witness)
+    echo "LE OOBI: ${LE_OOBI}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR1_PASSCODE}" --oobi "${LE_OOBI}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR2_PASSCODE}" --oobi "${LE_OOBI}"
     
     echo
-
-    touch $HOME/.keri/full-chain-gida-qvi-oobi
 }
-resolve_gida_and_qvi_oobis
+resolve_le_and_qvi_oobis
 
-# 19. QVI: Prepare, create, and Issue LE credential to GEDA
+# QVI: Prepare, create, and Issue LE credential to GEDA
 
-# 19.1 Prepare LE edge data
+# Prepare LE edge data
 function prepare_qvi_edge() {
     QVI_SAID=$(kli vc list \
-        --name ${QAR_PT1} \
-        --alias ${QVI_MS} \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name ${QAR1} \
+        --alias ${QVI_NAME} \
+        --passcode "${QAR1_PASSCODE}" \
         --said \
         --schema ${QVI_SCHEMA})
     print_bg_blue "[QVI] Preparing QVI edge with QVI Credential SAID: ${QVI_SAID}"
@@ -1058,47 +1049,47 @@ EOM
 }
 prepare_qvi_edge    
 
-# 19.1.5 GIDA: Create GIDA credential registry
-function create_gida_reg() {
-    # Check if GIDA credential registry already exists
+# LE: Create LE credential registry
+function create_le_reg() {
+    # Check if LE credential registry already exists
     REGISTRY=$(kli vc registry list \
-        --name "${GIDA_PT1}" \
-        --passcode "${GIDA_PT1_PASSCODE}" | awk '{print $1}')
+        --name "${LAR1}" \
+        --passcode "${LAR1_PASSCODE}" | awk '{print $1}')
     if [ ! -z "${REGISTRY}" ]; then
-        print_dark_gray "[Internal] GIDA registry already created"
+        print_dark_gray "[Internal] LE registry already created"
         return
     fi
 
     echo
-    print_yellow "[Internal] Creating GIDA registry"
+    print_yellow "[Internal] Creating LE registry"
     NONCE=$(kli nonce)
     PID_LIST=""
     kli vc registry incept \
-        --name ${GIDA_PT1} \
-        --alias ${GIDA_MS} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --usage "Legal Entity Credential Registry for GIDA (LE)" \
+        --name ${LAR1} \
+        --alias ${LE_MS_NAME} \
+        --passcode ${LAR1_PASSCODE} \
+        --usage "Legal Entity Credential Registry for LE" \
         --nonce ${NONCE} \
-        --registry-name ${GIDA_REGISTRY} &
+        --registry-name ${LE_REGISTRY} &
     pid=$!
     PID_LIST+=" $pid"
 
     kli vc registry incept \
-        --name ${GIDA_PT2} \
-        --alias ${GIDA_MS} \
-        --passcode ${GIDA_PT2_PASSCODE} \
-        --usage "Legal Entity Credential Registry for GIDA (LE)" \
+        --name ${LAR2} \
+        --alias ${LE_MS_NAME} \
+        --passcode ${LAR2_PASSCODE} \
+        --usage "Legal Entity Credential Registry for LE" \
         --nonce ${NONCE} \
-        --registry-name ${GIDA_REGISTRY} & 
+        --registry-name ${LE_REGISTRY} & 
     pid=$!
     PID_LIST+=" $pid"
     wait $PID_LIST
 
     echo
-    print_green "[Internal] Legal Entity Credential Registry created for GIDA"
+    print_green "[Internal] Legal Entity Credential Registry created for LE"
     echo
 }
-create_gida_reg
+create_le_reg
 
 # 19.2 Prepare LE credential data
 function prepare_le_cred_data() {
@@ -1120,9 +1111,9 @@ prepare_le_cred_data
 function create_le_credential() {
     # Check if LE credential already exists
     SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --issued \
         --said \
         --schema ${LE_SCHEMA})
@@ -1137,12 +1128,12 @@ function create_le_credential() {
     KLI_TIME=$(kli time)
     PID_LIST=""
     kli vc create \
-        --name ${QAR_PT1} \
-        --alias ${QVI_MS} \
-        --passcode ${QAR_PT1_PASSCODE} \
+        --name ${QAR1} \
+        --alias ${QVI_NAME} \
+        --passcode ${QAR1_PASSCODE} \
         --registry-name ${QVI_REGISTRY} \
         --schema "${LE_SCHEMA}" \
-        --recipient ${GIDA_PRE} \
+        --recipient ${LE_MS_PRE} \
         --data @./acdc-info/temp-data/legal-entity-data.json \
         --edges @./acdc-info/temp-data/qvi-edge.json \
         --rules @./acdc-info/rules/qvi-cred-rules.json \
@@ -1152,12 +1143,12 @@ function create_le_credential() {
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name ${QAR_PT2} \
-        --alias ${QVI_MS} \
-        --passcode ${QAR_PT2_PASSCODE} \
+        --name ${QAR2} \
+        --alias ${QVI_NAME} \
+        --passcode ${QAR2_PASSCODE} \
         --registry-name ${QVI_REGISTRY} \
         --schema "${LE_SCHEMA}" \
-        --recipient ${GIDA_PRE} \
+        --recipient ${LE_MS_PRE} \
         --data @./acdc-info/temp-data/legal-entity-data.json \
         --edges @./acdc-info/temp-data/qvi-edge.json \
         --rules @./acdc-info/rules/qvi-cred-rules.json \
@@ -1176,40 +1167,40 @@ create_le_credential
 function grant_le_credential() {
     # This only works because there will be only one grant in the list for the GEDA
     LE_GRANT_SAID=$(kli ipex list \
-        --name "${GIDA_PT1}" \
-        --alias "${GIDA_MS}" \
+        --name "${LAR1}" \
+        --alias "${LE_MS_NAME}" \
         --type "grant" \
-        --passcode "${GIDA_PT1_PASSCODE}" \
+        --passcode "${LAR1_PASSCODE}" \
         --poll \
         --said)
     if [ ! -z "${LE_GRANT_SAID}" ]; then
-        print_dark_gray "[GIDA] LE credential already granted"
+        print_dark_gray "[LE] LE credential already granted"
         return
     fi
     SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --alias "${QVI_MS}" \
+        --name "${QAR1}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --alias "${QVI_NAME}" \
         --issued \
         --said \
         --schema ${LE_SCHEMA})
 
     echo
-    print_yellow $'[QVI] IPEX GRANTing LE credential with\n\tSAID'" ${SAID}"$'\n\tto GIDA'" ${GIDA_PRE}"
+    print_yellow $'[QVI] IPEX GRANTing LE credential with\n\tSAID'" ${SAID}"$'\n\tto LE'" ${LE_MS_PRE}"
     KLI_TIME=$(kli time)
     kli ipex grant \
-        --name ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --alias ${QVI_MS} \
+        --name ${QAR1} \
+        --passcode ${QAR1_PASSCODE} \
+        --alias ${QVI_NAME} \
         --said ${SAID} \
-        --recipient ${GIDA_PRE} \
+        --recipient ${LE_MS_PRE} \
         --time ${KLI_TIME} &
     pid=$!
     PID_LIST+=" $pid"
 
     kli ipex join \
-        --name ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
+        --name ${QAR2} \
+        --passcode ${QAR2_PASSCODE} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -1221,11 +1212,11 @@ function grant_le_credential() {
     sleep 5
 
     echo
-    print_green "[Internal] Polling for LE Credential in ${GIDA_PT1}..."
+    print_green "[Internal] Polling for LE Credential in ${LAR1}..."
     kli ipex list \
-        --name "${GIDA_PT1}" \
-        --alias "${GIDA_MS}" \
-        --passcode "${GIDA_PT1_PASSCODE}" \
+        --name "${LAR1}" \
+        --alias "${LE_MS_NAME}" \
+        --passcode "${LAR1_PASSCODE}" \
         --type "grant" \
         --poll \
         --said
@@ -1235,11 +1226,11 @@ function grant_le_credential() {
         exit 1
     fi
 
-    print_green "[Internal] Polling for LE Credential in ${GIDA_PT2}..."
+    print_green "[Internal] Polling for LE Credential in ${LAR2}..."
     kli ipex list \
-        --name "${GIDA_PT2}" \
-        --alias "${GIDA_MS}" \
-        --passcode "${GIDA_PT2_PASSCODE}" \
+        --name "${LAR2}" \
+        --alias "${LE_MS_NAME}" \
+        --passcode "${LAR2_PASSCODE}" \
         --type "grant" \
         --poll \
         --said
@@ -1250,7 +1241,7 @@ function grant_le_credential() {
     fi
 
     echo
-    print_green "[QVI] LE Credential granted to GIDA"
+    print_green "[QVI] LE Credential granted to LE"
     echo
 }
 grant_le_credential
@@ -1258,9 +1249,9 @@ grant_le_credential
 # 20. GEDA: Admit LE credential from QVI
 function admit_le_credential() {
     VC_SAID=$(kli vc list \
-        --name "${GIDA_PT2}" \
-        --alias "${GIDA_MS}" \
-        --passcode "${GIDA_PT2_PASSCODE}" \
+        --name "${LAR2}" \
+        --alias "${LE_MS_NAME}" \
+        --passcode "${LAR2_PASSCODE}" \
         --said \
         --schema ${LE_SCHEMA})
     if [ ! -z "${VC_SAID}" ]; then
@@ -1268,30 +1259,30 @@ function admit_le_credential() {
         return
     fi
     SAID=$(kli ipex list \
-        --name "${GIDA_PT1}" \
-        --alias "${GIDA_MS}" \
-        --passcode "${GIDA_PT1_PASSCODE}" \
+        --name "${LAR1}" \
+        --alias "${LE_MS_NAME}" \
+        --passcode "${LAR1_PASSCODE}" \
         --type "grant" \
         --poll \
         --said)
 
     echo
-    print_yellow "[Internal] Admitting LE Credential ${SAID} to ${GIDA_MS} as ${GIDA_PT1}"
+    print_yellow "[Internal] Admitting LE Credential ${SAID} to ${LE_MS_NAME} as ${LAR1}"
 
     KLI_TIME=$(kli time)
     kli ipex admit \
-        --name ${GIDA_PT1} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --alias ${GIDA_MS} \
+        --name ${LAR1} \
+        --passcode ${LAR1_PASSCODE} \
+        --alias ${LE_MS_NAME} \
         --said ${SAID} \
         --time "${KLI_TIME}" & 
     pid=$!
     PID_LIST+=" $pid"
 
-    print_green "[Internal] Admitting LE Credential ${SAID} to ${GIDA_MS} as ${GIDA_PT2}"
+    print_green "[Internal] Admitting LE Credential ${SAID} to ${LE_MS_NAME} as ${LAR2}"
     kli ipex join \
-        --name ${GIDA_PT2} \
-        --passcode ${GIDA_PT2_PASSCODE} \
+        --name ${LAR2} \
+        --passcode ${LAR2_PASSCODE} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -1309,9 +1300,9 @@ admit_le_credential
 # 21.1 prepare LE edge to ECR auth cred
 function prepare_le_edge() {
     LE_SAID=$(kli vc list \
-        --name ${GIDA_PT1} \
-        --alias ${GIDA_MS} \
-        --passcode "${GIDA_PT1_PASSCODE}" \
+        --name ${LAR1} \
+        --alias ${LE_MS_NAME} \
+        --passcode "${LAR1_PASSCODE}" \
         --said \
         --schema ${LE_SCHEMA})
     print_bg_blue "[Internal] Preparing ECR Auth cred with LE Credential SAID: ${LE_SAID}"
@@ -1354,9 +1345,9 @@ prepare_ecr_auth_data
 function create_ecr_auth_credential() {
     # Check if ECR auth credential already exists
     SAID=$(kli vc list \
-        --name "${GIDA_PT1}" \
-        --alias "${GIDA_MS}" \
-        --passcode "${GIDA_PT1_PASSCODE}" \
+        --name "${LAR1}" \
+        --alias "${LE_MS_NAME}" \
+        --passcode "${LAR1_PASSCODE}" \
         --issued \
         --said \
         --schema "${ECR_AUTH_SCHEMA}")
@@ -1366,15 +1357,15 @@ function create_ecr_auth_credential() {
     fi
 
     echo
-    print_green "[Internal] GIDA creating ECR Auth credential"
+    print_green "[Internal] LE creating ECR Auth credential"
 
     KLI_TIME=$(kli time)
     PID_LIST=""
     kli vc create \
-        --name ${GIDA_PT1} \
-        --alias ${GIDA_MS} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --registry-name ${GIDA_REGISTRY} \
+        --name ${LAR1} \
+        --alias ${LE_MS_NAME} \
+        --passcode ${LAR1_PASSCODE} \
+        --registry-name ${LE_REGISTRY} \
         --schema ${ECR_AUTH_SCHEMA} \
         --recipient ${QVI_PRE} \
         --data @./acdc-info/temp-data/ecr-auth-data.json \
@@ -1386,10 +1377,10 @@ function create_ecr_auth_credential() {
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name ${GIDA_PT2} \
-        --alias ${GIDA_MS} \
-        --passcode ${GIDA_PT2_PASSCODE} \
-        --registry-name ${GIDA_REGISTRY} \
+        --name ${LAR2} \
+        --alias ${LE_MS_NAME} \
+        --passcode ${LAR2_PASSCODE} \
+        --registry-name ${LE_REGISTRY} \
         --schema ${ECR_AUTH_SCHEMA} \
         --recipient ${QVI_PRE} \
         --data @./acdc-info/temp-data/ecr-auth-data.json \
@@ -1402,7 +1393,7 @@ function create_ecr_auth_credential() {
     wait $PID_LIST
 
     echo
-    print_lcyan "[Internal] GIDA created ECR Auth credential"
+    print_lcyan "[Internal] LE created ECR Auth credential"
     echo
 }
 create_ecr_auth_credential
@@ -1411,10 +1402,10 @@ create_ecr_auth_credential
 function grant_ecr_auth_credential() {
     # This relies on there being only one grant in the list for the GEDA
     GRANT_COUNT=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
         --type "grant" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --passcode "${QAR1_PASSCODE}" \
         --poll \
         --said | wc -l | tr -d ' ') # get the last grant
     if [ "${GRANT_COUNT}" -ge 2 ]; then
@@ -1422,9 +1413,9 @@ function grant_ecr_auth_credential() {
         return
     fi
     SAID=$(kli vc list \
-        --name "${GIDA_PT1}" \
-        --passcode "${GIDA_PT1_PASSCODE}" \
-        --alias "${GIDA_MS}" \
+        --name "${LAR1}" \
+        --passcode "${LAR1_PASSCODE}" \
+        --alias "${LE_MS_NAME}" \
         --issued \
         --said \
         --schema ${ECR_AUTH_SCHEMA})
@@ -1434,9 +1425,9 @@ function grant_ecr_auth_credential() {
 
     KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
     kli ipex grant \
-        --name ${GIDA_PT1} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --alias ${GIDA_MS} \
+        --name ${LAR1} \
+        --passcode ${LAR1_PASSCODE} \
+        --alias ${LE_MS_NAME} \
         --said ${SAID} \
         --recipient ${QVI_PRE} \
         --time ${KLI_TIME} &
@@ -1444,8 +1435,8 @@ function grant_ecr_auth_credential() {
     PID_LIST+=" $pid"
 
     kli ipex join \
-        --name ${GIDA_PT2} \
-        --passcode ${GIDA_PT2_PASSCODE} \
+        --name ${LAR2} \
+        --passcode ${LAR2_PASSCODE} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -1457,20 +1448,20 @@ function grant_ecr_auth_credential() {
     sleep 5
 
     echo
-    print_green "[QVI] Polling for ECR Auth Credential in ${QAR_PT1}..."
+    print_green "[QVI] Polling for ECR Auth Credential in ${QAR1}..."
     kli ipex list \
-            --name "${QAR_PT1}" \
-            --alias "${QVI_MS}" \
-            --passcode "${QAR_PT1_PASSCODE}" \
+            --name "${QAR1}" \
+            --alias "${QVI_NAME}" \
+            --passcode "${QAR1_PASSCODE}" \
             --type "grant" \
             --poll \
             --said
 
-    print_green "[QVI] Polling for ECR Auth Credential in ${QAR_PT2}..."
+    print_green "[QVI] Polling for ECR Auth Credential in ${QAR2}..."
     kli ipex list \
-            --name "${QAR_PT2}" \
-            --alias "${QVI_MS}" \
-            --passcode "${QAR_PT2_PASSCODE}" \
+            --name "${QAR2}" \
+            --alias "${QVI_NAME}" \
+            --passcode "${QAR2_PASSCODE}" \
             --type "grant" \
             --poll \
             --said
@@ -1481,12 +1472,12 @@ function grant_ecr_auth_credential() {
 }
 grant_ecr_auth_credential
 
-# 21.5 (part of 22) Admit ECR Auth credential from GIDA
+# Admit ECR Auth credential from LE
 function admit_ecr_auth_credential() {
     VC_SAID=$(kli vc list \
-        --name "${QAR_PT2}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+        --name "${QAR2}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR2_PASSCODE}" \
         --said \
         --schema ${ECR_AUTH_SCHEMA})
     if [ ! -z "${VC_SAID}" ]; then
@@ -1494,31 +1485,31 @@ function admit_ecr_auth_credential() {
         return
     fi
     SAID=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --type "grant" \
         --poll \
         --said | \
         tail -1) # get the last grant, which should be the ECR Auth credential
 
     echo
-    print_yellow "[QVI] Admitting ECR Auth Credential ${SAID} from GIDA LE"
+    print_yellow "[QVI] Admitting ECR Auth Credential ${SAID} from LE"
 
     KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
     kli ipex admit \
-        --name ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --alias ${QVI_MS} \
+        --name ${QAR1} \
+        --passcode ${QAR1_PASSCODE} \
+        --alias ${QVI_NAME} \
         --said ${SAID} \
         --time "${KLI_TIME}" & 
     pid=$!
     PID_LIST+=" $pid"
 
-    print_green "[QVI] Admitting ECR Auth Credential as ${QVI_MS} from GIDA LE"
+    print_green "[QVI] Admitting ECR Auth Credential as ${QVI_NAME} from LE"
     kli ipex join \
-        --name ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
+        --name ${QAR2} \
+        --passcode ${QAR2_PASSCODE} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -1552,9 +1543,9 @@ prepare_oor_auth_data
 function create_oor_auth_credential() {
     # Check if OOR auth credential already exists
     SAID=$(kli vc list \
-        --name "${GIDA_PT1}" \
-        --alias "${GIDA_MS}" \
-        --passcode "${GIDA_PT1_PASSCODE}" \
+        --name "${LAR1}" \
+        --alias "${LE_MS_NAME}" \
+        --passcode "${LAR1_PASSCODE}" \
         --issued \
         --said \
         --schema "${OOR_AUTH_SCHEMA}")
@@ -1564,15 +1555,15 @@ function create_oor_auth_credential() {
     fi
 
     echo
-    print_green "[Internal] GIDA creating OOR Auth credential"
+    print_green "[Internal] LE creating OOR Auth credential"
 
     KLI_TIME=$(kli time)
     PID_LIST=""
     kli vc create \
-        --name ${GIDA_PT1} \
-        --alias ${GIDA_MS} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --registry-name ${GIDA_REGISTRY} \
+        --name ${LAR1} \
+        --alias ${LE_MS_NAME} \
+        --passcode ${LAR1_PASSCODE} \
+        --registry-name ${LE_REGISTRY} \
         --schema ${OOR_AUTH_SCHEMA} \
         --recipient ${QVI_PRE} \
         --data @./acdc-info/temp-data/oor-auth-data.json \
@@ -1584,10 +1575,10 @@ function create_oor_auth_credential() {
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name ${GIDA_PT2} \
-        --alias ${GIDA_MS} \
-        --passcode ${GIDA_PT2_PASSCODE} \
-        --registry-name ${GIDA_REGISTRY} \
+        --name ${LAR2} \
+        --alias ${LE_MS_NAME} \
+        --passcode ${LAR2_PASSCODE} \
+        --registry-name ${LE_REGISTRY} \
         --schema ${OOR_AUTH_SCHEMA} \
         --recipient ${QVI_PRE} \
         --data @./acdc-info/temp-data/oor-auth-data.json \
@@ -1600,7 +1591,7 @@ function create_oor_auth_credential() {
     wait $PID_LIST
 
     echo
-    print_lcyan "[Internal] GIDA created OOR Auth credential"
+    print_lcyan "[Internal] LE created OOR Auth credential"
     echo
 }
 create_oor_auth_credential
@@ -1609,10 +1600,10 @@ create_oor_auth_credential
 function grant_oor_auth_credential() {
     # This relies on the last grant being the OOR Auth credential
     GRANT_COUNT=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
         --type "grant" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --passcode "${QAR1_PASSCODE}" \
         --poll \
         --said | wc -l | tr -d ' ') # get grant count, remove whitespace
     if [ "${GRANT_COUNT}" -ge 3 ]; then
@@ -1620,9 +1611,9 @@ function grant_oor_auth_credential() {
         return
     fi
     SAID=$(kli vc list \
-        --name "${GIDA_PT1}" \
-        --passcode "${GIDA_PT1_PASSCODE}" \
-        --alias "${GIDA_MS}" \
+        --name "${LAR1}" \
+        --passcode "${LAR1_PASSCODE}" \
+        --alias "${LE_MS_NAME}" \
         --issued \
         --said \
         --schema ${OOR_AUTH_SCHEMA} | \
@@ -1633,9 +1624,9 @@ function grant_oor_auth_credential() {
 
     KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
     kli ipex grant \
-        --name ${GIDA_PT1} \
-        --passcode ${GIDA_PT1_PASSCODE} \
-        --alias ${GIDA_MS} \
+        --name ${LAR1} \
+        --passcode ${LAR1_PASSCODE} \
+        --alias ${LE_MS_NAME} \
         --said ${SAID} \
         --recipient ${QVI_PRE} \
         --time ${KLI_TIME} &
@@ -1643,8 +1634,8 @@ function grant_oor_auth_credential() {
     PID_LIST+=" $pid"
 
     kli ipex join \
-        --name ${GIDA_PT2} \
-        --passcode ${GIDA_PT2_PASSCODE} \
+        --name ${LAR2} \
+        --passcode ${LAR2_PASSCODE} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -1656,20 +1647,20 @@ function grant_oor_auth_credential() {
     sleep 5
 
     echo
-    print_green "[QVI] Polling for OOR Auth Credential in ${QAR_PT1}..."
+    print_green "[QVI] Polling for OOR Auth Credential in ${QAR1}..."
     kli ipex list \
-            --name "${QAR_PT1}" \
-            --alias "${QVI_MS}" \
-            --passcode "${QAR_PT1_PASSCODE}" \
+            --name "${QAR1}" \
+            --alias "${QVI_NAME}" \
+            --passcode "${QAR1_PASSCODE}" \
             --type "grant" \
             --poll \
             --said
 
-    print_green "[QVI] Polling for OOR Auth Credential in ${QAR_PT2}..."
+    print_green "[QVI] Polling for OOR Auth Credential in ${QAR2}..."
     kli ipex list \
-            --name "${QAR_PT2}" \
-            --alias "${QVI_MS}" \
-            --passcode "${QAR_PT2_PASSCODE}" \
+            --name "${QAR2}" \
+            --alias "${QVI_NAME}" \
+            --passcode "${QAR2_PASSCODE}" \
             --type "grant" \
             --poll \
             --said
@@ -1683,9 +1674,9 @@ grant_oor_auth_credential
 # 22. QVI: Admit OOR Auth credential
 function admit_oor_auth_credential() {
     VC_SAID=$(kli vc list \
-        --name "${QAR_PT2}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+        --name "${QAR2}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR2_PASSCODE}" \
         --said \
         --schema ${OOR_AUTH_SCHEMA})
     if [ ! -z "${VC_SAID}" ]; then
@@ -1693,31 +1684,31 @@ function admit_oor_auth_credential() {
         return
     fi
     SAID=$(kli ipex list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --type "grant" \
         --poll \
         --said | \
         tail -1) # get the last grant, which should be the ECR Auth credential
 
     echo
-    print_yellow "[QVI] Admitting OOR Auth Credential ${SAID} from GIDA LE"
+    print_yellow "[QVI] Admitting OOR Auth Credential ${SAID} from LE"
 
     KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
     kli ipex admit \
-        --name ${QAR_PT1} \
-        --passcode ${QAR_PT1_PASSCODE} \
-        --alias ${QVI_MS} \
+        --name ${QAR1} \
+        --passcode ${QAR1_PASSCODE} \
+        --alias ${QVI_NAME} \
         --said ${SAID} \
         --time "${KLI_TIME}" & 
     pid=$!
     PID_LIST+=" $pid"
 
-    print_green "[QVI] Admitting OOR Auth Credential as ${QVI_MS} from GIDA LE"
+    print_green "[QVI] Admitting OOR Auth Credential as ${QVI_NAME} from LE"
     kli ipex join \
-        --name ${QAR_PT2} \
-        --passcode ${QAR_PT2_PASSCODE} \
+        --name ${QAR2} \
+        --passcode ${QAR2_PASSCODE} \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -1734,9 +1725,9 @@ admit_oor_auth_credential
 # 23.1 Prepare ECR Auth edge data
 function prepare_ecr_auth_edge() {
     ECR_AUTH_SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --said \
         --schema "${ECR_AUTH_SCHEMA}")
     print_bg_blue "[QVI] Preparing [ECR Auth] edge with [ECR Auth] Credential SAID: ${ECR_AUTH_SAID}"
@@ -1781,9 +1772,9 @@ prepare_ecr_cred_data
 function create_ecr_credential() {
     # Check if ECR credential already exists
     SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --issued \
         --said \
         --schema "${ECR_SCHEMA}")
@@ -1800,9 +1791,9 @@ function create_ecr_credential() {
     SUBJ_NONCE=$(kli nonce)
     PID_LIST=""
     kli vc create \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --private-credential-nonce "${CRED_NONCE}" \
         --private-subject-nonce "${SUBJ_NONCE}" \
         --private \
@@ -1817,9 +1808,9 @@ function create_ecr_credential() {
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name "${QAR_PT2}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+        --name "${QAR2}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR2_PASSCODE}" \
         --private \
         --private-credential-nonce "${CRED_NONCE}" \
         --private-subject-nonce "${SUBJ_NONCE}" \
@@ -1857,9 +1848,9 @@ function grant_ecr_credential() {
         return
     fi
     SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --alias "${QVI_MS}" \
+        --name "${QAR1}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --alias "${QVI_NAME}" \
         --issued \
         --said \
         --schema "${ECR_SCHEMA}")
@@ -1868,9 +1859,9 @@ function grant_ecr_credential() {
     print_yellow $'[QVI] IPEX GRANTing ECR credential with\n\tSAID'" ${SAID}"$'\n\tto'" ${PERSON} ${PERSON_PRE}"
     KLI_TIME=$(kli time)
     kli ipex grant \
-        --name "${QAR_PT1}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --alias "${QVI_MS}" \
+        --name "${QAR1}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --alias "${QVI_NAME}" \
         --said "${SAID}" \
         --recipient "${PERSON_PRE}" \
         --time "${KLI_TIME}" &
@@ -1878,8 +1869,8 @@ function grant_ecr_credential() {
     PID_LIST+=" $pid"
 
     kli ipex join \
-        --name "${QAR_PT2}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+        --name "${QAR2}" \
+        --passcode "${QAR2_PASSCODE}" \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -1949,9 +1940,9 @@ admit_ecr_credential
 # 24.1 Prepare OOR Auth edge data
 function prepare_oor_auth_edge() {
     OOR_AUTH_SAID=$(kli vc list \
-        --name ${QAR_PT1} \
-        --alias ${QVI_MS} \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name ${QAR1} \
+        --alias ${QVI_NAME} \
+        --passcode "${QAR1_PASSCODE}" \
         --said \
         --schema ${OOR_AUTH_SCHEMA})
     print_bg_blue "[QVI] Preparing [OOR Auth] edge with [OOR Auth] Credential SAID: ${OOR_AUTH_SAID}"
@@ -1996,9 +1987,9 @@ prepare_oor_cred_data
 function create_oor_credential() {
     # Check if OOR credential already exists
     SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --issued \
         --said \
         --schema "${OOR_SCHEMA}")
@@ -2013,9 +2004,9 @@ function create_oor_credential() {
     KLI_TIME=$(kli time)
     PID_LIST=""
     kli vc create \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --registry-name "${QVI_REGISTRY}" \
         --schema "${OOR_SCHEMA}" \
         --recipient "${PERSON_PRE}" \
@@ -2027,9 +2018,9 @@ function create_oor_credential() {
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name "${QAR_PT2}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+        --name "${QAR2}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR2_PASSCODE}" \
         --registry-name "${QVI_REGISTRY}" \
         --schema "${OOR_SCHEMA}" \
         --recipient "${PERSON_PRE}" \
@@ -2063,9 +2054,9 @@ function grant_oor_credential() {
         return
     fi
     SAID=$(kli vc list \
-        --name "${QAR_PT1}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --alias "${QVI_MS}" \
+        --name "${QAR1}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --alias "${QVI_NAME}" \
         --issued \
         --said \
         --schema "${OOR_SCHEMA}")
@@ -2073,17 +2064,17 @@ function grant_oor_credential() {
     echo
     print_yellow $'[QVI] IPEX GRANTing OOR credential with\n\tSAID'" ${SAID}"$'\n\tto'" ${PERSON} ${PERSON_PRE}"
     kli ipex grant \
-        --name "${QAR_PT1}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
-        --alias "${QVI_MS}" \
+        --name "${QAR1}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --alias "${QVI_NAME}" \
         --said "${SAID}" \
         --recipient "${PERSON_PRE}" &
     pid=$!
     PID_LIST+=" $pid"
 
     kli ipex join \
-        --name "${QAR_PT2}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+        --name "${QAR2}" \
+        --passcode "${QAR2_PASSCODE}" \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -2175,24 +2166,24 @@ sally_setup
 
 function present_le_cred_to_sally() {
     print_yellow "[QVI] Presenting LE Credential to Sally"
-    LE_SAID=$(kli vc list --name "${GIDA_PT1}" \
-        --alias "${GIDA_MS}" \
-        --passcode "${GIDA_PT1_PASSCODE}" \
+    LE_SAID=$(kli vc list --name "${LAR1}" \
+        --alias "${LE_MS_NAME}" \
+        --passcode "${LAR1_PASSCODE}" \
         --said --schema "${LE_SCHEMA}")
 
     PID_LIST=""
     kli ipex grant \
-        --name "${QAR_PT1}" \
-        --alias "${QVI_MS}" \
-        --passcode "${QAR_PT1_PASSCODE}" \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
         --said "${LE_SAID}" \
         --recipient "${SALLY}" &
     pid=$!
     PID_LIST+=" $pid"
 
     kli ipex join \
-        --name "${QAR_PT2}" \
-        --passcode "${QAR_PT2_PASSCODE}" \
+        --name "${QAR2}" \
+        --passcode "${QAR2_PASSCODE}" \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -2207,26 +2198,26 @@ present_le_cred_to_sally
 function present_oor_cred_to_sally() {
   # remember to add the --issued flag to find the issued credential in the QVI's registry
   OOR_SAID=$(kli vc list \
-      --name "${QAR_PT1}" \
-      --alias "${QVI_MS}" \
-      --passcode "${QAR_PT1_PASSCODE}" \
+      --name "${QAR1}" \
+      --alias "${QVI_NAME}" \
+      --passcode "${QAR1_PASSCODE}" \
       --issued \
       --said \
       --schema "${OOR_SCHEMA}")
 
   PID_LIST=""
   kli ipex grant \
-      --name "${QAR_PT1}" \
-      --alias "${QVI_MS}" \
-      --passcode "${QAR_PT1_PASSCODE}" \
+      --name "${QAR1}" \
+      --alias "${QVI_NAME}" \
+      --passcode "${QAR1_PASSCODE}" \
       --said "${OOR_SAID}" \
       --recipient "${SALLY}" &
   pid=$!
   PID_LIST+=" $pid"
 
   kli ipex join \
-      --name "${QAR_PT2}" \
-      --passcode "${QAR_PT2_PASSCODE}" \
+      --name "${QAR2}" \
+      --passcode "${QAR2_PASSCODE}" \
       --auto &
   pid=$!
   PID_LIST+=" $pid"
@@ -2240,9 +2231,9 @@ present_oor_cred_to_sally
 
 cleanup
 print_lcyan "Full chain workflow completed"
-END_TIME=$(date)
+END_TIME=$(date +%s)
 SCRIPT_TIME=$(($END_TIME - $START_TIME))
-print_lcyan "The Script took ${SCRIPT_TIME} seconds to run"
+print_lcyan "Script took ${SCRIPT_TIME} seconds to run"
 
 # TODO 26. QVI: Revoke ECR Auth and OOR Auth credentials
 # TODO 27. QVI: Present revoked credentials to Sally

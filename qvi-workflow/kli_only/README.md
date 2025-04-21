@@ -16,8 +16,9 @@ You also need the Sally CLI installed and available on your path.
 
 #### Witnesses
 
-This command runs the six demonstration witnesses
+This command runs the six demonstration witnesses.
 
+WARNING: This script REQUIRES KERIpy 1.2.6 witnesses. Due to the delegation ceremony change of 2024 this script will not work with 1.1.x KERIpy witnesses.
 
 ```bash
 # From within a dedicated Python virtual environment (virtualenv)
