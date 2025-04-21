@@ -4,27 +4,26 @@
 # - vLEI server for credential schema caching
 
 x-keri_1_2-image: &keri_1_2-image
-  image: weboftrust/keri:1.2.4
+  image: weboftrust/keri:1.2.6
 x-keri_1_1-image: &keri_1_1-image
   image: weboftrust/keri:1.1.32
 
 # Witness Images
 x-gar-witness-image: &gar-witness-image
-  image: weboftrust/keri:1.1.32
+  image: weboftrust/keri:1.2.6
 x-qar-witness-image: &qar-witness-image
-  image: weboftrust/keri:1.1.32
+  image: weboftrust/keri:1.2.6
 x-person-witness-image: &person-witness-image
-  image: weboftrust/keri:1.1.32
+  image: weboftrust/keri:1.2.6
 x-sally-witness-image: &sally-witness-image
-  image: weboftrust/keri:1.1.32
+  image: weboftrust/keri:1.2.6
 
 x-keria-image: &keria-image
-#  image: weboftrust/keria:0.2.0-rc2
-  image: kentbull/keria-provenant:0.1.3
+  image: weboftrust/keria:0.2.0-rc2
 x-vlei-image: &vlei-image
   image: gleif/vlei:0.2.0
 x-sally-image: &sally-image
-  image: kentbull/sally:0.10.0
+  image: gleif/sally:0.10.1
 
 x-healthcheck: &healthcheck
   interval: 15s
@@ -70,7 +69,7 @@ services:
     environment:
       <<: *witness-env
     healthcheck:
-      # healthcheck needs to be different in 1.2.4+ because it uses the Alpine base image and curl is not present
+      # healthcheck needs to be different in 1.2.6+ because it uses the Alpine base image and curl is not present
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5642/oobi" ]
       <<: *healthcheck
     command: witness demo
@@ -89,7 +88,7 @@ services:
     environment:
       <<: *witness-env
     healthcheck:
-      test: curl -f http://127.0.0.1:5643/oobi
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5643/oobi" ]
       <<: *healthcheck
     command: witness demo
     volumes:
@@ -107,7 +106,7 @@ services:
     environment:
       <<: *witness-env
     healthcheck:
-      test: curl -f http://127.0.0.1:5644/oobi
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5644/oobi" ]
       <<: *healthcheck
     command: witness demo
     volumes:
@@ -125,7 +124,7 @@ services:
     environment:
       <<: *witness-env
     healthcheck:
-      # healthcheck needs to be different in 1.2.4+ because it uses the Alpine base image and curl is not present
+      # healthcheck needs to be different in 1.2.6+ because it uses the Alpine base image and curl is not present
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5645/oobi" ]
       <<: *healthcheck
     command: witness demo
@@ -178,7 +177,7 @@ services:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9923/health" ]
       <<: *healthcheck
     ports:
-      - 9923:9923
+      - "9923:9923"
     entrypoint: [ 'sally', 'hook', 'demo' ]
 
   # The reporting endpoint service receiving IPEX credential presentations
