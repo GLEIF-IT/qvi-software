@@ -24,8 +24,11 @@ set -u  # undefined variable detection
 # 1) $HOME/.qvi_workflow_docker should be cleared out prior to running this script.
 #    By specifying a directory as the first argument to this script you can control where the keystores are located.
 
+# NOTE: (used by resolve-env.ts)
+ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
+KEYSTORE_DIR=${1:-./docker-keystores}
 
-# First, check system dependencies
+# Check system dependencies
 # NOTE: added tsx to the list of required commands
 required_sys_commands=(docker jq tsx)
 for cmd in "${required_sys_commands[@]}"; do
@@ -42,6 +45,7 @@ function cleanup() {
     echo
     docker compose -f $DOCKER_COMPOSE_FILE kill
     docker compose -f $DOCKER_COMPOSE_FILE down -v
+    rm -rfv "${KEYSTORE_DIR}"/*
     exit 0
 }
 
@@ -65,12 +69,6 @@ source ./kli-commands.sh ${1:-}
 
 # Create docker network if it does not exist
 docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
-
-# NOTE: (used by resolve-env.ts)
-ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
-
-# Not used in this script, just for display. see kli-commands.sh
-KEYSTORE_DIR=${1:-./docker-keystores}
 
 print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
 print_yellow "Using $ENVIRONMENT configuration files"
@@ -158,6 +156,7 @@ PERSON_OOR="Advisor"
 # Sally - vLEI Reporting API
 WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
 export WEBHOOK_HOST=http://hook:9923
+SALLY_HOST=http://sally:9723
 export SALLY=sally
 export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
@@ -293,13 +292,15 @@ function resolve_oobis() {
         return
     fi
 
+    # SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi
+    # SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI
+    SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${SALLY_PRE}/witness/${WIT_PRE}" # sally 0.9.4
+    print_green "SALLY OOBI: ${SALLY_OOBI}"
+
     GEDA1_OOBI="${WIT_HOST_GAR}/oobi/${GEDA_PT1_PRE}/witness/${WAN_PRE}"
     GEDA2_OOBI="${WIT_HOST_GAR}/oobi/${GEDA_PT2_PRE}/witness/${WAN_PRE}"
     GIDA1_OOBI="${WIT_HOST_QAR}/oobi/${GIDA_PT1_PRE}/witness/${WIL_PRE}"
     GIDA2_OOBI="${WIT_HOST_QAR}/oobi/${GIDA_PT2_PRE}/witness/${WIL_PRE}"
-    # SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi
-    # SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI
-    SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${SALLY_PRE}/witness/${WIT_PRE}" # sally 0.9.4
     OOBIS_FOR_KERIA="geda1|$GEDA1_OOBI,geda2|$GEDA2_OOBI,gida1|$GIDA1_OOBI,gida2|$GIDA2_OOBI,sally|$SALLY_OOBI"
 
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT $SIGTS_AIDS $OOBIS_FOR_KERIA
