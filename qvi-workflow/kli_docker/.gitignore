@@ -1,0 +1,3 @@
+!docker-keystores/.gitkeep
+docker-keystores/*
+acdc-info/temp-data/*.json
