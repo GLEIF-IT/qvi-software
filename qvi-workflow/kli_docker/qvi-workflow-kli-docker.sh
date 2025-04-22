@@ -14,6 +14,11 @@
 set -u # undefined variable detection
 
 KEYSTORE_DIR=${1:-./docker-keystores}
+NO_CHALLENGE=${2:-true}
+
+if $NO_CHALLENGE; then
+    print_dark_gray "skipping challenge and response"
+fi
 
 # Check system dependencies
 required_sys_commands=(docker jq tsx)
@@ -42,22 +47,24 @@ docker compose -f $DOCKER_COMPOSE_FILE up -d --wait
 
 trap cleanup INT
 function cleanup() {
+    print_red "Caught Ctrl+C, stopping containers and exiting script..."
     echo
     docker compose -f $DOCKER_COMPOSE_FILE kill
     docker compose -f $DOCKER_COMPOSE_FILE down -v
     rm -rfv "${KEYSTORE_DIR}"/*
-    # print_red "Caught Ctrl+C, stopping containers and exiting script..."
-    # container_names=("geda1" "geda2" "gida1" "gida2" "qvi1" "qvi2")
+     container_names=("gar1" "gar2" "lar1" "lar2" "qvi1" "qvi2")
 
-    # for name in "${container_names[@]}"; do
-    # if docker ps -a | grep -q "$name"; then
-    #     docker kill $name || true && docker rm $name || true
-    # fi
-    # done
+     for name in "${container_names[@]}"; do
+     if docker ps -a | grep -q "$name"; then
+         docker kill $name || true && \
+          docker rm $name || true
+     fi
+     done
+     exit 0
 }
 
 function clear_containers() {
-    container_names=("geda1" "geda2" "gida1" "gida2" "qvi1" "qvi2")
+    container_names=("gar1" "gar2" "lar1" "lar2" "qvi1" "qvi2")
 
     for name in "${container_names[@]}"; do
     if docker ps -a | grep -q "$name"; then
@@ -102,7 +109,7 @@ GAR2_PASSCODE=b26ef3dd5c85f67c51be8
 GEDA_NAME=dagonet
 GEDA_PRE=EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv
 
-# GIDA AIDs - GLEIF Internal Delegated AID
+# LE AIDs - Legal Entity
 LAR1=elaine
 LAR1_PRE=ELTDtBrcFsHTMpfYHIJFvuH6awXY1rKq4w6TBlGyucoF
 LAR1_SALT=0AB90ainJghoJa8BzFmGiEWa
@@ -195,37 +202,17 @@ function create_keystore_and_aid() {
         --salt "${SALT}" \
         --passcode "${PASSCODE}" \
         --config-dir "${CONFIG_DIR}" \
-        --config-file "${CONFIG_FILE}" >/dev/null 2>&1
+        --config-file "${CONFIG_FILE}"
 
     ${KLI_CMD} incept \
         --name "${NAME}" \
         --alias "${NAME}" \
         --passcode "${PASSCODE}" \
-        --file "${ICP_FILE}" >/dev/null 2>&1
+        --file "${ICP_FILE}"
     PREFIX=$(${KLI_CMD} status  --name "${NAME}"  --alias "${NAME}"  --passcode "${PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
     # Need this since resolving with bootstrap config file isn't working
     print_dark_gray "Created AID: ${NAME}"
     print_green $'\tPrefix:'" ${PREFIX}"
-#    resolve_credential_oobis "${NAME}" "${PASSCODE}" "${KLI_CMD}"
-}
-
-function resolve_credential_oobis() {
-    # Need this function because for some reason resolving more than 8 OOBIs with the bootstrap config file doesn't work
-    NAME=$1
-    PASSCODE=$2
-    KLI_CMD=$3
-
-    print_dark_gray $'\t'"Resolving credential OOBIs for ${NAME}"
-    # LE
-    ${KLI_CMD:-kli} oobi resolve \
-        --name "${NAME}" \
-        --passcode "${PASSCODE}" \
-        --oobi "${SCHEMA_SERVER}/oobi/${LE_SCHEMA}" >/dev/null 2>&1
-    # LE ECR
-    ${KLI_CMD:-kli} oobi resolve \
-        --name "${NAME}" \
-        --passcode "${PASSCODE}" \
-        --oobi "${SCHEMA_SERVER}/oobi/${ECR_SCHEMA}" >/dev/null 2>&1
 }
 
 # 2. GAR: Create single Sig AIDs (2)
@@ -254,62 +241,62 @@ function resolve_oobis() {
     echo
     print_lcyan "-----Resolving OOBIs-----"
     print_yellow "Resolving OOBIs for GAR1"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${GAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${GAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for GAR2"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
-    print_yellow "Resolving OOBIs for GIDA 1"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${PERSON}" --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    print_yellow "Resolving OOBIs for LAR1"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${PERSON}" --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
-    print_yellow "Resolving OOBIs for GIDA 2"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${PERSON}" --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    print_yellow "Resolving OOBIs for LAR2"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${PERSON}" --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for QAR 1"
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${QAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${GAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${GAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${LAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${LAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${PERSON}" --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "$SALLY"    --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${QAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${GAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${GAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${LAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${LAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${PERSON}" --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR1}" --oobi-alias "$SALLY"    --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for QAR 2"
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${QAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${GAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${GAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${LAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${LAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${PERSON}" --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "$SALLY"    --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${QAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${GAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${GAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${LAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${LAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${PERSON}" --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${QAR2}" --oobi-alias "$SALLY"    --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
 
     # print_yellow "Resolving OOBIs for Person"
-    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${QAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${QAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${GAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${GAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${LAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
-    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${LAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}" >/dev/null 2>&1
+    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${QAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${QAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${GAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${GAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${LAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${LAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
     
     echo
 }
@@ -318,7 +305,7 @@ resolve_oobis
 # 3.5 GAR: Challenge responses between single sig AIDs
 function challenge_response() {
     chall_length=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq "select(.alias == \"${GAR2}\") | .challenges | length")
-    if [[ "$chall_length" > 0 ]]; then
+    if [[ "$chall_length" -gt 0 ]]; then
         print_yellow "Challenges already processed"
         return
     fi
@@ -371,43 +358,47 @@ function challenge_response() {
     kli challenge respond --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --recipient "${QAR2}" --words "${words_qar2_to_geda1}"
     kli2 challenge verify  --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --signer "${GAR1}"    --words "${words_qar2_to_geda1}"
 
-    print_dark_gray "---Challenge responses for GIDA (LE)---"
+    print_dark_gray "---Challenge responses for LE---"
 
-    print_dark_gray "Challenge: GIDA 1 -> GIDA 2"
+    print_dark_gray "Challenge: LAR1 -> LAR2"
     words_gida1_to_gida2=$(kli challenge generate --out string)
     kli challenge respond --name "${LAR2}" --alias "${LAR2}" --passcode "${LAR2_PASSCODE}" --recipient "${LAR1}" --words "${words_gida1_to_gida2}"
     kli challenge verify  --name "${LAR1}" --alias "${LAR1}" --passcode "${LAR1_PASSCODE}" --signer "${LAR2}"    --words "${words_gida1_to_gida2}"
 
-    print_dark_gray "Challenge: GIDA 2 -> GIDA 1"
+    print_dark_gray "Challenge: LAR2 -> LAR1"
     words_gida2_to_gida1=$(kli challenge generate --out string)
     kli challenge respond --name "${LAR1}" --alias "${LAR1}" --passcode "${LAR1_PASSCODE}" --recipient "${LAR2}" --words "${words_gida2_to_gida1}"
     kli challenge verify  --name "${LAR2}" --alias "${LAR2}" --passcode "${LAR2_PASSCODE}" --signer "${LAR1}"    --words "${words_gida2_to_gida1}"
 
-    print_dark_gray "---Challenge responses between QAR and GIDA (LE)---"
+    print_dark_gray "---Challenge responses between QAR and LE---"
 
-    print_dark_gray "Challenge: QAR 1 -> GIDA 1"
+    print_dark_gray "Challenge: QAR 1 -> LAR1"
     words_qar1_to_gida1=$(kli challenge generate --out string)
     kli challenge respond --name "${LAR1}" --alias "${LAR1}" --passcode "${LAR1_PASSCODE}" --recipient "${QAR1}" --words "${words_qar1_to_gida1}"
     kli2 challenge verify  --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --signer "${LAR1}"    --words "${words_qar1_to_gida1}"
 
-    print_dark_gray "Challenge: GIDA 1 -> QAR 1"
+    print_dark_gray "Challenge: LAR1 -> QAR 1"
     words_gida1_to_qar1=$(kli challenge generate --out string)
     kli2 challenge respond --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --recipient "${LAR1}" --words "${words_gida1_to_qar1}"
     kli challenge verify  --name "${LAR1}" --alias "${LAR1}" --passcode "${LAR1_PASSCODE}" --signer "${QAR1}"    --words "${words_gida1_to_qar1}"
 
-    print_dark_gray "Challenge: QAR 2 -> GIDA 2"
+    print_dark_gray "Challenge: QAR 2 -> LAR2"
     words_qar2_to_gida2=$(kli challenge generate --out string)
     kli challenge respond --name "${LAR2}" --alias "${LAR2}" --passcode "${LAR2_PASSCODE}" --recipient "${QAR2}" --words "${words_qar2_to_gida2}"
     kli2 challenge verify  --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --signer "${LAR2}"    --words "${words_qar2_to_gida2}"
 
-    print_dark_gray "Challenge: GIDA 2 -> QAR 2"
+    print_dark_gray "Challenge: LAR2 -> QAR 2"
     words_gida2_to_qar2=$(kli challenge generate --out string)
     kli2 challenge respond --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --recipient "${LAR2}" --words "${words_gida2_to_qar2}"
     kli challenge verify  --name "${LAR2}" --alias "${LAR2}" --passcode "${LAR2_PASSCODE}" --signer "${QAR2}"    --words "${words_gida2_to_qar2}" 
 
     print_green "-----Finished challenge and response-----"
 }
-#challenge_response
+if [[ $NO_CHALLENGE ]]; then
+    print_yellow "Skipping challenge and response"
+else
+    challenge_response
+fi
 
 # 4. GAR: Create Multisig AID (GEDA)
 function create_multisig_icp_config() {
@@ -435,14 +426,14 @@ function create_geda_multisig() {
 
     # The following multisig commands run in parallel in Docker
     print_yellow "[External] Multisig Inception from ${GAR1}: ${GAR1_PRE}"
-    klid geda1 multisig incept --name ${GAR1} --alias ${GAR1} \
+    klid gar1 multisig incept --name ${GAR1} --alias ${GAR1} \
         --passcode ${GAR1_PASSCODE} \
         --group ${GEDA_NAME} \
         --file /config/multi-sig-incept-config.json
 
     echo
 
-    klid geda2 multisig join --name ${GAR2} \
+    klid gar2 multisig join --name ${GAR2} \
         --passcode ${GAR2_PASSCODE} \
         --group ${GEDA_NAME} \
         --auto
@@ -450,11 +441,11 @@ function create_geda_multisig() {
     echo
     print_yellow "[External] Multisig Inception { ${GAR1}, ${GAR2} } - wait for signatures"
     echo
-    print_dark_gray "waiting on Docker containers geda1 and geda2"
-    docker wait geda1 geda2
-    docker logs geda1 # show what happened
-    docker logs geda2 # show what happened
-    docker rm geda1 geda2
+    print_dark_gray "waiting on Docker containers gar1 and gar2"
+    docker wait gar1 gar2
+    docker logs gar1 # show what happened
+    docker logs gar2 # show what happened
+    docker rm gar1 gar2
 
     exists=$(kli list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | grep "${GEDA_NAME}")
     if [[ ! "$exists" =~ "${GEDA_NAME}" ]]; then
@@ -467,29 +458,29 @@ function create_geda_multisig() {
 }
 create_geda_multisig
 
-# 45. Create Multisig GLEIF Internal Delegated AID (GIDA), acts as legal entity
+# 45. Create Multisig Legal Entity
 function create_le_multisig() {
     exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
     if [[ "$exists" =~ "${LE_MS_NAME}" ]]; then
-        print_dark_gray "[Internal] GIDA Multisig AID ${LE_MS_NAME} already exists"
+        print_dark_gray "[Internal] LE Multisig AID ${LE_MS_NAME} already exists"
         return
     fi
 
     echo
-    print_yellow "[Internal] Multisig Inception for GIDA"
+    print_yellow "[Internal] Multisig Inception for LE"
 
     create_multisig_icp_config "${LAR1_PRE}" "${LAR2_PRE}"
 
     # Follow commands run in parallel
     print_yellow "[Internal] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
-    klid gida1 multisig incept --name ${LAR1} --alias ${LAR1} \
+    klid lar1 multisig incept --name ${LAR1} --alias ${LAR1} \
         --passcode ${LAR1_PASSCODE} \
         --group ${LE_MS_NAME} \
         --file /config/multi-sig-incept-config.json 
 
     echo
 
-    klid gida2 multisig join --name ${LAR2} \
+    klid lar2 multisig join --name ${LAR2} \
         --passcode ${LAR2_PASSCODE} \
         --group ${LE_MS_NAME} \
         --auto
@@ -497,21 +488,21 @@ function create_le_multisig() {
     echo
     print_yellow "[Internal] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
     echo
-    print_dark_gray "waiting on Docker containers gida1 and gida2"
-    docker wait gida1
-    docker wait gida2
-    docker logs gida1 # show what happened
-    docker logs gida2 # show what happened
-    docker rm gida1 gida2
+    print_dark_gray "waiting on Docker containers lar1 and lar2"
+    docker wait lar1
+    docker wait lar2
+    docker logs lar1 # show what happened
+    docker logs lar2 # show what happened
+    docker rm lar1 lar2
 
     exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
     if [[ ! "$exists" =~ "${LE_MS_NAME}" ]]; then
-        print_red "[Internal] GIDA Multisig inception failed"
+        print_red "[Internal] LE Multisig inception failed"
         exit 1
     fi
 
     ms_prefix=$(kli status --name "${LAR1}" --alias "${LE_MS_NAME}" --passcode "${LAR1_PASSCODE}" | awk '/Identifier:/ {print $2}')
-    print_green "[Internal] GIDA Multisig AID ${LE_MS_NAME} with prefix: ${ms_prefix}"
+    print_green "[Internal] LE Multisig AID ${LE_MS_NAME} with prefix: ${ms_prefix}"
 }
 create_le_multisig
 
@@ -600,18 +591,18 @@ function create_qvi_multisig() {
     print_lcyan "[External] GEDA members approve delegated inception with 'kli delegate confirm'"
     echo
 
-    klid geda1 delegate confirm --name "${GAR1}" --alias "${GAR1}" \
+    klid gar1 delegate confirm --name "${GAR1}" --alias "${GAR1}" \
         --passcode "${GAR1_PASSCODE}" --interact --auto
-    klid geda2 delegate confirm --name "${GAR2}" --alias "${GAR2}" \
+    klid gar2 delegate confirm --name "${GAR2}" --alias "${GAR2}" \
         --passcode "${GAR2_PASSCODE}" --interact --auto
 
-    print_dark_gray "waiting on Docker containers qvi1, qvi2, geda1, geda2"
-    docker wait qvi1 qvi2 geda1 geda2
+    print_dark_gray "waiting on Docker containers qvi1, qvi2, gar1, gar2"
+    docker wait qvi1 qvi2 gar1 gar2
     docker logs qvi1 # show what happened
     docker logs qvi2 # show what happened
-    docker logs geda1
-    docker logs geda2
-    docker rm qvi1 qvi2 geda1 geda2
+    docker logs gar1
+    docker logs gar2
+    docker rm qvi1 qvi2 gar1 gar2
 
     echo
     print_lcyan "[QVI] Show multisig status for ${QAR1}"
@@ -634,7 +625,7 @@ create_qvi_multisig
 # 14. QVI: Generate OOBI for QVI to send to GEDA
 QVI_OOBI=$(kli2 oobi generate --name "${QAR1}" --passcode "${QAR1_PASSCODE}" --alias "${QVI_NAME}" --role witness)
 
-# 15. GEDA and GIDA: Resolve QVI OOBI
+# 15. GEDA and LE: Resolve QVI OOBI
 function resolve_qvi_oobi() {
     exists=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${QVI_NAME}")
     if [[ "$exists" =~ "${QVI_NAME}" ]]; then
@@ -668,7 +659,7 @@ function create_geda_reg() {
     echo
     print_yellow "Creating GEDA registry"
     NONCE=$(kli nonce | tr -d '[:space:]')
-    klid geda1 vc registry incept \
+    klid gar1 vc registry incept \
         --name "${GAR1}" \
         --alias "${GEDA_NAME}" \
         --passcode "${GAR1_PASSCODE}" \
@@ -676,7 +667,7 @@ function create_geda_reg() {
         --nonce "${NONCE}" \
         --registry-name "${GEDA_REGISTRY}" 
 
-    klid geda2 vc registry incept \
+    klid gar2 vc registry incept \
         --name "${GAR2}" \
         --alias "${GEDA_NAME}" \
         --passcode "${GAR2_PASSCODE}" \
@@ -687,11 +678,11 @@ function create_geda_reg() {
     echo
     print_yellow "[External] GEDA registry inception - wait for signatures"
     echo
-    print_dark_gray "waiting on Docker containers geda1 and geda2"
-    docker wait geda1 geda2
-    docker logs geda1
-    docker logs geda2
-    docker rm geda1 geda2
+    print_dark_gray "waiting on Docker containers gar1 and gar2"
+    docker wait gar1 gar2
+    docker logs gar1
+    docker logs gar2
+    docker rm gar1 gar2
 
     echo
     print_green "QVI Credential Registry created for GEDA"
@@ -733,7 +724,7 @@ function create_qvi_credential() {
     print_green "[External] GEDA creating QVI credential"
     KLI_TIME=$(kli time | tr -d '[:space:]')
     
-    klid geda1 vc create \
+    klid gar1 vc create \
         --name "${GAR1}" \
         --alias "${GEDA_NAME}" \
         --passcode "${GAR1_PASSCODE}" \
@@ -744,7 +735,7 @@ function create_qvi_credential() {
         --rules @/data/rules/rules.json \
         --time "${KLI_TIME}"
 
-    klid geda2 vc create \
+    klid gar2 vc create \
         --name "${GAR2}" \
         --alias "${GEDA_NAME}" \
         --passcode "${GAR2_PASSCODE}" \
@@ -758,11 +749,11 @@ function create_qvi_credential() {
     echo
     print_yellow "[External] GEDA creating QVI credential - wait for signatures"
     echo 
-    print_dark_gray "waiting on Docker containers geda1 and geda2"
-    docker wait geda1 geda2
-    docker logs geda1
-    docker logs geda2
-    docker rm geda1 geda2
+    print_dark_gray "waiting on Docker containers gar1 and gar2"
+    docker wait gar1 gar2
+    docker logs gar1
+    docker logs gar2
+    docker rm gar1 gar2
 
     echo
     print_lcyan "[External] QVI Credential created for GEDA"
@@ -793,7 +784,7 @@ function grant_qvi_credential() {
     echo
     print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
     KLI_TIME=$(kli time | tr -d '[:space:]')
-    klid geda1 ipex grant \
+    klid gar1 ipex grant \
         --name "${GAR1}" \
         --passcode "${GAR1_PASSCODE}" \
         --alias "${GEDA_NAME}" \
@@ -801,7 +792,7 @@ function grant_qvi_credential() {
         --recipient "${QVI_PRE}" \
         --time "${KLI_TIME}"
 
-    klid geda2 ipex grant \
+    klid gar2 ipex grant \
         --name "${GAR2}" \
         --passcode "${GAR2_PASSCODE}" \
         --alias "${GEDA_NAME}" \
@@ -812,11 +803,11 @@ function grant_qvi_credential() {
     echo
     print_yellow "[External] Waiting for IPEX messages to be witnessed"
     echo 
-    print_dark_gray "waiting on Docker containers geda1 and geda2"
-    docker wait geda1 geda2
-    docker logs geda1
-    docker logs geda2
-    docker rm geda1 geda2
+    print_dark_gray "waiting on Docker containers gar1 and gar2"
+    docker wait gar1 gar2
+    docker logs gar1
+    docker logs gar2
+    docker rm gar1 gar2
 
     echo
     print_green "[QVI] Polling for QVI Credential in ${QAR1}..."
@@ -891,7 +882,7 @@ function admit_qvi_credential() {
     echo
     print_yellow "[QVI] Admitting QVI credential - wait for signatures"
     echo 
-    print_dark_gray "waiting on Docker containers geda1 and geda2"
+    print_dark_gray "waiting on Docker containers gar1 and gar2"
     docker wait qvi1 qvi2
     docker logs qvi1
     docker logs qvi2
@@ -960,19 +951,19 @@ function create_qvi_reg() {
 }
 create_qvi_reg
 
-# 18.6 QVI OOBIs with GIDA
+# 18.6 QVI OOBIs with LE
 function resolve_gida_and_qvi_oobis() {
     exists=$(kli2 contacts list --name "${QAR1}" --passcode "${QAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${LE_MS_NAME}")
     if [[ "$exists" =~ "${LE_MS_NAME}" ]]; then
-        print_yellow "GIDA OOBIs already resolved for QARs"
+        print_yellow "LE OOBIs already resolved for QARs"
         return
     fi
 
     echo
-    GIDA_OOBI=$(kli oobi generate --name ${LAR1} --passcode ${LAR1_PASSCODE} --alias ${LE_MS_NAME} --role witness)
-    echo "GIDA OOBI: ${GIDA_OOBI}"
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR1_PASSCODE}" --oobi "${GIDA_OOBI}"
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR2_PASSCODE}" --oobi "${GIDA_OOBI}"
+    LE_OOBI=$(kli oobi generate --name ${LAR1} --passcode ${LAR1_PASSCODE} --alias ${LE_MS_NAME} --role witness)
+    echo "LE OOBI: ${LE_OOBI}"
+    kli2 oobi resolve --name "${QAR1}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR1_PASSCODE}" --oobi "${LE_OOBI}"
+    kli2 oobi resolve --name "${QAR2}" --oobi-alias "${LE_MS_NAME}" --passcode "${QAR2_PASSCODE}" --oobi "${LE_OOBI}"
     
     echo    
 }
@@ -1011,48 +1002,48 @@ prepare_qvi_edge
 
 
 
-# 19.1.5 GIDA: Create GIDA credential registry
+# 19.1.5 LE: Create LE credential registry
 function create_gida_reg() {
-    # Check if GIDA credential registry already exists
+    # Check if LE credential registry already exists
     REGISTRY=$(kli vc registry list \
         --name "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" | awk '{print $1}')
     if [ ! -z "${REGISTRY}" ]; then
-        print_dark_gray "[Internal] GIDA registry already created"
+        print_dark_gray "[Internal] LE registry already created"
         return
     fi
 
     echo
-    print_yellow "[Internal] Creating GIDA registry"
+    print_yellow "[Internal] Creating LE registry"
     NONCE=$(kli nonce | tr -d '[:space:]')
     
-    klid gida1 vc registry incept \
+    klid lar1 vc registry incept \
         --name ${LAR1} \
         --alias ${LE_MS_NAME} \
         --passcode ${LAR1_PASSCODE} \
-        --usage "Legal Entity Credential Registry for GIDA (LE)" \
+        --usage "Legal Entity Credential Registry for LE" \
         --nonce ${NONCE} \
         --registry-name ${LE_REGISTRY} 
 
-    klid gida2 vc registry incept \
+    klid lar2 vc registry incept \
         --name ${LAR2} \
         --alias ${LE_MS_NAME} \
         --passcode ${LAR2_PASSCODE} \
-        --usage "Legal Entity Credential Registry for GIDA (LE)" \
+        --usage "Legal Entity Credential Registry for LE" \
         --nonce ${NONCE} \
         --registry-name ${LE_REGISTRY} 
 
     echo
-    print_yellow "[Internal] GIDA creating GIDA registry - wait for signatures"
+    print_yellow "[Internal] LE creating LE registry - wait for signatures"
     echo 
-    print_dark_gray "waiting on Docker containers gida1 and gida2"
-    docker wait gida1 gida2
-    docker logs gida1
-    docker logs gida2
-    docker rm gida1 gida2
+    print_dark_gray "waiting on Docker containers lar1 and lar2"
+    docker wait lar1 lar2
+    docker logs lar1
+    docker logs lar2
+    docker rm lar1 lar2
 
     echo
-    print_green "[Internal] Legal Entity Credential Registry created for GIDA"
+    print_green "[Internal] Legal Entity Credential Registry created for LE"
     echo
 }
 create_gida_reg
@@ -1157,7 +1148,7 @@ function grant_le_credential() {
         --poll \
         --said | tr -d '[:space:]')
     if [ ! -z "${LE_GRANT_SAID}" ]; then
-        print_dark_gray "[GIDA] LE credential already granted"
+        print_dark_gray "[LE] LE credential already granted"
         return
     fi
     SAID=$(kli2 vc list \
@@ -1169,7 +1160,7 @@ function grant_le_credential() {
         --schema ${LE_SCHEMA} | tr -d '[:space:]')
 
     echo
-    print_yellow $'[QVI] IPEX GRANTing LE credential with\n\tSAID'" ${SAID}"$'\n\tto GIDA'" ${LE_MS_PRE}"
+    print_yellow $'[QVI] IPEX GRANTing LE credential with\n\tSAID'" ${SAID}"$'\n\tto LE'" ${LE_MS_PRE}"
     KLI_TIME=$(kli time | tr -d '[:space:]')
     kli2d qvi1 ipex grant \
         --name "${QAR1}" \
@@ -1188,7 +1179,7 @@ function grant_le_credential() {
         --time "${KLI_TIME}"
 
     echo
-    print_yellow "[QVI] granting LE credential to GIDA - wait for signatures"
+    print_yellow "[QVI] granting LE credential to LE - wait for signatures"
     echo 
     print_dark_gray "waiting on Docker containers qvi1 and qvi2"
     docker wait qvi1 qvi2
@@ -1210,7 +1201,7 @@ function grant_le_credential() {
         print_red "LE Credential not granted"
         exit 1
     else 
-        print_green "[Internal] ${QVI_NAME} granted LE Credential to GIDA ${LAR1} SAID ${LE_GRANT_SAID}"
+        print_green "[Internal] ${QVI_NAME} granted LE Credential to LE ${LAR1} SAID ${LE_GRANT_SAID}"
     fi
 
     print_green "[Internal] Polling for LE Credential in ${LAR2}..."
@@ -1226,11 +1217,11 @@ function grant_le_credential() {
         print_red "LE Credential not granted"
         exit 1
     else 
-        print_green "[Internal] ${QVI_NAME} granted LE Credential to GIDA ${LAR2} SAID ${LE_GRANT_SAID}"
+        print_green "[Internal] ${QVI_NAME} granted LE Credential to LE ${LAR2} SAID ${LE_GRANT_SAID}"
     fi
 
     echo
-    print_green "[QVI] LE Credential granted to GIDA"
+    print_green "[QVI] LE Credential granted to LE"
     echo
 }
 grant_le_credential
@@ -1259,7 +1250,7 @@ function admit_le_credential() {
     print_yellow "[Internal] Admitting LE Credential ${SAID} to ${LE_MS_NAME} as ${LAR1}"
 
     KLI_TIME=$(kli time | tr -d '[:space:]')
-    klid gida1 ipex admit \
+    klid lar1 ipex admit \
         --name "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" \
         --alias "${LE_MS_NAME}" \
@@ -1267,7 +1258,7 @@ function admit_le_credential() {
         --time "${KLI_TIME}" 
 
     print_green "[Internal] Admitting LE Credential ${SAID} to ${LE_MS_NAME} as ${LAR2}"
-    klid gida2 ipex admit \
+    klid lar2 ipex admit \
         --name "${LAR2}" \
         --passcode "${LAR2_PASSCODE}" \
         --alias "${LE_MS_NAME}" \
@@ -1277,11 +1268,11 @@ function admit_le_credential() {
     echo
     print_yellow "[Internal] Admitting LE credential - wait for signatures"
     echo
-    print_dark_gray "waiting on Docker containers gida1 and gida2"
-    docker wait gida1 gida2
-    docker logs gida1
-    docker logs gida2
-    docker rm gida1 gida2
+    print_dark_gray "waiting on Docker containers lar1 and lar2"
+    docker wait lar1 lar2
+    docker logs lar1
+    docker logs lar2
+    docker rm lar1 lar2
 
     VC_SAID=$(kli vc list \
         --name "${LAR2}" \
@@ -1363,11 +1354,11 @@ function create_ecr_auth_credential() {
     fi
 
     echo
-    print_green "[Internal] GIDA creating ECR Auth credential"
+    print_green "[Internal] LE creating ECR Auth credential"
 
     KLI_TIME=$(kli time | tr -d '[:space:]')
     
-    klid gida1 vc create \
+    klid lar1 vc create \
         --name "${LAR1}" \
         --alias "${LE_MS_NAME}" \
         --passcode "${LAR1_PASSCODE}" \
@@ -1379,7 +1370,7 @@ function create_ecr_auth_credential() {
         --rules @/data/rules/ecr-auth-rules.json \
         --time "${KLI_TIME}" 
 
-    klid gida2 vc create \
+    klid lar2 vc create \
         --name "${LAR2}" \
         --alias "${LE_MS_NAME}" \
         --passcode "${LAR2_PASSCODE}" \
@@ -1392,13 +1383,13 @@ function create_ecr_auth_credential() {
         --time "${KLI_TIME}" 
 
     echo 
-    print_yellow "[Internal] GIDA creating ECR Auth credential - wait for signatures"
+    print_yellow "[Internal] LE creating ECR Auth credential - wait for signatures"
     echo
-    print_dark_gray "waiting on Docker containers gida1 and gida2"
-    docker wait gida1 gida2
-    docker logs gida1
-    docker logs gida2
-    docker rm gida1 gida2
+    print_dark_gray "waiting on Docker containers lar1 and lar2"
+    docker wait lar1 lar2
+    docker logs lar1
+    docker logs lar2
+    docker rm lar1 lar2
 
     SAID=$(kli vc list \
         --name "${LAR1}" \
@@ -1414,7 +1405,7 @@ function create_ecr_auth_credential() {
     fi
 
     echo
-    print_lcyan "[Internal] GIDA created ECR Auth credential"
+    print_lcyan "[Internal] LE created ECR Auth credential"
     echo
 }
 create_ecr_auth_credential
@@ -1445,7 +1436,7 @@ function grant_ecr_auth_credential() {
     print_yellow $'[Internal] IPEX GRANTing ECR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI '"${QVI_PRE}"
 
     KLI_TIME=$(kli time | tr -d '[:space:]') # Use consistent time so SAID of grant is same
-    klid gida1 ipex grant \
+    klid lar1 ipex grant \
         --name "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" \
         --alias "${LE_MS_NAME}" \
@@ -1453,7 +1444,7 @@ function grant_ecr_auth_credential() {
         --recipient "${QVI_PRE}" \
         --time "${KLI_TIME}" 
 
-    klid gida2 ipex grant \
+    klid lar2 ipex grant \
         --name "${LAR2}" \
         --passcode "${LAR2_PASSCODE}" \
         --alias "${LE_MS_NAME}" \
@@ -1464,11 +1455,11 @@ function grant_ecr_auth_credential() {
     echo
     print_yellow "[Internal] Granting ECR Auth credential to QVI - wait for signatures"
     echo
-    print_dark_gray "waiting on Docker containers gida1 and gida2"
-    docker wait gida1 gida2
-    docker logs gida1
-    docker logs gida2
-    docker rm gida1 gida2
+    print_dark_gray "waiting on Docker containers lar1 and lar2"
+    docker wait lar1 lar2
+    docker logs lar1
+    docker logs lar2
+    docker rm lar1 lar2
 
     echo
     print_green "[QVI] Polling for ECR Auth Credential in ${QAR1}..."
@@ -1495,7 +1486,7 @@ function grant_ecr_auth_credential() {
 }
 grant_ecr_auth_credential
 
-# 21.5 (part of 22) Admit ECR Auth credential from GIDA
+# 21.5 (part of 22) Admit ECR Auth credential from LE
 function admit_ecr_auth_credential() {
     VC_SAID=$(kli2 vc list \
         --name "${QAR2}" \
@@ -1517,7 +1508,7 @@ function admit_ecr_auth_credential() {
         tail -1 | tr -d '[:space:]') # get the last grant, which should be the ECR Auth credential
 
     echo
-    print_yellow "[QVI] Admitting ECR Auth Credential ${SAID} from GIDA LE"
+    print_yellow "[QVI] Admitting ECR Auth Credential ${SAID} from LE"
 
     KLI_TIME=$(kli time | tr -d '[:space:]') # Use consistent time so SAID of grant is same
     kli2d qvi1 ipex admit \
@@ -1527,7 +1518,7 @@ function admit_ecr_auth_credential() {
         --said "${SAID}" \
         --time "${KLI_TIME}" 
 
-    print_green "[QVI] Admitting ECR Auth Credential as ${QVI_NAME} from GIDA LE"
+    print_green "[QVI] Admitting ECR Auth Credential as ${QVI_NAME} from LE"
     kli2d qvi2 ipex admit \
         --name "${QAR2}" \
         --passcode "${QAR2_PASSCODE}" \
@@ -1594,10 +1585,10 @@ function create_oor_auth_credential() {
     fi
 
     echo
-    print_green "[Internal] GIDA creating OOR Auth credential"
+    print_green "[Internal] LE creating OOR Auth credential"
 
     KLI_TIME=$(kli time | tr -d '[:space:]')
-    klid gida1 vc create \
+    klid lar1 vc create \
         --name "${LAR1}" \
         --alias "${LE_MS_NAME}" \
         --passcode "${LAR1_PASSCODE}" \
@@ -1609,7 +1600,7 @@ function create_oor_auth_credential() {
         --rules @/data/rules/rules.json \
         --time "${KLI_TIME}" 
 
-    klid gida2 vc create \
+    klid lar2 vc create \
         --name "${LAR2}" \
         --alias "${LE_MS_NAME}" \
         --passcode "${LAR2_PASSCODE}" \
@@ -1622,13 +1613,13 @@ function create_oor_auth_credential() {
         --time "${KLI_TIME}" 
 
     echo 
-    print_yellow "[Internal] GIDA creating OOR Auth credential - wait for signatures"
+    print_yellow "[Internal] LE creating OOR Auth credential - wait for signatures"
     echo 
-    print_dark_gray "waiting on Docker containers gida1 and gida2"
-    docker wait gida1 gida2
-    docker logs gida1
-    docker logs gida2
-    docker rm gida1 gida2
+    print_dark_gray "waiting on Docker containers lar1 and lar2"
+    docker wait lar1 lar2
+    docker logs lar1
+    docker logs lar2
+    docker rm lar1 lar2
 
     SAID=$(kli vc list \
         --name "${LAR1}" \
@@ -1643,7 +1634,7 @@ function create_oor_auth_credential() {
     fi
 
     echo
-    print_lcyan "[Internal] GIDA created OOR Auth credential"
+    print_lcyan "[Internal] LE created OOR Auth credential"
     echo
 }
 create_oor_auth_credential
@@ -1677,7 +1668,7 @@ function grant_oor_auth_credential() {
     print_yellow $'[Internal] IPEX GRANTing OOR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
 
     KLI_TIME=$(kli time | tr -d '[:space:]') # Use consistent time so SAID of grant is same
-    klid gida1 ipex grant \
+    klid lar1 ipex grant \
         --name "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" \
         --alias "${LE_MS_NAME}" \
@@ -1685,7 +1676,7 @@ function grant_oor_auth_credential() {
         --recipient "${QVI_PRE}" \
         --time "${KLI_TIME}" 
 
-    klid gida2 ipex grant \
+    klid lar2 ipex grant \
         --name "${LAR2}" \
         --passcode "${LAR2_PASSCODE}" \
         --alias "${LE_MS_NAME}" \
@@ -1696,11 +1687,11 @@ function grant_oor_auth_credential() {
     echo
     print_yellow "[Internal] Granting OOR Auth credential to QVI - wait for signatures"
     echo
-    print_dark_gray "waiting on Docker containers gida1 and gida2"
-    docker wait gida1 gida2
-    docker logs gida1
-    docker logs gida2
-    docker rm gida1 gida2
+    print_dark_gray "waiting on Docker containers lar1 and lar2"
+    docker wait lar1 lar2
+    docker logs lar1
+    docker logs lar2
+    docker rm lar1 lar2
 
 
     echo
@@ -1752,7 +1743,7 @@ function admit_oor_auth_credential() {
         tail -1 | tr -d '[:space:]') # get the last grant, which should be the ECR Auth credential
 
     echo
-    print_yellow "[QVI] Admitting OOR Auth Credential ${SAID} from GIDA LE"
+    print_yellow "[QVI] Admitting OOR Auth Credential ${SAID} from LE"
 
     KLI_TIME=$(kli time | tr -d '[:space:]') # Use consistent time so SAID of grant is same
     kli2d qvi1 ipex admit \
@@ -1762,7 +1753,7 @@ function admit_oor_auth_credential() {
         --said "${SAID}" \
         --time "${KLI_TIME}"
 
-    print_green "[QVI] Admitting OOR Auth Credential as ${QVI_NAME} from GIDA LE"
+    print_green "[QVI] Admitting OOR Auth Credential as ${QVI_NAME} from LE"
     kli2d qvi2 ipex admit \
         --name "${QAR2}" \
         --passcode "${QAR2_PASSCODE}" \
@@ -2274,6 +2265,7 @@ admit_oor_credential
 
 # 25. QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
 
+read -p "Press [enter] to present the LE credential to Sally"
 function present_le_cred_to_sally() {
     print_yellow "[QVI] Presenting LE Credential to Sally"
     LE_SAID=$(kli vc list --name ${LAR1} \
@@ -2282,22 +2274,26 @@ function present_le_cred_to_sally() {
         --said --schema ${LE_SCHEMA})
 
     PID_LIST=""
-    kli ipex grant \
+    klid qar1 ipex grant \
         --name "${QAR1}" \
         --alias "${QVI_NAME}" \
         --passcode "${QAR1_PASSCODE}" \
         --said "${LE_SAID}" \
-        --recipient "${SALLY}" &
-    pid=$!
-    PID_LIST+=" $pid"
+        --recipient "${SALLY}"
 
     kli ipex join \
         --name "${QAR2}" \
         --passcode "${QAR2_PASSCODE}" \
-        --auto &
-    pid=$!
-    PID_LIST+=" $pid"
-    wait $PID_LIST
+        --auto
+
+    echo
+    print_yellow "[QVI] Presenting LE Credential - wait for signatures"
+    echo
+    print_dark_gray "waiting on Docker containers qar1 and qar2"
+    docker wait qar1 qar2
+    docker logs qar1
+    docker logs qar2
+    docker rm qar1 qar2
 
     sleep 30
     print_green "[QVI] LE Credential presented to Sally"
