@@ -28,6 +28,7 @@ source ./color-printing.sh
 
 KEYSTORE_DIR=${1:-$HOME/.keri}
 NO_CHALLENGE=${2:-true}
+DIRECT_MODE_SALLY=${3:-false}
 
 if $NO_CHALLENGE; then
     print_dark_gray "skipping challenge and response"
@@ -253,13 +254,16 @@ function create_aids() {
 }
 create_aids
 
+# Indirect mode Sally
+SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
 function sally_setup() {
     print_yellow "[GLEIF] setting up webhook"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
 
-    print_yellow "[GLEIF] starting sally on ${SALLY_HOST}"
-    sally server start \
+    if $DIRECT_MODE_SALLY; then
+      print_yellow "[GLEIF] starting sally on ${SALLY_HOST} in direct mode"
+      sally server start \
         --name $SALLY \
         --alias $SALLY \
         --salt $SALLY_SALT \
@@ -269,14 +273,28 @@ function sally_setup() {
         --passcode $SALLY_PASSCODE \
         --web-hook http://127.0.0.1:9923 \
         --auth "${GEDA_PRE}" & # who will be presenting the credential
-    SALLY_PID=$!
-
-    print_yellow "[GLEIF] waiting for Sally to start..."
+      SALLY_PID=$!
+    else
+      print_yellow "[GLEIF] starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
+      sally server start \
+        --name $SALLY \
+        --alias $SALLY \
+        --salt $SALLY_SALT \
+        --config-dir sally \
+        --config-file sally-habery.json \
+        --passcode $SALLY_PASSCODE \
+        --web-hook http://127.0.0.1:9923 \
+        --auth "${GEDA_PRE}" & # who will be presenting the credential
+      SALLY_PID=$!
+    fi
+    print_yellow "[GLEIF] waiting 8 seconds for Sally to start..."
     sleep 8
 }
 sally_setup
 
 print_yellow "[GLEIF] waiting for Sally to start..."
+# Direct mode Sally
+#SALLY_OOBI="http://127.0.0.1:9723/oobi/ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K/controller"
 
 # GAR: OOBI resolutions between single sig AIDs
 function resolve_oobis() {
@@ -294,6 +312,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "$SALLY"    --passcode "${GAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for GAR2"
@@ -302,6 +321,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "$SALLY"    --passcode "${GAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for LE 1"
@@ -327,7 +347,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${QAR1}" --oobi-alias "${LAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${QAR1}" --oobi-alias "${LAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${QAR1}" --oobi-alias "${PERSON}" --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR1}" --oobi-alias "$SALLY"    --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "$SALLY"    --passcode "${QAR1_PASSCODE}"  --oobi "${SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for QAR 2"
     kli oobi resolve --name "${QAR2}" --oobi-alias "${QAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
@@ -336,7 +356,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
     kli oobi resolve --name "${QAR2}" --oobi-alias "${PERSON}" --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR2}" --oobi-alias "$SALLY"    --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "$SALLY"    --passcode "${QAR2_PASSCODE}"  --oobi "${SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for Person"
     kli oobi resolve --name "${PERSON}"  --oobi-alias "${GAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
@@ -981,7 +1001,6 @@ function admit_qvi_credential() {
 admit_qvi_credential
 
 # QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
-
 function present_qvi_cred_to_sally() {
     print_yellow "[QVI] Presenting QVI Credential to Sally"
     QVI_SAID=$(kli vc list --name "${QAR1}" \
@@ -1009,7 +1028,7 @@ function present_qvi_cred_to_sally() {
 
     print_green "[QVI] QVI Credential presented to Sally"
     print_dark_gray "[QVI] Waiting 15 s for Sally to call webhook"
-    sleep 15
+
 }
 present_qvi_cred_to_sally
 

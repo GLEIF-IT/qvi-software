@@ -29,7 +29,6 @@ ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LAR
 KEYSTORE_DIR=${1:-./docker-keystores}
 
 # Check system dependencies
-# NOTE: added tsx to the list of required commands
 required_sys_commands=(docker jq tsx)
 for cmd in "${required_sys_commands[@]}"; do
     if ! command -v $cmd &>/dev/null; then 
@@ -38,7 +37,6 @@ for cmd in "${required_sys_commands[@]}"; do
     fi
 done
 
-# TODO refactor
 # Cleanup functions
 trap cleanup INT
 function cleanup() {
@@ -73,8 +71,6 @@ docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
 print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
 print_yellow "Using $ENVIRONMENT configuration files"
 
-# Process outline:
-# 1. GAR: Prepare environment
 
 # QVI Config
 
@@ -667,22 +663,24 @@ function create_geda_reg() {
     NONCE=$(kli nonce)
 
     klid geda1 vc registry incept \
-        --name ${GEDA_PT1} \
-        --alias ${GEDA_MS} \
-        --passcode ${GEDA_PT1_PASSCODE} \
+        --name "${GEDA_PT1}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT1_PASSCODE}" \
         --usage "QVI Credential Registry for GEDA" \
-        --nonce ${NONCE} \
-        --registry-name ${GEDA_REGISTRY}
+        --nonce "${NONCE}" \
+        --registry-name "${GEDA_REGISTRY}"
 
     klid geda2 vc registry incept \
-        --name ${GEDA_PT2} \
-        --alias ${GEDA_MS} \
-        --passcode ${GEDA_PT2_PASSCODE} \
+        --name "${GEDA_PT2}" \
+        --alias "${GEDA_MS}" \
+        --passcode "${GEDA_PT2_PASSCODE}" \
         --usage "QVI Credential Registry for GEDA" \
-        --nonce ${NONCE} \
-        --registry-name ${GEDA_REGISTRY}
+        --nonce "${NONCE}" \
+        --registry-name "${GEDA_REGISTRY}"
 
     docker wait geda1 geda2
+    docker logs geda1
+    docker logs geda2
     docker rm geda1 geda2
 
     echo
@@ -1109,7 +1107,7 @@ function admit_le_credential() {
         --auto
     
     docker wait gida1 gida2
-    docker rm gida1 gida2  
+    docker rm gida1 gida2
 
     print_yellow "[Internal] Waiting 8s for LE IPEX messages to be witnessed"
     sleep 8
@@ -1152,7 +1150,7 @@ function create_gida_reg() {
         --registry-name "${GIDA_REGISTRY}"
 
     docker wait gida1 gida2
-    docker rm gida1 gida2  
+    docker rm gida1 gida2
 
     echo
     print_green "[Internal] Legal Entity Credential Registry created for GIDA"
@@ -1248,7 +1246,7 @@ function create_oor_auth_credential() {
         --time "${KLI_TIME}"
 
     docker wait gida1 gida2
-    docker rm gida1 gida2  
+    docker rm gida1 gida2
 
     echo
     print_lcyan "[Internal] GIDA created OOR Auth credential"
@@ -1300,7 +1298,7 @@ function grant_oor_auth_credential() {
         --time "${KLI_TIME}"
 
     docker wait gida1 gida2
-    docker rm gida1 gida2 
+    docker rm gida1 gida2
 
     echo
     print_yellow "[Internal] Waiting for OOR Auth IPEX grant messages to be witnessed"
