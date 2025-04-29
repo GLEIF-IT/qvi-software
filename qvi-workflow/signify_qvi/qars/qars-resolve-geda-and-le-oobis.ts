@@ -12,15 +12,15 @@ const oobiInfoArg = args[2];
 
 // parse the OOBIs for the GEDA and GIDA multisig AIDs needed for delegation and then LE credential issuance
 export function parseOobiInfo(oobiInfo: string) {
-    const oobiInfos = oobiInfo.split(','); // expect format: "gedaMS|OOBI,gidaMS|OOBI"
+    const oobiInfos = oobiInfo.split(','); // expect format: "gedaName|OOBI,leName|OOBI"
     const oobiObjs: OobiInfo[] = oobiInfos.map((oobiInfo) => {
-        const [position, oobi] = oobiInfo.split('|'); // expect format: "geda1|OOBI"
+        const [position, oobi] = oobiInfo.split('|'); // expect format: "gar1|OOBI"
         return {position, oobi};
     });
 
-    const GEDA_MS = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gedaMS') as OobiInfo;
-    const GIDA_MS = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gidaMS') as OobiInfo;
-    return {GEDA_MS, GIDA_MS};
+    const GEDA_NAME = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gedaName') as OobiInfo;
+    const LE_NAME = oobiObjs.find((oobiInfo) => oobiInfo.position === 'leName') as OobiInfo;
+    return {GEDA_NAME, LE_NAME};
 }
 
 /**
@@ -38,16 +38,16 @@ async function resolveMultisigOobis(aidInfo: string, oobiInfo: string, environme
         QAR3Client,
     ] = await getOrCreateClients(3, [QAR1.salt, QAR2.salt, QAR3.salt], environment);
 
-    const {GEDA_MS, GIDA_MS} = parseOobiInfo(oobiInfo);
+    const {GEDA_NAME, LE_NAME} = parseOobiInfo(oobiInfo);
     await Promise.all([
-        getOrCreateContact(QAR1Client, GEDA_MS.position, GEDA_MS.oobi),
-        getOrCreateContact(QAR1Client, GIDA_MS.position, GIDA_MS.oobi),
+        getOrCreateContact(QAR1Client, GEDA_NAME.position, GEDA_NAME.oobi),
+        getOrCreateContact(QAR1Client, LE_NAME.position, LE_NAME.oobi),
 
-        getOrCreateContact(QAR2Client, GEDA_MS.position, GEDA_MS.oobi),
-        getOrCreateContact(QAR2Client, GIDA_MS.position, GIDA_MS.oobi),
+        getOrCreateContact(QAR2Client, GEDA_NAME.position, GEDA_NAME.oobi),
+        getOrCreateContact(QAR2Client, LE_NAME.position, LE_NAME.oobi),
 
-        getOrCreateContact(QAR3Client, GEDA_MS.position, GEDA_MS.oobi),
-        getOrCreateContact(QAR3Client, GIDA_MS.position, GIDA_MS.oobi),
+        getOrCreateContact(QAR3Client, GEDA_NAME.position, GEDA_NAME.oobi),
+        getOrCreateContact(QAR3Client, LE_NAME.position, LE_NAME.oobi),
     ])
     console.log('Resolved multisig OOBIs');
 }

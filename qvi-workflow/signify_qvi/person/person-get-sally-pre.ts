@@ -21,9 +21,9 @@ export function parseAidInfo(aidInfoArg: string) {
 }
 
 export function parseOobiInfo(oobiInfo: string) {
-    const oobiInfos = oobiInfo.split(','); // expect format: "gedaMS|OOBI,gidaMS|OOBI"
+    const oobiInfos = oobiInfo.split(','); // expect format: "gedaName|OOBI,leName|OOBI"
     const oobiObjs: OobiInfo[] = oobiInfos.map((oobiInfo) => {
-        const [position, oobi] = oobiInfo.split('|'); // expect format: "geda1|OOBI"
+        const [position, oobi] = oobiInfo.split('|'); // expect format: "gar1|OOBI"
         return {position, oobi};
     });
 
