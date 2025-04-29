@@ -14,15 +14,15 @@ function create_geda_reg_single_gar() {
     echo
     print_yellow "Creating GEDA registry"
 
-    klid geda1 vc registry incept \
+    klid gar1 vc registry incept \
         --name ${GEDA_PT1} \
         --alias ${GEDA_MS} \
         --passcode ${GEDA_PT1_PASSCODE} \
         --usage "QVI Credential Registry for GEDA" \
         --registry-name ${GEDA_REGISTRY}
 
-    docker wait geda1
-    docker rm geda1
+    docker wait gar1
+    docker rm gar1
 
     echo
     print_green "QVI Credential Registry created for GEDA"
@@ -47,7 +47,7 @@ function create_qvi_credential_single_gar() {
     echo
     print_green "[External] GEDA creating QVI credential"
 
-    klid geda1 vc create \
+    klid gar1 vc create \
         --name "${GEDA_PT1}" \
         --alias "${GEDA_MS}" \
         --passcode "${GEDA_PT1_PASSCODE}" \
@@ -60,10 +60,10 @@ function create_qvi_credential_single_gar() {
     echo
     print_yellow "[External] GEDA creating QVI credential - wait for signatures"
     echo
-    print_dark_gray "waiting on Docker container geda1"
-    docker wait geda1
-    docker logs geda1
-    docker rm geda1
+    print_dark_gray "waiting on Docker container gar1"
+    docker wait gar1
+    docker logs gar1
+    docker rm gar1
 
     echo
     print_lcyan "[External] QVI Credential created for GEDA"
@@ -82,7 +82,7 @@ function grant_qvi_credential_single_gar() {
 
     echo
     print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
-    klid geda1 ipex grant \
+    klid gar1 ipex grant \
         --name "${GEDA_PT1}" \
         --passcode "${GEDA_PT1_PASSCODE}" \
         --alias "${GEDA_MS}" \
@@ -92,10 +92,10 @@ function grant_qvi_credential_single_gar() {
     echo
     print_yellow "[External] Waiting for IPEX messages to be witnessed"
     echo
-    print_dark_gray "waiting on Docker container geda1"
-    docker wait geda1
-    docker logs geda1
-    docker rm geda1
+    print_dark_gray "waiting on Docker container gar1"
+    docker wait gar1
+    docker logs gar1
+    docker rm gar1
 
     echo
     print_green "[External] QVI Credential issued to QVI"
@@ -172,7 +172,7 @@ function present_qvi_cred_to_sally_kli_single_gar() {
 
     echo
     print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto Sally'" ${SALLY_PRE}"
-    klid geda1 ipex grant \
+    klid gar1 ipex grant \
         --name "${GEDA_PT1}" \
         --passcode "${GEDA_PT1_PASSCODE}" \
         --alias "${GEDA_MS}" \
@@ -182,10 +182,10 @@ function present_qvi_cred_to_sally_kli_single_gar() {
     echo
     print_yellow "[External] Waiting for IPEX messages to be witnessed"
     echo
-    print_dark_gray "waiting on Docker container geda1"
-    docker wait geda1
-    docker logs geda1
-    docker rm geda1
+    print_dark_gray "waiting on Docker container gar1"
+    docker wait gar1
+    docker logs gar1
+    docker rm gar1
 
     echo
     print_green "[External] QVI Credential issued to QVI"

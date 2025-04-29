@@ -13,15 +13,15 @@ const qviOobiArg = args[3];
 
 // parse the OOBIs for the GEDA and GIDA multisig AIDs needed for delegation and then LE credential issuance
 export function parseOobiInfo(oobiInfo: string) {
-    const oobiInfos = oobiInfo.split(','); // expect format: "gedaMS|OOBI,gidaMS|OOBI"
+    const oobiInfos = oobiInfo.split(','); // expect format: "gedaName|OOBI,leName|OOBI"
     const oobiObjs: OobiInfo[] = oobiInfos.map((oobiInfo) => {
-        const [position, oobi] = oobiInfo.split('|'); // expect format: "geda1|OOBI"
+        const [position, oobi] = oobiInfo.split('|'); // expect format: "gar1|OOBI"
         return {position, oobi};
     });
 
-    const GEDA_MS = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gedaMS') as OobiInfo;
-    const GIDA_MS = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gidaMS') as OobiInfo;
-    return {GEDA_MS, GIDA_MS};
+    const GEDA_NAME = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gedaName') as OobiInfo;
+    const LE_NAME = oobiObjs.find((oobiInfo) => oobiInfo.position === 'leName') as OobiInfo;
+    return {GEDA_NAME, LE_NAME};
 }
 
 /**
