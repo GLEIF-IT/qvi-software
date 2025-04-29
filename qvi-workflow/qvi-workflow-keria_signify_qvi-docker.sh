@@ -28,6 +28,12 @@ set -u  # undefined variable detection
 ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
 KEYSTORE_DIR=${1:-./docker-keystores}
 
+# Load utility functions
+source color-printing.sh
+
+# Load kli commands
+source ./kli-commands.sh ${1:-}
+
 # Check system dependencies
 required_sys_commands=(docker jq tsx)
 for cmd in "${required_sys_commands[@]}"; do
@@ -59,11 +65,7 @@ function clear_containers() {
 }
 clear_containers
 
-# Load utility functions
-source ./script-utils.sh
 
-# Load kli commands
-source ./kli-commands.sh ${1:-}
 
 # Create docker network if it does not exist
 docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
