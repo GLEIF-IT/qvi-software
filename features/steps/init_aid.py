@@ -5,9 +5,11 @@ import subprocess
 import pysodium
 from behave import given
 from keri import core
+from keri.app.cli.commands.init import InitDoer
 
 from features.environment import BASE_DIR, CONFIG_DIR, DATA_DIR
 from features.helpers.context_merge import merge_into_context
+from features.helpers.runner import run
 
 
 def __init_incept(context, name, passcode):
@@ -20,41 +22,8 @@ def __init_incept(context, name, passcode):
         passcode = core.Salter(raw=pysodium.randombytes(pysodium.crypto_sign_SEEDBYTES)).qb64
 
     merge_into_context(context, f'{name}_passcode', passcode)
-    subprocess.run(
-        [
-            'kli',
-            'init',
-            '--name',
-            name,
-            '--passcode',
-            passcode,
-            '--config-dir',
-            CONFIG_DIR,
-            '--config-file',
-            'demo-witness-oobis',
-            '--base',
-            BASE_DIR,
-        ],
-        check=True,
-    )
-
-    subprocess.run(
-        [
-            'kli',
-            'incept',
-            '--passcode',
-            passcode,
-            '--name',
-            name,
-            '--alias',
-            name,
-            '--file',
-            os.path.join(DATA_DIR, 'multisig-1-sample.json'),
-            '--base',
-            BASE_DIR,
-        ],
-        check=True,
-    )
+    init = InitDoer()
+    run(init)
 
 
 @given('"{participants}"')

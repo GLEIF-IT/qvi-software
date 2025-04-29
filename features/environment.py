@@ -1,7 +1,6 @@
 import os
 import shutil
 import subprocess
-from time import sleep
 
 from features.helpers.context_merge import merge_into_context
 from features.helpers.create_witness_config_file import create_witness_config_file
@@ -15,6 +14,7 @@ BASE_DIR = os.path.join(project_root, 'base')
 
 
 def before_feature(context, feature):
+    print("Before feature: ", feature.name)
     if 'with_witness' in feature.tags:
         create_witness_config_file(CONFIG_DIR, 'wit', 5646)
         command = [
@@ -33,6 +33,8 @@ def before_feature(context, feature):
             'wit',
             '--base',
             BASE_DIR,
+            '--passcode',
+            '0ACDEyMzQ1Njc4OWdoaWp',
         ]
 
         proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -48,6 +50,7 @@ def after_feature(context, feature):
     print(f'Cleanup after feature: {feature.name}')
     for root, dirs, files in os.walk(BASE_DIR):
         for file in files:
-            os.remove(os.path.join(root, file))
+            if file != 'DO_NOT_DELETE':
+                os.remove(os.path.join(root, file))
         for d in dirs:
             shutil.rmtree(os.path.join(root, d))

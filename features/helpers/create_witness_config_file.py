@@ -16,9 +16,6 @@ def create_witness_config_file(config_dir, alias, port):
         'iurls': [],
     }
 
-    base_dir = os.path.join(config_dir, 'base')
-    os.makedirs(base_dir, exist_ok=True)
-
     config_file_path = os.path.join(config_dir, 'keri', 'cf', 'main', f'{alias}.json')
     with open(config_file_path, 'w') as config_file:
         json.dump(config_data, config_file, indent=4)
