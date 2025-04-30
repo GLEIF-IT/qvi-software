@@ -671,7 +671,7 @@ EOM
     echo "$QVI_CRED_DATA" > ./acdc-info/temp-data/qvi-cred-data.json
 
     print_lcyan "QVI Credential Data"
-    print_lcyan "$(cat ./acdc-info/temp-dataqvi-cred-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/qvi-cred-data.json)"
 }
 prepare_qvi_cred_data
 
@@ -701,7 +701,7 @@ function create_qvi_credential() {
         --schema "${QVI_SCHEMA}" \
         --recipient "${QVI_PRE}" \
         --data @/acdc-info/temp-data/qvi-cred-data.json \
-        --data @/acdc-info/rules/rules.json \
+        --rules @/acdc-info/rules/rules.json \
         --time "${KLI_TIME}"
 
     klid gar2 vc create \
@@ -712,7 +712,7 @@ function create_qvi_credential() {
         --schema "${QVI_SCHEMA}" \
         --recipient "${QVI_PRE}" \
         --data @/acdc-info/temp-data/qvi-cred-data.json \
-        --data @/acdc-info/rules/rules.json \
+        --rules @/acdc-info/rules/rules.json \
         --time "${KLI_TIME}"
 
     echo
@@ -932,10 +932,10 @@ function prepare_qvi_edge() {
 EOM
 
     echo "$QVI_EDGE_JSON" > ./acdc-info/temp-data/qvi-edge.json
-    kli saidify --file /data/qvi-edge.json
-    cp -f ./data/qvi-edge.json . # copy for qars-le-credential-create.ts
+    kli saidify --file /acdc-info/temp-data/qvi-edge.json
+    cp -f ./acdc-info/temp-data/qvi-edge.json . # copy for qars-le-credential-create.ts
     print_lcyan "Legal Entity edge Data"
-    print_lcyan "$(cat ./acdc-info/temp-dataqvi-edge.json | jq )"
+    print_lcyan "$(cat ./acdc-info/temp-data/qvi-edge.json | jq )"
 }
 prepare_qvi_edge
 
@@ -1144,7 +1144,7 @@ function prepare_le_edge() {
 EOM
 
     echo "$LE_EDGE_JSON" > ./acdc-info/temp-data/legal-entity-edge.json
-    kli saidify --file /data/legal-entity-edge.json
+    kli saidify --file /acdc-info/temp-data/legal-entity-edge.json
 }
 prepare_le_edge
 
@@ -1179,7 +1179,7 @@ function create_oor_auth_credential() {
     fi
 
     print_lcyan "[LE] OOR Auth data JSON"
-    print_lcyan "$(cat ./acdc-info/temp-dataoor-auth-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/oor-auth-data.json)"
 
     echo
 
@@ -1194,8 +1194,8 @@ function create_oor_auth_credential() {
         --schema "${OOR_AUTH_SCHEMA}" \
         --recipient "${QVI_PRE}" \
         --data @/acdc-info/temp-data/oor-auth-data.json \
-        --edges @/data/legal-entity-edge.json \
-        --data @/acdc-info/rules/rules.json \
+        --edges @/acdc-info/temp-data/legal-entity-edge.json \
+        --rules @/acdc-info/rules/rules.json \
         --time "${KLI_TIME}"
 
     klid lar2 vc create \
@@ -1206,8 +1206,8 @@ function create_oor_auth_credential() {
         --schema "${OOR_AUTH_SCHEMA}" \
         --recipient "${QVI_PRE}" \
         --data @/acdc-info/temp-data/oor-auth-data.json \
-        --edges @/data/legal-entity-edge.json \
-        --data @/acdc-info/rules/rules.json \
+        --edges @/acdc-info/temp-data/legal-entity-edge.json \
+        --rules @/acdc-info/rules/rules.json \
         --time "${KLI_TIME}"
 
     docker wait lar1 lar2
@@ -1336,8 +1336,8 @@ function prepare_oor_auth_edge() {
 }
 EOM
     echo "$OOR_AUTH_EDGE_JSON" > ./acdc-info/temp-data/oor-auth-edge.json
-    kli saidify --file /data/oor-auth-edge.json
-    cp -f ./data/oor-auth-edge.json . # copy for qars-oor-credential-create.ts
+    kli saidify --file /acdc-info/temp-data/oor-auth-edge.json
+    cp -f ./acdc-info/temp-data/oor-auth-edge.json . # copy for qars-oor-credential-create.ts
 }
 prepare_oor_auth_edge
 
@@ -1502,10 +1502,10 @@ function create_ecr_auth_credential() {
     print_green "[LE] LE creating ECR Auth credential"
 
     print_lcyan "[LE] Legal Entity edge JSON"
-    print_lcyan "$(cat ./acdc-info/temp-datalegal-entity-edge.json | jq)"
+    print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-edge.json | jq)"
 
     print_lcyan "[LE] ECR Auth data JSON"
-    print_lcyan "$(cat ./acdc-info/temp-dataecr-auth-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/ecr-auth-data.json)"
 
     KLI_TIME=$(kli time | tr -d '[:space:]')
 
@@ -1517,8 +1517,8 @@ function create_ecr_auth_credential() {
         --schema "${ECR_AUTH_SCHEMA}" \
         --recipient "${QVI_PRE}" \
         --data @/acdc-info/temp-data/ecr-auth-data.json \
-        --edges @/data/legal-entity-edge.json \
-        --data @/acdc-info/rules/ecr-auth-rules.json \
+        --edges @/acdc-info/temp-data/legal-entity-edge.json \
+        --rules @/acdc-info/rules/ecr-auth-rules.json \
         --time "${KLI_TIME}"
 
     klid lar2 vc create \
@@ -1529,8 +1529,8 @@ function create_ecr_auth_credential() {
         --schema "${ECR_AUTH_SCHEMA}" \
         --recipient "${QVI_PRE}" \
         --data @/acdc-info/temp-data/ecr-auth-data.json \
-        --edges @/data/legal-entity-edge.json \
-        --data @/acdc-info/rules/ecr-auth-rules.json \
+        --edges @/acdc-info/temp-data/legal-entity-edge.json \
+        --rules @/acdc-info/rules/ecr-auth-rules.json \
         --time "${KLI_TIME}"
 
     docker wait lar1 lar2
@@ -1663,8 +1663,8 @@ function prepare_ecr_auth_edge() {
 }
 EOM
     echo "$ECR_AUTH_EDGE_JSON" > ./acdc-info/temp-data/ecr-auth-edge.json
-    kli saidify --file /data/ecr-auth-edge.json
-    cp -f ./data/ecr-auth-edge.json . # copy for qars-ecr-credential-create.ts
+    kli saidify --file /acdc-info/temp-data/ecr-auth-edge.json
+    cp -f ./acdc-info/temp-data/ecr-auth-edge.json . # copy for qars-ecr-credential-create.ts
 }
 prepare_ecr_auth_edge
 
@@ -1679,7 +1679,7 @@ function prepare_ecr_cred_data() {
 }
 EOM
 
-    echo "${ECR_CRED_DATA}" > ./ecr-data.json
+    echo "${ECR_CRED_DATA}" > ./acdc-info/temp-data/ecr-data.json
 }
 prepare_ecr_cred_data
 
@@ -1699,10 +1699,10 @@ function create_and_grant_ecr_credential() {
     fi
 
     print_lcyan "[QVI] ECR Auth edge Data"
-    print_lcyan "$(cat ./ecr-auth-edge.json | jq )"
+    print_lcyan "$(cat ./acdc-info/temp-data/ecr-auth-edge.json | jq )"
 
     print_lcyan "[QVI] ECR Credential Data"
-    print_lcyan "$(cat ./ecr-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/ecr-data.json)"
 
     echo
     print_green "[QVI] creating and granting ECR credential"
