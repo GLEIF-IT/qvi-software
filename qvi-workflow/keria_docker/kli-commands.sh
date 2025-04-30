@@ -18,7 +18,7 @@ KLI1IMAGE="weboftrust/keri:1.1.32"
 KLI2IMAGE="weboftrust/keri:1.2.7"
 
 LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-export KLI_DATA_DIR="${LOCAL_DIR}/data"
+export KLI_DATA_DIR="${LOCAL_DIR}/acdc-info"
 export KLI_CONFIG_DIR="${LOCAL_DIR}/config"
 
 # Separate function enables different version of KERIpy to be used for some identifiers.
@@ -27,7 +27,7 @@ function kli() {
     --network vlei \
     -v "${KEYSTORE_DIR}":/usr/local/var/keri \
     -v "${KLI_CONFIG_DIR}:/config" \
-    -v "${KLI_DATA_DIR}":/data \
+    -v "${KLI_DATA_DIR}":/acdc-info \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI1IMAGE}" "$@"
 }
@@ -46,7 +46,7 @@ function klid() {
     --name $name \
     -v "${KEYSTORE_DIR}":/usr/local/var/keri \
     -v "${KLI_CONFIG_DIR}:/config" \
-    -v "${KLI_DATA_DIR}":/data \
+    -v "${KLI_DATA_DIR}":/acdc-info \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI1IMAGE}" "$@"
 }
@@ -59,7 +59,7 @@ function kli2() {
     --network vlei \
     -v "${KEYSTORE_DIR}":/usr/local/var/keri \
     -v "${KLI_CONFIG_DIR}:/config" \
-    -v "${KLI_DATA_DIR}":/data \
+    -v "${KLI_DATA_DIR}":/acdc-info \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI2IMAGE}" "$@"
 }
@@ -78,7 +78,7 @@ function kli2d() {
     --name $name \
     -v "${KEYSTORE_DIR}":/usr/local/var/keri \
     -v "${KLI_CONFIG_DIR}:/config" \
-    -v "${KLI_DATA_DIR}":/data \
+    -v "${KLI_DATA_DIR}":/acdc-info \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI2IMAGE}" "$@"
 }

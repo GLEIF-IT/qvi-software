@@ -53,7 +53,7 @@ print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
 print_yellow "Using $ENVIRONMENT configuration files"
 
 CONFIG_DIR=./config
-INIT_CFG=qvi-workflow-init-config-dev-local.json
+INIT_CFG=habery-config-docker.json
 WAN_PRE=BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha
 WIT_HOST=http://127.0.0.1:5642
 SCHEMA_SERVER=http://127.0.0.1:7723

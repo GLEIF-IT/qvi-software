@@ -74,7 +74,7 @@ services:
       <<: *healthcheck
     command: witness demo
     volumes:
-      - ./config/gar-witnesses:/keripy/scripts/keri/cf/main
+      - ./config/witnesses-gar:/keripy/scripts/keri/cf/main
       - gar-wit-vol:/usr/local/var/keri
     ports:
       - "5642:5642" # witness named wan
@@ -92,7 +92,7 @@ services:
       <<: *healthcheck
     command: witness demo
     volumes:
-      - ./config/qar-witnesses:/keripy/scripts/keri/cf/main
+      - ./config/witnesses-qar:/keripy/scripts/keri/cf/main
       - qar-wit-vol:/usr/local/var/keri
     ports:
       - "5643:5643" # witness named wil
@@ -110,7 +110,7 @@ services:
       <<: *healthcheck
     command: witness demo
     volumes:
-      - ./config/person-witnesses:/keripy/scripts/keri/cf/main
+      - ./config/witnesses-person:/keripy/scripts/keri/cf/main
       - person-wit-vol:/usr/local/var/keri
     ports:
       - "5644:5644" # witness named wes
@@ -129,7 +129,7 @@ services:
       <<: *healthcheck
     command: witness demo
     volumes:
-      - ./config/sally-witnesses:/keripy/scripts/keri/cf/main
+      - ./config/witnesses-sally:/keripy/scripts/keri/cf/main
       - sally-wit-vol:/usr/local/var/keri
     ports:
       - "5645:5645" # witness named wit

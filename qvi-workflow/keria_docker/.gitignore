@@ -1,0 +1,3 @@
+signify_qvi/qvi_data/*.json
+docker-keystores/
+node_modules
