@@ -10,10 +10,11 @@ import {waitOperation} from "../operations";
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
-const multisigName = args[1]
+const multisigName = args[1];
 const dataDir = args[2];
-const aidInfoArg = args[3]
-const personPrefix = args[4]
+const aidInfoArg = args[3];
+const personPrefix = args[4];
+const qviDataDir = args[5];
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
@@ -94,13 +95,13 @@ async function createOORCredential(multisigName: string, aidInfo: string, person
         const qviRegistry = registries[0];
         
         let data: string = "";
-        data = await fs.promises.readFile(`${dataDir}/oor-data.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/temp-data/oor-data.json`, 'utf-8');
         let oorData = JSON.parse(data);
 
-        data = await fs.promises.readFile(`${dataDir}/oor-auth-edge.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/temp-data/oor-auth-edge.json`, 'utf-8');
         let oorAuthEdge = JSON.parse(data);
 
-        data = await fs.promises.readFile(`${dataDir}/oor-rules.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/rules/oor-rules.json`, 'utf-8');
         let oorRules = JSON.parse(data);
 
         const kargsSub: CredentialSubject = {
@@ -206,5 +207,5 @@ async function createOORCredential(multisigName: string, aidInfo: string, person
     }
 }
 const oorCreateResult: any = await createOORCredential(multisigName, aidInfoArg, personPrefix, witnessIds, env);
-await fs.promises.writeFile(`${dataDir}/signify_qvi/qvi_data/oor-cred-info.json`, JSON.stringify(oorCreateResult));
+await fs.promises.writeFile(`${qviDataDir}/oor-cred-info.json`, JSON.stringify(oorCreateResult));
 console.log("OOR credential created and granted");

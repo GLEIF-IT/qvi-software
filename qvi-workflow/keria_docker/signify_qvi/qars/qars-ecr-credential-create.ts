@@ -10,10 +10,11 @@ import {waitOperation} from "../operations";
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
-const multisigName = args[1]
+const multisigName = args[1];
 const dataDir = args[2];
-const aidInfoArg = args[3]
-const personPrefix = args[4]
+const aidInfoArg = args[3];
+const personPrefix = args[4];
+const qviDataDir = args[5];
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
@@ -94,13 +95,13 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
         const qviRegistry = registries[0];
         
         let data: string = "";
-        data = await fs.promises.readFile(`${dataDir}/ecr-data.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/temp-data/ecr-data.json`, 'utf-8');
         let ecrData = JSON.parse(data);
 
-        data = await fs.promises.readFile(`${dataDir}/ecr-auth-edge.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/temp-data/ecr-auth-edge.json`, 'utf-8');
         let ecrAuthEdge = JSON.parse(data);
 
-        data = await fs.promises.readFile(`${dataDir}/ecr-rules.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/rules/ecr-rules.json`, 'utf-8');
         let ecrRules = JSON.parse(data);
 
         const kargsSub: CredentialSubject = {
@@ -208,5 +209,5 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
     }
 }
 const ecrCreateResult: any = await createECRCredential(multisigName, aidInfoArg, personPrefix, witnessIds, env);
-await fs.promises.writeFile(`${dataDir}/signify_qvi/qvi_data/ecr-cred-info.json`, JSON.stringify(ecrCreateResult));
+await fs.promises.writeFile(`${qviDataDir}/ecr-cred-info.json`, JSON.stringify(ecrCreateResult));
 console.log("ECR credential created and granted");

@@ -472,7 +472,7 @@ function create_qvi_multisig() {
       "${QVI_DATA_DIR}" \
       "${SIGTS_AIDS}" \
       "${delegator_prefix}"
-    local delegated_multisig_info=$(cat $QVI_DATA_DIR/qvi-multisig-info.json)
+    local delegated_multisig_info=$(cat "${QVI_DATA_DIR}"/qvi-multisig-info.json)
     print_yellow "Delegated Multisig Info:"
     QVI_PRE=$(echo "${delegated_multisig_info}" | jq .msPrefix | tr -d '"')
     echo
@@ -948,7 +948,7 @@ function prepare_le_cred_data() {
 }
 EOM
 
-    echo "$LE_CRED_DATA" > ./legal-entity-data.json
+    echo "$LE_CRED_DATA" > ./acdc-info/temp-data/legal-entity-data.json
 }
 prepare_le_cred_data
 
@@ -971,18 +971,18 @@ function create_and_grant_le_credential() {
     print_green "[QVI] creating LE credential"
 
     print_lcyan "[QVI] Legal Entity edge Data"
-    print_lcyan "$(cat ./qvi-edge.json | jq )"
+    print_lcyan "$(cat ./acdc-info/temp-data/qvi-edge.json | jq )"
 
     print_lcyan "[QVI] Legal Entity Credential Data"
-    print_lcyan "$(cat ./legal-entity-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-data.json)"
 
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-le-credential-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
-      "." \
+      "./acdc-info" \
       "${SIGTS_AIDS}" \
-      "${LE_PRE}" # \
-    #   "${QVI_SAID}"
+      "${LE_PRE}" \
+      "."
 
     echo
     print_lcyan "[QVI] LE Credential created"
@@ -1352,7 +1352,7 @@ function prepare_oor_cred_data() {
 }
 EOM
 
-    echo "${OOR_CRED_DATA}" > ./oor-data.json
+    echo "${OOR_CRED_DATA}" > ./acdc-info/temp-data/oor-data.json
 }
 prepare_oor_cred_data
 
@@ -1372,10 +1372,10 @@ function create_and_grant_oor_credential() {
     fi
 
     print_lcyan "[QVI] OOR Auth edge Data"
-    print_lcyan "$(cat ./oor-auth-edge.json | jq )"
+    print_lcyan "$(cat ./acdc-info/temp-data/oor-auth-edge.json | jq )"
 
     print_lcyan "[QVI] OOR Credential Data"
-    print_lcyan "$(cat ./oor-data.json)"
+    print_lcyan "$(cat ./acdc-info/temp-data/oor-data.json)"
 
     echo
     print_green "[QVI] creating and granting OOR credential"
@@ -1383,10 +1383,10 @@ function create_and_grant_oor_credential() {
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-oor-credential-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
-      "." \
+      "./acdc-info" \
       "${SIGTS_AIDS}" \
-      "${PERSON_PRE}" #\
-      #"${QVI_SAID}"
+      "${PERSON_PRE}" \
+      "./signify_qvi/qvi_data"
 
     print_yellow "[QVI] Waiting for OOR IPEX messages to be witnessed"
     sleep 5
@@ -1710,9 +1710,10 @@ function create_and_grant_ecr_credential() {
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-ecr-credential-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
-      "." \
+      "./acdc-info" \
       "${SIGTS_AIDS}" \
-      "${PERSON_PRE}"
+      "${PERSON_PRE}" \
+      "./signify_qvi/qvi_data"
 
     print_yellow "[QVI] Waiting for ECR IPEX messages to be witnessed"
     sleep 8

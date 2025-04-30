@@ -12,8 +12,9 @@ const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
 const multisigName = args[1]
 const dataDir = args[2];
-const aidInfoArg = args[3]
-const lePrefix = args[4]
+const aidInfoArg = args[3];
+const lePrefix = args[4];
+const qviDataDir = args[5];
 
 // resolve witness IDs for QVI multisig AID configuration
 const {witnessIds} = resolveEnvironment(env);
@@ -82,13 +83,13 @@ async function createLeCredential(multisigName: string, aidInfo: string, lePrefi
         const qviRegistry = registries[0];
         
         let data: string = "";
-        data = await fs.promises.readFile(`${dataDir}/legal-entity-data.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/temp-data/legal-entity-data.json`, 'utf-8');
         let leData = JSON.parse(data);
 
-        data = await fs.promises.readFile(`${dataDir}/qvi-edge.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/temp-data/qvi-edge.json`, 'utf-8');
         let leCredentialEdge = JSON.parse(data);
 
-        data = await fs.promises.readFile(`${dataDir}/rules.json`, 'utf-8');
+        data = await fs.promises.readFile(`${dataDir}/rules/rules.json`, 'utf-8');
         let leRules = JSON.parse(data);
 
         const kargsSub: CredentialSubject = {
@@ -194,5 +195,5 @@ async function createLeCredential(multisigName: string, aidInfo: string, lePrefi
     }
 }
 const leCreateResult: any = await createLeCredential(multisigName, aidInfoArg, lePrefix, witnessIds, env);
-await fs.promises.writeFile(`${dataDir}/signify_qvi/qvi_data/le-cred-info.json`, JSON.stringify(leCreateResult));
+await fs.promises.writeFile(`${qviDataDir}/le-cred-info.json`, JSON.stringify(leCreateResult));
 console.log("LE credential created and granted");
