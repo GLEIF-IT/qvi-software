@@ -3,10 +3,14 @@
 The demonstration scripts in this directory are an illustration of the steps in the QVI qualification dry run process. This includes presenting a credential to Sally at the end of the process and Sally calling a webhook. 
 
 There are three demonstrations:
-1. `qvi-workflow-kli.sh` - demonstrates the end-to-end workflow using keystores built by a local, non-containerized workflow using only the KLI (KERIpy).
-2. `qvi-workflow-kli-docker.sh` - demonstrates end-to-end workflow using a containerized setup for witnesses and KERIpy keystore manipulation using only the KLI (KERIpy).
-3. `qvi-workflow-keri_signify_qvi.sh` - demonstrates end-to-end workflow using KLI for the GAR parts and KERIA with SignifyTS for the QVI parts.
-4. `qvi-workflow-keri_signify_qvi-docker.sh` (WIP) - demonstrates end-to-end workflow using a containerized setup for witnesses, KERIA, vLEI-server, and KERIpy keystore manipulation. Uses KLI for the GAR parts and KERIA with SignifyTS for the QVI parts via NodeJS scripts.
+1. `kli_only/qvi-workflow-kli.sh` 
+   - demonstrates the end-to-end workflow using keystores built by a local, non-containerized workflow using only the KLI (KERIpy).
+2. `kli_docker/qvi-workflow-kli-docker.sh` 
+   - demonstrates end-to-end workflow using a containerized setup for witnesses and KERIpy keystore manipulation using only the KLI (KERIpy).
+3. `keria_cli/qvi-workflow-keri_signify_qvi.sh` 
+   - demonstrates end-to-end workflow using KLI for the GAR parts and KERIA with SignifyTS for the QVI parts.
+4. `keria_docker/qvi-workflow-keri_signify_qvi-docker.sh` 
+   - demonstrates end-to-end workflow using a containerized setup for witnesses, KERIA, vLEI-server, and KERIpy keystore manipulation. Uses KLI for the GAR parts and KERIA with SignifyTS for the QVI parts via NodeJS scripts.
 
 ## Dependencies
 
