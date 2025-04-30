@@ -933,7 +933,6 @@ EOM
 
     echo "$QVI_EDGE_JSON" > ./acdc-info/temp-data/qvi-edge.json
     kli saidify --file /acdc-info/temp-data/qvi-edge.json
-    cp -f ./acdc-info/temp-data/qvi-edge.json . # copy for qars-le-credential-create.ts
     print_lcyan "Legal Entity edge Data"
     print_lcyan "$(cat ./acdc-info/temp-data/qvi-edge.json | jq )"
 }
@@ -982,7 +981,7 @@ function create_and_grant_le_credential() {
       "./acdc-info" \
       "${SIGTS_AIDS}" \
       "${LE_PRE}" \
-      "."
+      "${QVI_DATA_DIR}"
 
     echo
     print_lcyan "[QVI] LE Credential created"
@@ -1337,7 +1336,6 @@ function prepare_oor_auth_edge() {
 EOM
     echo "$OOR_AUTH_EDGE_JSON" > ./acdc-info/temp-data/oor-auth-edge.json
     kli saidify --file /acdc-info/temp-data/oor-auth-edge.json
-    cp -f ./acdc-info/temp-data/oor-auth-edge.json . # copy for qars-oor-credential-create.ts
 }
 prepare_oor_auth_edge
 
@@ -1386,7 +1384,7 @@ function create_and_grant_oor_credential() {
       "./acdc-info" \
       "${SIGTS_AIDS}" \
       "${PERSON_PRE}" \
-      "./signify_qvi/qvi_data"
+      "${QVI_DATA_DIR}"
 
     print_yellow "[QVI] Waiting for OOR IPEX messages to be witnessed"
     sleep 5
@@ -1664,7 +1662,6 @@ function prepare_ecr_auth_edge() {
 EOM
     echo "$ECR_AUTH_EDGE_JSON" > ./acdc-info/temp-data/ecr-auth-edge.json
     kli saidify --file /acdc-info/temp-data/ecr-auth-edge.json
-    cp -f ./acdc-info/temp-data/ecr-auth-edge.json . # copy for qars-ecr-credential-create.ts
 }
 prepare_ecr_auth_edge
 
@@ -1713,7 +1710,7 @@ function create_and_grant_ecr_credential() {
       "./acdc-info" \
       "${SIGTS_AIDS}" \
       "${PERSON_PRE}" \
-      "./signify_qvi/qvi_data"
+      "${QVI_DATA_DIR}"
 
     print_yellow "[QVI] Waiting for ECR IPEX messages to be witnessed"
     sleep 8

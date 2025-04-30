@@ -52,11 +52,15 @@ async function admitCredential(aidInfo: string, issuerPrefix: string, witnessIds
     let credByQAR1 = await getReceivedCredential(PersonClient, credSAID);
     if (!(credByQAR1)) {
         const admitTime = createTimestamp();
-        await admitSinglesig(
-            PersonClient,
-            PersonId.name,
-            issuerPrefix,
-        );
+        try {
+            await admitSinglesig(
+                PersonClient,
+                PersonId.name,
+                issuerPrefix,
+            );
+        } catch (e) {
+            console.log(`Person had error admitting credential: ${e}`);
+        }
 
         try {
             await waitAndMarkNotification(QAR1Client, '/exn/ipex/admit');

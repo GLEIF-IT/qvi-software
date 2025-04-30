@@ -200,7 +200,24 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
             grantTime
         );
 
-        await waitAndMarkNotification(QAR1Client, '/multisig/exn');
+        try {
+            await waitAndMarkNotification(QAR1Client, '/multisig/exn');
+        } catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR1: ${e}`);
+        }
+        try {
+            await waitAndMarkNotification(QAR2Client, '/multisig/exn');
+        } catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR2: ${e}`);
+        }
+        try {
+            await waitAndMarkNotification(QAR3Client, '/multisig/exn');
+        } catch (e) {
+            // Handle the case where the notification was not received
+            console.error(`Failed to mark notification for QAR3: ${e}`);
+        }
         return {
             ecrCredSAID: ecrCredByQAR1.sad.d,
             ecrCredIssuer: ecrCredByQAR1.sad.i,
