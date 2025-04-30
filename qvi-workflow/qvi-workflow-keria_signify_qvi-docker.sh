@@ -252,7 +252,7 @@ function create_aid() {
     print_green $'\tPrefix:'" ${PREFIX}"
 }
 
-# 2. Create single Sig AIDs for GARs and LARs
+# Create single Sig AIDs for GARs and LARs
 function create_aids() {
     print_green "-----Creating AIDs-----"
     create_aid "${GAR1}" "${GAR1_SALT}" "${GAR1_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" "/config/incept-cfg-gars.json"
@@ -398,17 +398,17 @@ create_geda_multisig
 function create_le_multisig() {
     exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_NAME}")
     if [[ "$exists" =~ "${LE_NAME}" ]]; then
-        print_dark_gray "[Internal] LE Multisig AID ${LE_NAME} already exists"
+        print_dark_gray "[LE] LE Multisig AID ${LE_NAME} already exists"
         return
     fi
 
     echo
-    print_yellow "[Internal] Multisig Inception for LE"
+    print_yellow "[LE] Multisig Inception for LE"
 
     create_multisig_icp_config "${LAR1_PRE}" "${LAR2_PRE}" "${WIL_PRE}"
 
     # Follow commands run in parallel
-    print_yellow "[Internal] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
+    print_yellow "[LE] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
     klid lar1 multisig incept --name ${LAR1} --alias ${LAR1} \
         --passcode ${LAR1_PASSCODE} \
         --group ${LE_NAME} \
@@ -422,7 +422,7 @@ function create_le_multisig() {
         --auto
 
     echo
-    print_yellow "[Internal] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
+    print_yellow "[LE] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
     echo
     print_dark_gray "waiting on Docker containers lar1 and lar2"
     docker wait lar1
@@ -433,12 +433,12 @@ function create_le_multisig() {
 
     exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_NAME}")
     if [[ ! "$exists" =~ "${LE_NAME}" ]]; then
-        print_red "[Internal] LE Multisig inception failed"
+        print_red "[LE] LE Multisig inception failed"
         exit 1
     fi
 
     ms_prefix=$(kli status --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" | awk '/Identifier:/ {print $2}')
-    print_green "[Internal] LE Multisig AID ${LE_NAME} with prefix: ${ms_prefix}"
+    print_green "[LE] LE Multisig AID ${LE_NAME} with prefix: ${ms_prefix}"
 }
 create_le_multisig
 
@@ -542,8 +542,6 @@ function qvi_rotate() {
     QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
     print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
 
-    read -p "Press [enter] to have GEDA query new keystate from QARs"
-
     # GEDA participants Query keystate from QARs
     print_yellow "[GEDA] Query QVI multisig participants to discover new delegated rotation and complete delegation for KERIpy 1.1.x+"
     print_yellow "[GEDA] GAR1 querying QAR1, 2, and 3 multisig for new key state"
@@ -574,7 +572,6 @@ function qvi_rotate() {
     # docker logs gar2
     docker rm gar2
 
-    read -p "Press [ENTER] to confirm the QVI rotation"
     print_yellow "GAR1 confirm delegated rotation"
     klid gar1 delegate confirm --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} --interact --auto 
 
@@ -797,7 +794,7 @@ function grant_qvi_credential() {
 }
 grant_qvi_credential
 
-# 18. QVI: Admit QVI credential from GEDA
+# QVI: Admit QVI credential from GEDA
 function admit_qvi_credential() {
     QVI_CRED_SAID=$(kli vc list \
         --name "${GAR1}" \
@@ -832,7 +829,6 @@ function admit_qvi_credential() {
 }
 admit_qvi_credential
 
-read -p "Press [ENTER] to have the KLI present the QVI credential to Sally from GARs"
 function present_qvi_cred_to_sally_kli() {
     SAID=$(kli vc list \
         --name "${GAR1}" \
@@ -876,7 +872,6 @@ function present_qvi_cred_to_sally_kli() {
 }
 present_qvi_cred_to_sally_kli
 
-read -p "Press [ENTER] to present QVI credential to Sally from QARs using KERIA"
 function present_qvi_cred_to_sally_signify() {
   print_yellow "[QVI] Presenting QVI Credential to Sally"
 
@@ -889,14 +884,14 @@ function present_qvi_cred_to_sally_signify() {
     "${QVI_PRE}"\
     "${SALLY_PRE}"
 
-  start=$EPOCHSECONDS
+  start=$(date +%s)
   present_result=0
   print_dark_gray "[QVI] Waiting for Sally to receive the QVI Credential"
   while [ $present_result -ne 200 ]; do
     present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${QVI_PRE}")
     print_dark_gray "[QVI] received ${present_result} from Sally"
     sleep 1
-    if (( EPOCHSECONDS-start > 25 )); then
+    if (( $(date +%s)-start > 25 )); then
       print_red "[QVI] TIMEOUT - Sally did not receive the QVI Credential for ${QVI_NAME} | ${QVI_PRE}"
       break;
     fi
@@ -905,8 +900,6 @@ function present_qvi_cred_to_sally_signify() {
   print_green "[QVI] QVI Credential presented to Sally"
 }
 present_qvi_cred_to_sally_signify
-
-read -p "Press [ENTER] to create the QVI registry"
 
 ############################ LE Credential ##################################
 # QVI: Prepare, create, and Issue LE credential to GEDA
@@ -1004,8 +997,6 @@ function create_and_grant_le_credential() {
 }
 create_and_grant_le_credential
 
-read -p "Press [enter] to present LE to sally from QARs"
-
 function present_le_cred_to_sally() {
   print_yellow "[QVI] Presenting LE Credential to Sally"
 
@@ -1018,14 +1009,14 @@ function present_le_cred_to_sally() {
     "${LE_PRE}"\
     "${SALLY_PRE}"
 
-  start=$EPOCHSECONDS
+  start=$(date +%s)
   present_result=0
   print_dark_gray "[QVI] Waiting for Sally to receive the LE Credential"
   while [ $present_result -ne 200 ]; do
     present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${LE_PRE}")
     print_dark_gray "[QVI] received ${present_result} from Sally"
     sleep 1
-    if (( EPOCHSECONDS-start > 25 )); then
+    if (( $(date +%s)-start > 25 )); then
       print_red "[QVI] TIMEOUT - Sally did not receive the LE Credential for ${LE_NAME} | ${LE_PRE}"
       break;
     fi # 25 seconds timeout
@@ -1045,7 +1036,7 @@ function admit_le_credential() {
         --said \
         --schema "${LE_SCHEMA}" | tr -d '[:space:]')
     if [ ! -z "${VC_SAID}" ]; then
-        print_dark_gray "[Internal] LE Credential already admitted"
+        print_dark_gray "[LE] LE Credential already admitted"
         return
     fi
 
@@ -1069,7 +1060,7 @@ function admit_le_credential() {
         --said | uniq 
 
     echo
-    print_yellow "[Internal] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR1}"
+    print_yellow "[LE] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR1}"
 
     KLI_TIME=$(kli time)
     klid lar1 ipex admit \
@@ -1079,7 +1070,7 @@ function admit_le_credential() {
         --said "${SAID}" \
         --time "${KLI_TIME}"
     
-    print_green "[Internal] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR2}"
+    print_green "[LE] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR2}"
     klid lar2 ipex join \
         --name "${LAR2}" \
         --passcode "${LAR2_PASSCODE}" \
@@ -1088,16 +1079,14 @@ function admit_le_credential() {
     docker wait lar1 lar2
     docker rm lar1 lar2
 
-    print_yellow "[Internal] Waiting 8s for LE IPEX messages to be witnessed"
+    print_yellow "[LE] Waiting 8s for LE IPEX messages to be witnessed"
     sleep 8
 
     echo
-    print_green "[Internal] Admitted LE credential"
+    print_green "[LE] Admitted LE credential"
     echo
 }
 admit_le_credential
-
-read -p "Press [enter] to to create LE registry (LE ACDC is already admitted)"
 
 # LE: Create LE credential registry
 function create_le_reg() {
@@ -1106,12 +1095,12 @@ function create_le_reg() {
         --name "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" | awk '{print $1}' | tr -d '[:space:]')
     if [ ! -z "${REGISTRY}" ]; then
-        print_dark_gray "[Internal] LE registry already created"
+        print_dark_gray "[LE] LE registry already created"
         return
     fi
 
     echo
-    print_yellow "[Internal] Creating LE registry"
+    print_yellow "[LE] Creating LE registry"
     NONCE=$(kli nonce)
 
     klid lar1 vc registry incept \
@@ -1134,7 +1123,7 @@ function create_le_reg() {
     docker rm lar1 lar2
 
     echo
-    print_green "[Internal] Legal Entity Credential Registry created for LE"
+    print_green "[LE] Legal Entity Credential Registry created for LE"
     echo
 }
 create_le_reg
@@ -1148,7 +1137,7 @@ function prepare_le_edge() {
         --passcode "${LAR1_PASSCODE}" \
         --said \
         --schema "${LE_SCHEMA}" | tr -d '[:space:]')
-    print_bg_blue "[Internal] Preparing LE edge with LE Credential SAID: ${LE_SAID}"
+    print_bg_blue "[LE] Preparing LE edge with LE Credential SAID: ${LE_SAID}"
     read -r -d '' LE_EDGE_JSON << EOM
 {
     "d": "",
@@ -1194,13 +1183,13 @@ function create_oor_auth_credential() {
         return
     fi
 
-    print_lcyan "[Internal] OOR Auth data JSON"
+    print_lcyan "[LE] OOR Auth data JSON"
     print_lcyan "$(cat ./data/oor-auth-data.json)"
 
     echo
 
     KLI_TIME=$(kli time | tr -d '[:space:]')
-    print_green "[Internal] LE creating OOR Auth credential at time ${KLI_TIME}"
+    print_green "[LE] LE creating OOR Auth credential at time ${KLI_TIME}"
 
     klid lar1 vc create \
         --name "${LAR1}" \
@@ -1230,7 +1219,7 @@ function create_oor_auth_credential() {
     docker rm lar1 lar2
 
     echo
-    print_lcyan "[Internal] LE created OOR Auth credential"
+    print_lcyan "[LE] LE created OOR Auth credential"
     echo
 }
 create_oor_auth_credential
@@ -1259,7 +1248,7 @@ function grant_oor_auth_credential() {
         tail -1 | tr -d '[:space:]') # get the last credential, the OOR Auth credential
 
     echo
-    print_yellow $'[Internal] IPEX GRANTing OOR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
+    print_yellow $'[LE] IPEX GRANTing OOR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
 
     KLI_TIME=$(kli time | tr -d '[:space:]') # Use consistent time so SAID of grant is same
     klid lar1 ipex grant \
@@ -1282,11 +1271,11 @@ function grant_oor_auth_credential() {
     docker rm lar1 lar2
 
     echo
-    print_yellow "[Internal] Waiting for OOR Auth IPEX grant messages to be witnessed"
+    print_yellow "[LE] Waiting for OOR Auth IPEX grant messages to be witnessed"
     sleep 5
 
     echo
-    print_green "[Internal] Granted OOR Auth credential to QVI"
+    print_green "[LE] Granted OOR Auth credential to QVI"
     echo
 }
 grant_oor_auth_credential
@@ -1413,7 +1402,7 @@ function create_and_grant_oor_credential() {
 }
 create_and_grant_oor_credential
 
-# 24.5. Person: Admit OOR credential from QVI
+# Person: Admit OOR credential from QVI
 function admit_oor_credential() {
     # check if OOR has been admitted to receiver
     oor_said=$(tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
@@ -1465,14 +1454,14 @@ function present_oor_cred_to_sally() {
       "${QVI_PRE}" \
       "${SALLY_PRE}"
 
-    start=$EPOCHSECONDS
+    start=$(date +%s)
     present_result=0
     print_dark_gray "[PERSON] Waiting for Sally to receive the OOR Credential"
     while [ $present_result -ne 200 ]; do
       present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${PERSON_PRE}")
       print_dark_gray "[PERSON] received ${present_result} from Sally"
       sleep 1
-      if (( EPOCHSECONDS-start > 25 )); then
+      if (( $(date +%s)-start > 25 )); then
         print_red "[PERSON] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
         break;
       fi # 25 seconds timeout
@@ -1482,7 +1471,6 @@ function present_oor_cred_to_sally() {
 }
 present_oor_cred_to_sally
 
-read -p "hey wait"
 ############################ ECR Auth ##################################
 # LE: Prepare, create, and Issue ECR Auth & OOR Auth credential to QVI
 # Prepare ECR Auth credential data
@@ -1500,7 +1488,7 @@ EOM
 }
 prepare_ecr_auth_data
 
-# 21.3 Create ECR Auth credential
+# Create ECR Auth credential
 function create_ecr_auth_credential() {
     # Check if ECR auth credential already exists
     SAID=$(kli vc list \
@@ -1511,17 +1499,17 @@ function create_ecr_auth_credential() {
         --said \
         --schema "${ECR_AUTH_SCHEMA}" | tr -d '[:space:]')
     if [ ! -z "${SAID}" ]; then
-        print_dark_gray "[Internal] ECR Auth credential already created"
+        print_dark_gray "[LE] ECR Auth credential already created"
         return
     fi
 
     echo
-    print_green "[Internal] LE creating ECR Auth credential"
+    print_green "[LE] LE creating ECR Auth credential"
 
-    print_lcyan "[Internal] Legal Entity edge JSON"
+    print_lcyan "[LE] Legal Entity edge JSON"
     print_lcyan "$(cat ./data/legal-entity-edge.json | jq)"
 
-    print_lcyan "[Internal] ECR Auth data JSON"
+    print_lcyan "[LE] ECR Auth data JSON"
     print_lcyan "$(cat ./data/ecr-auth-data.json)"
 
     KLI_TIME=$(kli time | tr -d '[:space:]')
@@ -1554,16 +1542,16 @@ function create_ecr_auth_credential() {
     docker rm lar1 lar2
 
     echo
-    print_yellow "[Internal] Waiting 8s ECR Auth for IPEX messages to be witnessed"
+    print_yellow "[LE] Waiting 8s ECR Auth for IPEX messages to be witnessed"
     sleep 8
 
     echo
-    print_lcyan "[Internal] LE created ECR Auth credential"
+    print_lcyan "[LE] LE created ECR Auth credential"
     echo
 }
 create_ecr_auth_credential
 
-# 21.4 Grant ECR Auth credential to QVI
+# Grant ECR Auth credential to QVI
 function grant_ecr_auth_credential() {
     # This relies on there being only one grant in the list for the GEDA
     GRANT_COUNT=$(kli ipex list \
@@ -1586,7 +1574,7 @@ function grant_ecr_auth_credential() {
         --schema ${ECR_AUTH_SCHEMA} | tr -d '[:space:]')
 
     echo
-    print_yellow $'[Internal] IPEX GRANTing ECR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI '"${QVI_PRE}"
+    print_yellow $'[LE] IPEX GRANTing ECR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI '"${QVI_PRE}"
 
     KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
     klid lar1 ipex grant \
@@ -1609,16 +1597,16 @@ function grant_ecr_auth_credential() {
     docker rm lar1 lar2
 
     echo
-    print_yellow "[Internal] Waiting for IPEX ECR Auth grant messages to be witnessed"
+    print_yellow "[LE] Waiting for IPEX ECR Auth grant messages to be witnessed"
     sleep 8
 
     echo
-    print_green "[Internal] ECR Auth Credential granted to QVI"
+    print_green "[LE] ECR Auth Credential granted to QVI"
     echo
 }
 grant_ecr_auth_credential
 
-# 21.5 (part of 22) Admit ECR Auth credential from LE
+# Admit ECR Auth credential from LE
 function admit_ecr_auth_credential() {
     ECR_AUTH_SAID=$(kli vc list \
         --name "${LAR2}" \
@@ -1781,8 +1769,6 @@ function admit_ecr_credential() {
 }
 admit_ecr_credential
 
-read -p "Press [ENTER] to present the ECR credential to Sally"
-
 # Present ECR credential to Sally (vLEI Reporting API)
 # Sally does not recognize the ECR credential and will reject it.
 # This just tests out the presentation capability for testing purposes.
@@ -1796,7 +1782,7 @@ function present_ecr_cred_to_sally() {
       "${QVI_PRE}" \
       "${SALLY_PRE}"
 
-    start=$EPOCHSECONDS
+    start=$(date +%s)
     present_result=0
     print_dark_gray "[PERSON] Waiting for Sally to receive the ECR Credential"
     # This check will not return any 200 success values for the ECR as Sally does not recognize this credential.
@@ -1805,7 +1791,7 @@ function present_ecr_cred_to_sally() {
       present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${PERSON_PRE}")
       print_dark_gray "[PERSON] received ${present_result} from Sally"
       sleep 1
-      if (( EPOCHSECONDS-start > 3 )); then
+      if (( $(date +%s)-start > 3 )); then
         print_red "[PERSON] TIMEOUT - Sally did not receive the ECR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
         break;
       fi
@@ -1818,11 +1804,9 @@ present_ecr_cred_to_sally
 # TODO Add OOR and ECR credential revocation by the QVI
 # TODO Add presentation of revoked OOR and ECR credentials to Sally
 
-read -p "Press [Enter] to end the script"
+# QVI: Revoke ECR Auth and OOR Auth credentials
 
-# 26. QVI: Revoke ECR Auth and OOR Auth credentials
-
-# 27. QVI: Present revoked credentials to Sally
+# QVI: Present revoked credentials to Sally
 
 print_lcyan "Full chain workflow completed"
 

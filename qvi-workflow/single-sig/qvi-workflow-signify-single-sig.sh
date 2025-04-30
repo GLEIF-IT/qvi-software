@@ -4,8 +4,8 @@
 function create_geda_reg_single_gar() {
     # Check if GEDA credential registry already exists
     REGISTRY=$(kli vc registry list \
-        --name "${GEDA_PT1}" \
-        --passcode "${GEDA_PT1_PASSCODE}" | awk '{print $1}')
+        --name "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" | awk '{print $1}')
     if [ ! -z "${REGISTRY}" ]; then
         print_dark_gray "GEDA registry already created"
         return
@@ -15,9 +15,9 @@ function create_geda_reg_single_gar() {
     print_yellow "Creating GEDA registry"
 
     klid gar1 vc registry incept \
-        --name ${GEDA_PT1} \
-        --alias ${GEDA_MS} \
-        --passcode ${GEDA_PT1_PASSCODE} \
+        --name ${GAR1} \
+        --alias ${GEDA_NAME} \
+        --passcode ${GAR1_PASSCODE} \
         --usage "QVI Credential Registry for GEDA" \
         --registry-name ${GEDA_REGISTRY}
 
@@ -33,9 +33,9 @@ create_geda_reg_single_gar
 function create_qvi_credential_single_gar() {
     # Check if QVI credential already exists
     SAID=$(kli vc list \
-        --name "${GEDA_PT1}" \
-        --alias "${GEDA_MS}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
+        --name "${GAR1}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR1_PASSCODE}" \
         --issued \
         --said \
         --schema "${QVI_SCHEMA}")
@@ -48,9 +48,9 @@ function create_qvi_credential_single_gar() {
     print_green "[External] GEDA creating QVI credential"
 
     klid gar1 vc create \
-        --name "${GEDA_PT1}" \
-        --alias "${GEDA_MS}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
+        --name "${GAR1}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR1_PASSCODE}" \
         --registry-name "${GEDA_REGISTRY}" \
         --schema "${QVI_SCHEMA}" \
         --recipient "${QVI_PRE}" \
@@ -73,9 +73,9 @@ create_qvi_credential_single_gar
 
 function grant_qvi_credential_single_gar() {
     SAID=$(kli vc list \
-        --name "${GEDA_PT1}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
-        --alias "${GEDA_MS}" \
+        --name "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --alias "${GEDA_NAME}" \
         --issued \
         --said \
         --schema "${QVI_SCHEMA}" | tr -d '[:space:]')
@@ -83,9 +83,9 @@ function grant_qvi_credential_single_gar() {
     echo
     print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
     klid gar1 ipex grant \
-        --name "${GEDA_PT1}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
-        --alias "${GEDA_MS}" \
+        --name "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --alias "${GEDA_NAME}" \
         --said "${SAID}" \
         --recipient "${QVI_PRE}"
 
@@ -107,9 +107,9 @@ grant_qvi_credential_single_gar
 function admit_qvi_credential_single_qar() {
     set -x
     QVI_CRED_SAID=$(kli vc list \
-        --name "${GEDA_PT1}" \
-        --alias "${GEDA_MS}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
+        --name "${GAR1}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR1_PASSCODE}" \
         --issued \
         --said \
         --schema "${QVI_SCHEMA}" | tr -d " \t\n\r")
@@ -143,14 +143,14 @@ function present_qvi_cred_to_sally_signify_single_sig() {
     "${QVI_PRE}"\
     "${SALLY_PRE}"
 
-  start=$EPOCHSECONDS
+  start=$(date +%s)
   present_result=0
   print_dark_gray "[QVI] Waiting for Sally to receive the QVI Credential"
   while [ $present_result -ne 200 ]; do
     present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${QVI_PRE}")
     print_dark_gray "[QVI] received ${present_result} from Sally"
     sleep 1
-    if (( EPOCHSECONDS-start > 25 )); then
+    if (( $(date +%s)-start > 25 )); then
       print_red "[QVI] TIMEOUT - Sally did not receive the QVI Credential for ${QVI_MS} | ${QVI_PRE}"
       break;
     fi
@@ -163,9 +163,9 @@ present_qvi_cred_to_sally_signify_single_sig
 
 function present_qvi_cred_to_sally_kli_single_gar() {
     SAID=$(kli vc list \
-        --name "${GEDA_PT1}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
-        --alias "${GEDA_MS}" \
+        --name "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --alias "${GEDA_NAME}" \
         --issued \
         --said \
         --schema "${QVI_SCHEMA}" | tr -d '[:space:]')
@@ -173,9 +173,9 @@ function present_qvi_cred_to_sally_kli_single_gar() {
     echo
     print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto Sally'" ${SALLY_PRE}"
     klid gar1 ipex grant \
-        --name "${GEDA_PT1}" \
-        --passcode "${GEDA_PT1_PASSCODE}" \
-        --alias "${GEDA_MS}" \
+        --name "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --alias "${GEDA_NAME}" \
         --said "${SAID}" \
         --recipient "${SALLY_PRE}"
 

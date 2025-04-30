@@ -76,7 +76,7 @@ WAN_PRE=BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha
 WIT_HOST=http://127.0.0.1:5642
 SCHEMA_SERVER=http://127.0.0.1:7723
 
-GEDA_LEI=254900OPPU84GM83MG36 # GLEIF Americas
+LE_LEI=254900OPPU84GM83MG36 # GLEIF Americas
 
 # GEDA AIDs - GLEIF External Delegated AID
 GAR1=accolon
@@ -810,7 +810,7 @@ function prepare_qvi_cred_data() {
     print_bg_blue "[External] Preparing QVI credential data"
     read -r -d '' QVI_CRED_DATA << EOM
 {
-    "LEI": "${GEDA_LEI}"
+    "LEI": "${LE_LEI}"
 }
 EOM
 
@@ -1107,15 +1107,15 @@ prepare_qvi_edge
 function create_le_multisig() {
     exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
     if [[ "$exists" =~ "${LE_MS_NAME}" ]]; then
-        print_dark_gray "[Internal] LE Multisig AID ${LE_MS_NAME} already exists"
+        print_dark_gray "[LE] LE Multisig AID ${LE_MS_NAME} already exists"
         return
     fi
 
     echo
-    print_yellow "[Internal] Multisig Inception for LE"
+    print_yellow "[LE] Multisig Inception for LE"
 
     echo
-    print_yellow "[Internal] Multisig Inception temp config file."
+    print_yellow "[LE] Multisig Inception temp config file."
     read -r -d '' MULTISIG_ICP_CONFIG_JSON << EOM
 {
   "aids": [
@@ -1130,7 +1130,7 @@ function create_le_multisig() {
 }
 EOM
 
-    print_lcyan "[Internal] Using temporary multisig config file as heredoc:"
+    print_lcyan "[LE] Using temporary multisig config file as heredoc:"
     print_lcyan "${MULTISIG_ICP_CONFIG_JSON}"
 
     # create temporary file to store json
@@ -1140,7 +1140,7 @@ EOM
     echo "$MULTISIG_ICP_CONFIG_JSON" > "$temp_multisig_config"
 
     # Follow commands run in parallel
-    print_yellow "[Internal] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
+    print_yellow "[LE] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
     kli multisig incept --name ${LAR1} --alias ${LAR1} \
         --passcode ${LAR1_PASSCODE} \
         --group ${LE_MS_NAME} \
@@ -1158,18 +1158,18 @@ EOM
     PID_LIST+=" $pid"
 
     echo
-    print_yellow "[Internal] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
+    print_yellow "[LE] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
     echo
     wait $PID_LIST
 
     exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_MS_NAME}")
     if [[ ! "$exists" =~ "${LE_MS_NAME}" ]]; then
-        print_red "[Internal] LE Multisig inception failed"
+        print_red "[LE] LE Multisig inception failed"
         exit 1
     fi
 
     ms_prefix=$(kli status --name ${LAR1} --alias ${LE_MS_NAME} --passcode ${LAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
-    print_green "[Internal] LE Multisig AID ${LE_MS_NAME} with prefix: ${ms_prefix}"
+    print_green "[LE] LE Multisig AID ${LE_MS_NAME} with prefix: ${ms_prefix}"
 
     rm "$temp_multisig_config"
 }
@@ -1194,12 +1194,12 @@ function create_le_reg() {
         --name "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" | awk '{print $1}')
     if [ ! -z "${REGISTRY}" ]; then
-        print_dark_gray "[Internal] LE registry already created"
+        print_dark_gray "[LE] LE registry already created"
         return
     fi
 
     echo
-    print_yellow "[Internal] Creating LE registry"
+    print_yellow "[LE] Creating LE registry"
     NONCE=$(kli nonce)
     PID_LIST=""
     kli vc registry incept \
@@ -1224,7 +1224,7 @@ function create_le_reg() {
     wait $PID_LIST
 
     echo
-    print_green "[Internal] Legal Entity Credential Registry created for LE"
+    print_green "[LE] Legal Entity Credential Registry created for LE"
     echo
 }
 create_le_reg
@@ -1234,7 +1234,7 @@ function prepare_le_cred_data() {
     print_yellow "[QVI] Preparing LE credential data"
     read -r -d '' LE_CRED_DATA << EOM
 {
-    "LEI": "${GEDA_LEI}"
+    "LEI": "${LE_LEI}"
 }
 EOM
 
@@ -1350,7 +1350,7 @@ function grant_le_credential() {
     sleep 5
 
     echo
-    print_green "[Internal] Polling for LE Credential in ${LAR1}..."
+    print_green "[LE] Polling for LE Credential in ${LAR1}..."
     kli ipex list \
         --name "${LAR1}" \
         --alias "${LE_MS_NAME}" \
@@ -1364,7 +1364,7 @@ function grant_le_credential() {
         exit 1
     fi
 
-    print_green "[Internal] Polling for LE Credential in ${LAR2}..."
+    print_green "[LE] Polling for LE Credential in ${LAR2}..."
     kli ipex list \
         --name "${LAR2}" \
         --alias "${LE_MS_NAME}" \
@@ -1393,7 +1393,7 @@ function admit_le_credential() {
         --said \
         --schema ${LE_SCHEMA})
     if [ ! -z "${VC_SAID}" ]; then
-        print_dark_gray "[Internal] LE Credential already admitted"
+        print_dark_gray "[LE] LE Credential already admitted"
         return
     fi
     SAID=$(kli ipex list \
@@ -1405,7 +1405,7 @@ function admit_le_credential() {
         --said)
 
     echo
-    print_yellow "[Internal] Admitting LE Credential ${SAID} to ${LE_MS_NAME} as ${LAR1}"
+    print_yellow "[LE] Admitting LE Credential ${SAID} to ${LE_MS_NAME} as ${LAR1}"
 
     KLI_TIME=$(kli time)
     kli ipex admit \
@@ -1417,7 +1417,7 @@ function admit_le_credential() {
     pid=$!
     PID_LIST+=" $pid"
 
-    print_green "[Internal] Admitting LE Credential ${SAID} to ${LE_MS_NAME} as ${LAR2}"
+    print_green "[LE] Admitting LE Credential ${SAID} to ${LE_MS_NAME} as ${LAR2}"
     kli ipex join \
         --name ${LAR2} \
         --passcode ${LAR2_PASSCODE} \
@@ -1428,7 +1428,7 @@ function admit_le_credential() {
     wait $PID_LIST
 
     echo
-    print_green "[Internal] Admitted LE credential"
+    print_green "[LE] Admitted LE credential"
     echo
 }
 admit_le_credential
@@ -1443,7 +1443,7 @@ function prepare_le_edge() {
         --passcode "${LAR1_PASSCODE}" \
         --said \
         --schema ${LE_SCHEMA})
-    print_bg_blue "[Internal] Preparing ECR Auth cred with LE Credential SAID: ${LE_SAID}"
+    print_bg_blue "[LE] Preparing ECR Auth cred with LE Credential SAID: ${LE_SAID}"
     read -r -d '' LE_EDGE_JSON << EOM
 {
     "d": "", 
@@ -1457,7 +1457,7 @@ EOM
     echo "$LE_EDGE_JSON" > ./acdc-info/temp-data/legal-entity-edge.json
     kli saidify --file ./acdc-info/temp-data/legal-entity-edge.json
     
-    print_lcyan "[Internal] Legal Entity edge JSON"
+    print_lcyan "[LE] Legal Entity edge JSON"
     print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-edge.json | jq)"
 }
 prepare_le_edge
@@ -1467,14 +1467,14 @@ function prepare_ecr_auth_data() {
     read -r -d '' ECR_AUTH_DATA_JSON << EOM
 {
   "AID": "${PERSON_PRE}",
-  "LEI": "${GEDA_LEI}",
+  "LEI": "${LE_LEI}",
   "personLegalName": "${PERSON_NAME}",
   "engagementContextRole": "${PERSON_ECR}"
 }
 EOM
 
     echo "$ECR_AUTH_DATA_JSON" > ./acdc-info/temp-data/ecr-auth-data.json
-    print_lcyan "[Internal] ECR Auth data JSON"
+    print_lcyan "[LE] ECR Auth data JSON"
     print_lcyan "$(cat ./acdc-info/temp-data/ecr-auth-data.json)"
 }
 prepare_ecr_auth_data
@@ -1490,12 +1490,12 @@ function create_ecr_auth_credential() {
         --said \
         --schema "${ECR_AUTH_SCHEMA}")
     if [ ! -z "${SAID}" ]; then
-        print_dark_gray "[Internal] ECR Auth credential already created"
+        print_dark_gray "[LE] ECR Auth credential already created"
         return
     fi
 
     echo
-    print_green "[Internal] LE creating ECR Auth credential"
+    print_green "[LE] LE creating ECR Auth credential"
 
     KLI_TIME=$(kli time)
     PID_LIST=""
@@ -1531,7 +1531,7 @@ function create_ecr_auth_credential() {
     wait $PID_LIST
 
     echo
-    print_lcyan "[Internal] LE created ECR Auth credential"
+    print_lcyan "[LE] LE created ECR Auth credential"
     echo
 }
 create_ecr_auth_credential
@@ -1559,7 +1559,7 @@ function grant_ecr_auth_credential() {
         --schema ${ECR_AUTH_SCHEMA})
 
     echo
-    print_yellow $'[Internal] IPEX GRANTing ECR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI '"${QVI_PRE}"
+    print_yellow $'[LE] IPEX GRANTing ECR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI '"${QVI_PRE}"
 
     KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
     kli ipex grant \
@@ -1582,7 +1582,7 @@ function grant_ecr_auth_credential() {
     wait $PID_LIST
 
     echo
-    print_yellow "[Internal] Waiting for IPEX messages to be witnessed"
+    print_yellow "[LE] Waiting for IPEX messages to be witnessed"
     sleep 5
 
     echo
@@ -1605,7 +1605,7 @@ function grant_ecr_auth_credential() {
             --said
 
     echo
-    print_green "[Internal] ECR Auth Credential granted to QVI"
+    print_green "[LE] ECR Auth Credential granted to QVI"
     echo
 }
 grant_ecr_auth_credential
@@ -1665,14 +1665,14 @@ function prepare_oor_auth_data() {
     read -r -d '' OOR_AUTH_DATA_JSON << EOM
 {
   "AID": "${PERSON_PRE}",
-  "LEI": "${GEDA_LEI}",
+  "LEI": "${LE_LEI}",
   "personLegalName": "${PERSON_NAME}",
   "officialRole": "${PERSON_OOR}"
 }
 EOM
 
     echo "$OOR_AUTH_DATA_JSON" > ./acdc-info/temp-data/oor-auth-data.json
-    print_lcyan "[Internal] OOR Auth data JSON"
+    print_lcyan "[LE] OOR Auth data JSON"
     print_lcyan "$(cat ./acdc-info/temp-data/oor-auth-data.json)"
 }
 prepare_oor_auth_data
@@ -1693,7 +1693,7 @@ function create_oor_auth_credential() {
     fi
 
     echo
-    print_green "[Internal] LE creating OOR Auth credential"
+    print_green "[LE] LE creating OOR Auth credential"
 
     KLI_TIME=$(kli time)
     PID_LIST=""
@@ -1729,7 +1729,7 @@ function create_oor_auth_credential() {
     wait $PID_LIST
 
     echo
-    print_lcyan "[Internal] LE created OOR Auth credential"
+    print_lcyan "[LE] LE created OOR Auth credential"
     echo
 }
 create_oor_auth_credential
@@ -1758,7 +1758,7 @@ function grant_oor_auth_credential() {
         tail -1) # get the last credential, the OOR Auth credential
 
     echo
-    print_yellow $'[Internal] IPEX GRANTing OOR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
+    print_yellow $'[LE] IPEX GRANTing OOR Auth credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
 
     KLI_TIME=$(kli time) # Use consistent time so SAID of grant is same
     kli ipex grant \
@@ -1781,7 +1781,7 @@ function grant_oor_auth_credential() {
     wait $PID_LIST
 
     echo
-    print_yellow "[Internal] Waiting for IPEX messages to be witnessed"
+    print_yellow "[LE] Waiting for IPEX messages to be witnessed"
     sleep 5
 
     echo
@@ -1804,7 +1804,7 @@ function grant_oor_auth_credential() {
             --said
 
     echo
-    print_green "[Internal] Granted OOR Auth credential to QVI"
+    print_green "[LE] Granted OOR Auth credential to QVI"
     echo
 }
 grant_oor_auth_credential
@@ -1893,7 +1893,7 @@ function prepare_ecr_cred_data() {
     print_bg_blue "[QVI] Preparing ECR credential data"
     read -r -d '' ECR_CRED_DATA << EOM
 {
-  "LEI": "${GEDA_LEI}",
+  "LEI": "${LE_LEI}",
   "personLegalName": "${PERSON_NAME}",
   "engagementContextRole": "${PERSON_ECR}"
 }
@@ -2108,7 +2108,7 @@ function prepare_oor_cred_data() {
     print_bg_blue "[QVI] Preparing OOR credential data"
     read -r -d '' OOR_CRED_DATA << EOM
 {
-  "LEI": "${GEDA_LEI}",
+  "LEI": "${LE_LEI}",
   "personLegalName": "${PERSON_NAME}",
   "officialRole": "${PERSON_OOR}"
 }
@@ -2351,5 +2351,5 @@ END_TIME=$(date +%s)
 SCRIPT_TIME=$(($END_TIME - $START_TIME))
 print_lcyan "Script took ${SCRIPT_TIME} seconds to run"
 
-# TODO 26. QVI: Revoke ECR Auth and OOR Auth credentials
-# TODO 27. QVI: Present revoked credentials to Sally
+# TODO QVI: Revoke ECR Auth and OOR Auth credentials
+# TODO QVI: Present revoked credentials to Sally
