@@ -85,11 +85,28 @@ export async function refreshGedaMultisigstate(aidInfoArg: string, gedaPrefix: s
     const queryOp2 = await QAR2Client.keyStates().query(gedaPrefix);
     const queryOp3 = await QAR3Client.keyStates().query(gedaPrefix);
 
-    await Promise.all([
-        waitOperation(QAR1Client, queryOp1),
-        waitOperation(QAR2Client, queryOp2),
-        waitOperation(QAR3Client, queryOp3),
-    ]);
+    let res;
+    try {
+        res = await waitOperation(QAR1Client, queryOp1);
+    } catch (e) {
+        console.error("Error refreshing GEDA multisig keystate", e);
+        console.error("Response: ", res);
+        throw e;
+    }
+    try {
+        res = await waitOperation(QAR2Client, queryOp2);
+    } catch (e) {
+        console.error("Error refreshing GEDA multisig keystate", e);
+        console.error("Response: ", res);
+        throw e;
+    }
+    try {
+        res = await waitOperation(QAR3Client, queryOp3);
+    } catch (e) {
+        console.error("Error refreshing GEDA multisig keystate", e);
+        console.error("Response: ", res);
+        throw e;
+    }
     console.log('QARs have refreshed the GEDA multisig keystate');
     return {QAR1Client, QAR2Client, QAR3Client}
 }

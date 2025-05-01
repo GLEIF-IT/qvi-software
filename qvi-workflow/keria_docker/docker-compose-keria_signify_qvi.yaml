@@ -4,19 +4,19 @@
 # - vLEI server for credential schema caching
 
 x-keri_1_2-image: &keri_1_2-image
-  image: gleif/keri:1.2.7-rc1
+  image: gleif/keri:1.2.8-rc1
 x-keri_1_1-image: &keri_1_1-image
   image: weboftrust/keri:1.1.32
 
 # Witness Images
 x-gar-witness-image: &gar-witness-image
-  image: gleif/keri:1.2.7-rc1
+  image: gleif/keri:1.2.8-rc1
 x-qar-witness-image: &qar-witness-image
-  image: gleif/keri:1.2.7-rc1
+  image: gleif/keri:1.2.8-rc1
 x-person-witness-image: &person-witness-image
-  image: gleif/keri:1.2.7-rc1
+  image: gleif/keri:1.2.8-rc1
 x-sally-witness-image: &sally-witness-image
-  image: gleif/keri:1.2.7-rc1
+  image: gleif/keri:1.2.8-rc1
 
 x-keria-image: &keria-image
   image: weboftrust/keria:0.2.0-rc2
@@ -72,7 +72,7 @@ services:
       # healthcheck needs to be different in 1.2.6+ because it uses the Alpine base image and curl is not present
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5642/oobi" ]
       <<: *healthcheck
-    command: witness demo
+    command: witness demo --loglevel INFO
     volumes:
       - ./config/witnesses-gar:/keripy/scripts/keri/cf/main
       - gar-wit-vol:/usr/local/var/keri
@@ -90,7 +90,7 @@ services:
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5643/oobi" ]
       <<: *healthcheck
-    command: witness demo
+    command: witness demo --loglevel INFO
     volumes:
       - ./config/witnesses-qar:/keripy/scripts/keri/cf/main
       - qar-wit-vol:/usr/local/var/keri
@@ -108,7 +108,7 @@ services:
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5644/oobi" ]
       <<: *healthcheck
-    command: witness demo
+    command: witness demo --loglevel INFO
     volumes:
       - ./config/witnesses-person:/keripy/scripts/keri/cf/main
       - person-wit-vol:/usr/local/var/keri
@@ -127,7 +127,7 @@ services:
       # healthcheck needs to be different in 1.2.6+ because it uses the Alpine base image and curl is not present
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5645/oobi" ]
       <<: *healthcheck
-    command: witness demo
+    command: witness demo --loglevel INFO
     volumes:
       - ./config/witnesses-sally:/keripy/scripts/keri/cf/main
       - sally-wit-vol:/usr/local/var/keri

@@ -94,52 +94,64 @@ WIT_PRE=BM35JN8XeJSEfpxopjn5jr7tAHCE5749f0OobhMLCorE
 # Container configuration (name of the config dir in docker containers kli*)
 CONT_CONFIG_DIR=/config
 
+#### Prepare Salts and Passcodes ####
+function generate_salts_and_passcodes(){
+  # salts and passcodes need to be new and dynamic on each run so that when presenting credentials to
+  # other sally instances, not this one, that duplicity is not created by virtue of using the same
+  # identifier salt, passcode, and inception configuration.
+
+  print_green "Generating salts for GARs and LARs"
+  # Export these variables so they are available in the child docker compose processes
+  export GAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "GAR1_SALT: ${GAR1_SALT}"
+  export GAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "GAR2_SALT: ${GAR2_SALT}"
+  export LAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "LAR1_SALT: ${LAR1_SALT}"
+  export LAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "LAR2_SALT: ${LAR2_SALT}"
+  export QAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR1_SALT: ${QAR1_SALT}"
+  export QAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR2_SALT: ${QAR2_SALT}"
+  export QAR3_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR3_SALT: ${QAR3_SALT}"
+  export PERSON_SALT=$(kli salt | tr -d " \t\n\r" ) && print_lcyan "PERSON_SALT: ${PERSON_SALT}"
+
+  export GAR1_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "GAR1_PASSCODE: ${GAR1_PASSCODE}"
+  export GAR2_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "GAR2_PASSCODE: ${GAR2_PASSCODE}"
+  export LAR1_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "LAR1_PASSCODE: ${LAR1_PASSCODE}"
+  export LAR2_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "LAR2_PASSCODE: ${LAR2_PASSCODE}"
+  export PERSON_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" ) && print_lcyan "PERSON_PASSCODE: ${PERSON_PASSCODE}"
+
+  # Does not include Sally because it is okay if sally stays the same.
+}
+generate_salts_and_passcodes
+
 #### Identifier Information ####
 # GEDA AIDs - GLEIF External Delegated AID
 GAR1=accolon
-GAR1_PRE=ENFbr9MI0K7f4Wz34z4hbzHmCTxIPHR9Q_gWjLJiv20h
-GAR1_SALT=0AA2-S2YS4KqvlSzO7faIEpH
-GAR1_PASSCODE=18b2c88fd050851c45c67
-
+GAR1_PRE=
 GAR2=bedivere
-GAR2_PRE=EJ7F9XcRW85_S-6F2HIUgXcIcywAy0Nv-GilEBSRnicR
-GAR2_SALT=0ADD292rR7WEU4GPpaYK4Z6h
-GAR2_PASSCODE=b26ef3dd5c85f67c51be8
-
+GAR2_PRE=
 export GEDA_NAME=dagonet
-export GEDA_PRE=EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv
+export GEDA_PRE=
 
 # Legal Entity AIDs
 LAR1=elaine
-LAR1_PRE=EP2ddbbIgPHNAkUs8nWz4lMCvHlhpiFE7dZpAJ0HeTno
-LAR1_SALT=0AB90ainJghoJa8BzFmGiEWa
-LAR1_PASSCODE=tcc6Yj4JM8MfTDs1IiidP
-
+LAR1_PRE=
 LAR2=finn
-LAR2_PRE=ENKuOCG5wpyqs6XRof4LGwCwOgpw09PXPHY6H7dtSPr_
-LAR2_SALT=0AA4m2NxBxn0w5mM9oZR2kHz
-LAR2_PASSCODE=2pNNtRkSx8jFd7HWlikcg
-
+LAR2_PRE=
 LE_NAME=gareth
-LE_PRE=EBlUXdxJQ7dUhvjIcHPNlggZm1cLkv0clhKe4MrLcPts
+LE_PRE=
 
 #### KERIA and Signify Identifiers ####
 # QAR AIDs - filled in later after KERIA setup
 QAR1=galahad
-QAR1_SALT=0ACgCmChLaw_qsLycbqBoxDK
-
+QAR1_PRE=
 QAR2=lancelot
-QAR2_SALT=0ACaYJJv0ERQmy7xUfKgR6a4
-
+QAR2_PRE=
 QAR3=tristan
-QAR3_SALT=0AAzX0tS638c9SEf5LnxTlj4
-
+QAR3_PRE=
 QVI_NAME=percival
 QVI_PRE=
 
 # Person AID
 PERSON=mordred
-PERSON_SALT=0ABlXAYDE2TkaNDk4UXxxtaN
+PERSON_PRE=
 
 #### Credential data ####
 LE_LEI=254900OPPU84GM83MG36 # GLEIF Americas
@@ -149,6 +161,7 @@ PERSON_OOR="Advisor"
 
 # Sally - vLEI Reporting API
 WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
+# exporting so available for child docker compose processes
 export WEBHOOK_HOST=http://hook:9923
 export SALLY_HOST=http://sally:9723
 export SALLY=sally
@@ -168,6 +181,54 @@ ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
 OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
 ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
 OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
+
+#### Write keria-signify-docker.env file with updated values ####
+function write_docker_env(){
+  print_bg_blue "[ADMIN] Writing prefixes, salts, passcodes, and schemas to keria-signfiy-docker.env"
+    read -r -d '' DOCKER_ENV << EOM
+#### Identifier Information ####
+# GLEIF Authorized Representatives (GAR) AIDs
+GAR1=$GAR1
+GAR1_SALT=$GAR1_SALT
+GAR1_PASSCODE=$GAR1_PASSCODE
+
+GAR2=$GAR2
+GAR2_SALT=$GAR2_SALT
+GAR2_PASSCODE=$GAR2_PASSCODE
+
+GEDA_NAME=$GEDA_NAME
+
+# Legal Entity AIDs
+LAR1=$LAR1
+LAR1_SALT=$LAR1_SALT
+LAR1_PASSCODE=$LAR1_PASSCODE
+
+LAR2=$LAR2
+LAR2_SALT=$LAR2_SALT
+LAR2_PASSCODE=$LAR2_PASSCODE
+
+LE_NAME=gareth
+
+# Sally AID
+SALLY=$SALLY
+SALLY_PRE=$SALLY_PRE
+SALLY_SALT=$SALLY_SALT
+SALLY_PASSCODE=$SALLY_PASSCODE
+
+# Credential Schemas
+QVI_REGISTRY=vLEI-qvi
+QVI_SCHEMA=$QVI_SCHEMA
+LE_SCHEMA=$LE_SCHEMA
+ECR_AUTH_SCHEMA=$ECR_AUTH_SCHEMA
+OOR_AUTH_SCHEMA=$OOR_AUTH_SCHEMA
+ECR_SCHEMA=$ECR_SCHEMA
+OOR_SCHEMA=$OOR_SCHEMA
+EOM
+    print_dark_gray "Writing keystore and identifier information to docker.env"
+    print_lcyan "${DOCKER_ENV}"
+    echo "${DOCKER_ENV}" > ./keria-signify-docker.env
+}
+write_docker_env
 
 # Containers
 DOCKER_COMPOSE_FILE=docker-compose-keria_signify_qvi.yaml
@@ -250,13 +311,27 @@ function create_aid() {
 
 # Create single Sig AIDs for GARs and LARs
 function create_aids() {
-    print_green "-----Creating AIDs-----"
+    print_green "------------------------------Creating identifiers (AIDs)------------------------------"
     create_aid "${GAR1}" "${GAR1_SALT}" "${GAR1_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" "/config/incept-cfg-gars.json"
     create_aid "${GAR2}" "${GAR2_SALT}" "${GAR2_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" "/config/incept-cfg-gars.json"
     create_aid "${LAR1}" "${LAR1_SALT}" "${LAR1_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" "/config/incept-cfg-qars.json"
     create_aid "${LAR2}" "${LAR2_SALT}" "${LAR2_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" "/config/incept-cfg-qars.json"
 }
 create_aids
+
+function read_prefixes() {
+  export GAR1_PRE=$(kli status  --name "${GAR1}"  --alias "${GAR1}"  --passcode "${GAR1_PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
+  export GAR2_PRE=$(kli status  --name "${GAR2}"  --alias "${GAR2}"  --passcode "${GAR2_PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
+  export LAR1_PRE=$(kli status  --name "${LAR1}"  --alias "${LAR1}"  --passcode "${LAR1_PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
+  export LAR2_PRE=$(kli status  --name "${LAR2}"  --alias "${LAR2}"  --passcode "${LAR2_PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
+
+  print_green "------------------------------Reading identifier prefixes using the KLI------------------------------"
+  print_lcyan "GAR1 Prefix: ${GAR1_PRE}"
+  print_lcyan "GAR2 Prefix: ${GAR2_PRE}"
+  print_lcyan "LAR1 Prefix: ${LAR1_PRE}"
+  print_lcyan "LAR2 Prefix: ${LAR2_PRE}"
+}
+read_prefixes
 
 # OOBI resolutions between single sig AIDs
 function resolve_oobis() {
@@ -266,9 +341,9 @@ function resolve_oobis() {
         return
     fi
 
-    # SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi
-    # SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI
-    SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${SALLY_PRE}/witness/${WIT_PRE}" # sally 0.9.4
+    # SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi - doesn't work for indirect mode, only direct-mode
+    # SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI - for direct-mode
+    SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${SALLY_PRE}/witness/${WIT_PRE}" # indirect-mode sally
     print_green "SALLY OOBI: ${SALLY_OOBI}"
 
     GAR1_OOBI="${WIT_HOST_GAR}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
@@ -277,7 +352,7 @@ function resolve_oobis() {
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
     OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,sally|$SALLY_OOBI"
 
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT $SIGTS_AIDS $OOBIS_FOR_KERIA
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
     echo
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
@@ -358,16 +433,16 @@ function create_geda_multisig() {
 
     # The following multisig commands run in parallel in Docker
     print_yellow "[External] Multisig Inception from ${GAR1}: ${GAR1_PRE}"
-    klid gar1 multisig incept --name ${GAR1} --alias ${GAR1} \
-        --passcode ${GAR1_PASSCODE} \
-        --group ${GEDA_NAME} \
+    klid gar1 multisig incept --name "${GAR1}" --alias "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --group "${GEDA_NAME}" \
         --file /config/multi-sig-incept-config.json
 
     echo
 
-    klid gar2 multisig join --name ${GAR2} \
-        --passcode ${GAR2_PASSCODE} \
-        --group ${GEDA_NAME} \
+    klid gar2 multisig join --name "${GAR2}" \
+        --passcode "${GAR2_PASSCODE}" \
+        --group "${GEDA_NAME}" \
         --auto
 
     echo
@@ -375,8 +450,8 @@ function create_geda_multisig() {
     echo
     print_dark_gray "waiting on Docker containers gar1 and gar2"
     docker wait gar1 gar2
-#    docker logs gar1 # show what happened
-#    docker logs gar2 # show what happened
+    docker logs gar1 # show what happened
+    docker logs gar2 # show what happened
     docker rm gar1 gar2
 
     exists=$(kli list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | grep "${GEDA_NAME}")
@@ -386,70 +461,26 @@ function create_geda_multisig() {
     fi
 
     ms_prefix=$(kli status --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" | awk '/Identifier:/ {print $2}')
-    print_green "[External] GEDA Multisig AID ${GEDA_NAME} with prefix: ${ms_prefix}"
+    export GEDA_PRE=$(echo "${ms_prefix}" | tr -d '[:space:]')
+    print_green "[External] GEDA Multisig AID ${GEDA_NAME} with prefix: ${GEDA_PRE}"
 }
 create_geda_multisig
 
-# Create Legal Entity Multisig
-function create_le_multisig() {
-    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_NAME}")
-    if [[ "$exists" =~ "${LE_NAME}" ]]; then
-        print_dark_gray "[LE] LE Multisig AID ${LE_NAME} already exists"
-        return
-    fi
+# Recreate sally container with new GEDA prefix
+print_yellow "Recreating Sally container with new GEDA prefix ${GEDA_PRE}"
+docker compose -f $DOCKER_COMPOSE_FILE up -d sally --wait
 
-    echo
-    print_yellow "[LE] Multisig Inception for LE"
-
-    create_multisig_icp_config "${LAR1_PRE}" "${LAR2_PRE}" "${WIL_PRE}"
-
-    # Follow commands run in parallel
-    print_yellow "[LE] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
-    klid lar1 multisig incept --name ${LAR1} --alias ${LAR1} \
-        --passcode ${LAR1_PASSCODE} \
-        --group ${LE_NAME} \
-        --file /config/multi-sig-incept-config.json 
-
-    echo
-
-    klid lar2 multisig join --name ${LAR2} \
-        --passcode ${LAR2_PASSCODE} \
-        --group ${LE_NAME} \
-        --auto
-
-    echo
-    print_yellow "[LE] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
-    echo
-    print_dark_gray "waiting on Docker containers lar1 and lar2"
-    docker wait lar1
-    docker wait lar2
-#    docker logs lar1 # show what happened
-#    docker logs lar2 # show what happened
-    docker rm lar1 lar2
-
-    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_NAME}")
-    if [[ ! "$exists" =~ "${LE_NAME}" ]]; then
-        print_red "[LE] LE Multisig inception failed"
+function qars_resolve_geda_oobi() {
+    GEDA_OOBI=$(kli oobi generate --name "${GAR1}" --passcode "${GAR1_PASSCODE}" --alias "${GEDA_NAME}" --role witness)
+    if [[ -z "${GEDA_OOBI}" ]]; then
+        print_red "Failed to generate GEDA OOBI"
         exit 1
     fi
-
-    ms_prefix=$(kli status --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" | awk '/Identifier:/ {print $2}')
-    print_green "[LE] LE Multisig AID ${LE_NAME} with prefix: ${ms_prefix}"
+    print_yellow "GEDA OOBI: ${GEDA_OOBI}"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${GEDA_NAME}" "${GEDA_OOBI}"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" "${ENVIRONMENT}" "${SIGTS_AIDS}" "${GEDA_PRE}"
 }
-create_le_multisig
-
-# QAR: Resolve GEDA and LE multisig OOBIs
-GEDA_OOBI=""
-LE_OOBI=""
-function resolve_geda_and_le_oobis() {
-    GEDA_OOBI=$(kli oobi generate --name ${GAR1} --passcode ${GAR1_PASSCODE} --alias ${GEDA_NAME} --role witness)
-    LE_OOBI=$(kli oobi generate --name ${LAR1} --passcode ${LAR1_PASSCODE} --alias ${LE_NAME} --role witness)
-    MULTISIG_OOBIS="gedaName|$GEDA_OOBI,leName|$LE_OOBI"
-    echo "GEDA OOBI: ${GEDA_OOBI}"
-    echo "LE OOBI: ${LE_OOBI}"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-resolve-geda-and-le-oobis.ts" $ENVIRONMENT $SIGTS_AIDS $MULTISIG_OOBIS
-}
-resolve_geda_and_le_oobis
+qars_resolve_geda_oobi
 
 # QAR: Create delegated multisig QVI AID with GEDA as delegator
 function create_qvi_multisig() {
@@ -483,22 +514,21 @@ function create_qvi_multisig() {
     echo
 
     print_yellow "GAR1 confirm delegated inception"
-    klid gar1 delegate confirm --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} --interact --auto
+    klid gar1 delegate confirm --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --interact --auto
 
     print_yellow "GAR2 confirm delegated inception"
-    klid gar2 delegate confirm --name ${GAR2} --alias ${GEDA_NAME} --passcode ${GAR2_PASSCODE} --interact --auto
+    klid gar2 delegate confirm --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --interact --auto
 
 
     print_yellow "[GEDA] Waiting 5s on delegated inception completion"
  
     print_dark_gray "waiting on Docker containers gar1, gar2"
     docker wait gar1 gar2
-#    docker logs gar1
-#    docker logs gar2
+    docker logs gar1
+    docker logs gar2
     docker rm gar1 gar2
 
-    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover new GEDA delegation seal anchored in interaction event."
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-complete-multisig-incept.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
+    tsx "${QVI_SIGNIFY_DIR}/qars/qars-complete-multisig-incept.ts" "${ENVIRONMENT}" "${SIGTS_AIDS}" "${GEDA_PRE}"
 }
 create_qvi_multisig
 MULTISIG_INFO=$(cat "${QVI_DATA_DIR}"/qvi-multisig-info.json)
@@ -589,6 +619,67 @@ function qvi_rotate() {
 
 }
 #qvi_rotate
+
+# Create Legal Entity Multisig
+function create_le_multisig() {
+    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_NAME}")
+    if [[ "$exists" =~ "${LE_NAME}" ]]; then
+        print_dark_gray "[LE] LE Multisig AID ${LE_NAME} already exists"
+        return
+    fi
+
+    echo
+    print_yellow "[LE] Multisig Inception for LE"
+
+    create_multisig_icp_config "${LAR1_PRE}" "${LAR2_PRE}" "${WIL_PRE}"
+
+    # Follow commands run in parallel
+    print_yellow "[LE] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
+    klid lar1 multisig incept --name ${LAR1} --alias ${LAR1} \
+        --passcode ${LAR1_PASSCODE} \
+        --group ${LE_NAME} \
+        --file /config/multi-sig-incept-config.json
+
+    echo
+
+    klid lar2 multisig join --name ${LAR2} \
+        --passcode ${LAR2_PASSCODE} \
+        --group ${LE_NAME} \
+        --auto
+
+    echo
+    print_yellow "[LE] Multisig Inception { ${LAR1}, ${LAR2} } - wait for signatures"
+    echo
+    print_dark_gray "waiting on Docker containers lar1 and lar2"
+    docker wait lar1
+    docker wait lar2
+    docker logs lar1 # show what happened
+    docker logs lar2 # show what happened
+    docker rm lar1 lar2
+
+    exists=$(kli list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" | grep "${LE_NAME}")
+    if [[ ! "$exists" =~ "${LE_NAME}" ]]; then
+        print_red "[LE] LE Multisig inception failed"
+        exit 1
+    fi
+
+    ms_prefix=$(kli status --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" | awk '/Identifier:/ {print $2}')
+    export LE_PRE=$(echo "${ms_prefix}" | tr -d '[:space:]')
+    print_green "[LE] LE Multisig AID ${LE_NAME} with prefix: ${LE_PRE}"
+}
+create_le_multisig
+
+# QAR: Resolve GEDA and LE multisig OOBIs
+function qars_resolve_le_oobi() {
+    LE_OOBI=$(kli oobi generate --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --alias "${LE_NAME}" --role witness)
+    if [[ -z "${LE_OOBI}" ]]; then
+        print_red "Failed to generate LE OOBI"
+        exit 1
+    fi
+    echo "LE OOBI: ${LE_OOBI}"
+    tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${LE_NAME}" "${LE_OOBI}"
+}
+qars_resolve_le_oobi
 
 # GEDA and LE: Resolve QVI OOBI
 function resolve_qvi_oobi() {
@@ -991,36 +1082,6 @@ function create_and_grant_le_credential() {
 }
 create_and_grant_le_credential
 
-function present_le_cred_to_sally() {
-  print_yellow "[QVI] Presenting LE Credential to Sally"
-
-  tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
-    "${ENVIRONMENT}" \
-    "${QVI_NAME}" \
-    "${SIGTS_AIDS}" \
-    "${LE_SCHEMA}" \
-    "${QVI_PRE}" \
-    "${LE_PRE}"\
-    "${SALLY_PRE}"
-
-  start=$(date +%s)
-  present_result=0
-  print_dark_gray "[QVI] Waiting for Sally to receive the LE Credential"
-  while [ $present_result -ne 200 ]; do
-    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${LE_PRE}")
-    print_dark_gray "[QVI] received ${present_result} from Sally"
-    sleep 1
-    if (( $(date +%s)-start > 25 )); then
-      print_red "[QVI] TIMEOUT - Sally did not receive the LE Credential for ${LE_NAME} | ${LE_PRE}"
-      break;
-    fi # 25 seconds timeout
-  done
-
-  print_green "[PERSON] LE Credential presented to Sally"
-
-}
-present_le_cred_to_sally
-
 # LE: Admit LE credential from QVI
 function admit_le_credential() {
     VC_SAID=$(kli vc list \
@@ -1051,7 +1112,7 @@ function admit_le_credential() {
         --passcode "${LAR2_PASSCODE}" \
         --type "grant" \
         --poll \
-        --said | uniq 
+        --said | uniq
 
     echo
     print_yellow "[LE] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR1}"
@@ -1063,13 +1124,13 @@ function admit_le_credential() {
         --alias "${LE_NAME}" \
         --said "${SAID}" \
         --time "${KLI_TIME}"
-    
+
     print_green "[LE] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR2}"
     klid lar2 ipex join \
         --name "${LAR2}" \
         --passcode "${LAR2_PASSCODE}" \
         --auto
-    
+
     docker wait lar1 lar2
     docker rm lar1 lar2
 
@@ -1081,6 +1142,38 @@ function admit_le_credential() {
     echo
 }
 admit_le_credential
+
+
+
+function present_le_cred_to_sally() {
+  print_yellow "[QVI] Presenting LE Credential to Sally"
+
+  tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+    "${ENVIRONMENT}" \
+    "${QVI_NAME}" \
+    "${SIGTS_AIDS}" \
+    "${LE_SCHEMA}" \
+    "${QVI_PRE}" \
+    "${LE_PRE}"\
+    "${SALLY_PRE}"
+
+  start=$(date +%s)
+  present_result=0
+  print_dark_gray "[QVI] Waiting for Sally to receive the LE Credential"
+  while [ $present_result -ne 200 ]; do
+    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${LE_PRE}")
+    print_dark_gray "[QVI] received ${present_result} from Sally"
+    sleep 1
+    if (( $(date +%s)-start > 25 )); then
+      print_red "[QVI] TIMEOUT - Sally did not receive the LE Credential for ${LE_NAME} | ${LE_PRE}"
+      break;
+    fi # 25 seconds timeout
+  done
+
+  print_green "[PERSON] LE Credential presented to Sally"
+
+}
+present_le_cred_to_sally
 
 # LE: Create LE credential registry
 function create_le_reg() {

@@ -15,7 +15,7 @@ fi
 
 # Set current working directory for all scripts that must access files
 KLI1IMAGE="weboftrust/keri:1.1.32"
-KLI2IMAGE="weboftrust/keri:1.2.7"
+KLI2IMAGE="gleif/keri:1.2.8-rc1"
 
 LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export KLI_DATA_DIR="${LOCAL_DIR}/acdc-info"

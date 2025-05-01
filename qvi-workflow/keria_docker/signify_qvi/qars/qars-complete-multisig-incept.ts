@@ -17,8 +17,13 @@ const gedaPrefix = args[2];
  * @param environment
  */
 async function completeMultisigIncept(aidInfoArg: string, gedaPrefix: string, environment: TestEnvironmentPreset) {
+
     const {QAR1Client} = await refreshGedaMultisigstate(aidInfoArg, gedaPrefix, environment);
-    await waitAndMarkNotification(QAR1Client, '/multisig/icp');
+    try {
+        await waitAndMarkNotification(QAR1Client, '/multisig/icp');
+    } catch (e) {
+        console.error("Error marking inception notification as read", e);
+    }
     console.log("QVI delegated multisig inception completed");
 }
 await completeMultisigIncept(aidInfoArg, gedaPrefix, env);
