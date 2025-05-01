@@ -99,7 +99,7 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
     ]);
 
     // Perform all OOBI introductions between QAR participants and the person
-    console.log("QAR and Person resolving OOBIs...")
+    console.log("QARs and Person resolving each other's agent OOBIs...")
     await Promise.all([
         getOrCreateContact(QAR1Client, QAR2.name, QAR2AgentOobiResp.oobis[0]),
         getOrCreateContact(QAR1Client, QAR3.name, QAR3AgentOobiResp.oobis[0]),
