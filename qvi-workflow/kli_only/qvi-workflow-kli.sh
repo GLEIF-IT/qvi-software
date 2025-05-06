@@ -268,7 +268,7 @@ function sally_setup() {
         --alias $SALLY \
         --salt $SALLY_SALT \
         --config-dir sally \
-        --config-file sally-habery.json \
+        --config-file sally.json \
         --incept-file sally-incept.json \
         --passcode $SALLY_PASSCODE \
         --web-hook http://127.0.0.1:9923 \
@@ -281,7 +281,7 @@ function sally_setup() {
         --alias $SALLY \
         --salt $SALLY_SALT \
         --config-dir sally \
-        --config-file sally-habery.json \
+        --config-file sally.json \
         --passcode $SALLY_PASSCODE \
         --web-hook http://127.0.0.1:9923 \
         --auth "${GEDA_PRE}" & # who will be presenting the credential
