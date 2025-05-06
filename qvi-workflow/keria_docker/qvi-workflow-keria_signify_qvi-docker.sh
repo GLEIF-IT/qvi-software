@@ -100,6 +100,8 @@ function generate_salts_and_passcodes(){
   # other sally instances, not this one, that duplicity is not created by virtue of using the same
   # identifier salt, passcode, and inception configuration.
 
+  # Does not include Sally because it is okay if sally stays the same.
+
   print_green "Generating salts for GARs and LARs"
   # Export these variables so they are available in the child docker compose processes
   export GAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "GAR1_SALT: ${GAR1_SALT}"
@@ -169,6 +171,13 @@ export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
 export SALLY_PRE=EA69Z5sR2kr-05QmZ7v3VuMq8MdhVupve3caHXbhom0D # Different here because Sally uses witness Wit instead of Wan
 
+# Direct mode Sally
+export DIRECT_SALLY_HOST=http://direct-sally:9823
+export DIRECT_SALLY=direct-sally
+export DIRECT_SALLY_PASSCODE=4TBjjhmKu9oeDp49J7Xdy
+export DIRECT_SALLY_SALT=0ABVqAtad0CBkhDhCEPd514T
+export DIRECT_SALLY_PRE=ECLwKe5b33BaV20x7HZWYi_KUXgY91S41fRL2uCaf4WQ # Different here because of direct mode sally with no witnesses and a new passcode and salt
+
 # Registries
 GEDA_REGISTRY=vLEI-external
 LE_REGISTRY=vLEI-internal
@@ -181,6 +190,9 @@ ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
 OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
 ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
 OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
+
+# Write wrong GEDA PRE, will be reset later
+export GEDA_PRE=DUMMY_VALUE_INVALID_________________________
 
 #### Write keria-signify-docker.env file with updated values ####
 function write_docker_env(){
@@ -214,6 +226,12 @@ SALLY=$SALLY
 SALLY_PRE=$SALLY_PRE
 SALLY_SALT=$SALLY_SALT
 SALLY_PASSCODE=$SALLY_PASSCODE
+
+# Direct Sally AID
+DIRECT_SALLY=$DIRECT_SALLY
+DIRECT_SALLY_PRE=$DIRECT_SALLY_PRE
+DIRECT_SALLY_SALT=$DIRECT_SALLY_SALT
+DIRECT_SALLY_PASSCODE=$DIRECT_SALLY_PASSCODE
 
 # Credential Schemas
 QVI_REGISTRY=vLEI-qvi
@@ -341,16 +359,17 @@ function resolve_oobis() {
         return
     fi
 
-    # SALLY_OOBI="${SALLY_HOST}/oobi" # self-oobi - doesn't work for indirect mode, only direct-mode
     # SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI - for direct-mode
     SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${SALLY_PRE}/witness/${WIT_PRE}" # indirect-mode sally
+    DIRECT_SALLY_OOBI="${DIRECT_SALLY_HOST}/oobi"
     print_green "SALLY OOBI: ${SALLY_OOBI}"
+    print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
 
     GAR1_OOBI="${WIT_HOST_GAR}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
     LAR1_OOBI="${WIT_HOST_QAR}/oobi/${LAR1_PRE}/witness/${WIL_PRE}"
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
-    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,sally|$SALLY_OOBI"
+    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,sally|$SALLY_OOBI,direct-sally|$DIRECT_SALLY_OOBI"
 
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
@@ -365,6 +384,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR3}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${PERSON_OOBI}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${SALLY}"  --passcode "${GAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${DIRECT_SALLY}" --passcode "${GAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for GAR 2"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${GAR1_OOBI}"
@@ -375,6 +395,7 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR3}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${PERSON_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${SALLY}"  --passcode "${GAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${DIRECT_SALLY}" --passcode "${GAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 1"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${LAR2_OOBI}"
@@ -384,6 +405,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR3}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${PERSON}" --passcode "${LAR1_PASSCODE}" --oobi "${PERSON_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${SALLY}"  --passcode "${LAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${DIRECT_SALLY}" --passcode "${LAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 2"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${LAR1_OOBI}"
@@ -393,6 +416,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR3}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${PERSON}" --passcode "${LAR2_PASSCODE}" --oobi "${PERSON_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${SALLY}"  --passcode "${LAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${DIRECT_SALLY}" --passcode "${LAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
     
     echo
 }
@@ -468,7 +493,7 @@ create_geda_multisig
 
 # Recreate sally container with new GEDA prefix
 print_yellow "Recreating Sally container with new GEDA prefix ${GEDA_PRE}"
-docker compose -f $DOCKER_COMPOSE_FILE up -d sally --wait
+docker compose -f $DOCKER_COMPOSE_FILE up -d sally direct-sally --wait
 
 function qars_resolve_geda_oobi() {
     GEDA_OOBI=$(kli oobi generate --name "${GAR1}" --passcode "${GAR1_PASSCODE}" --alias "${GEDA_NAME}" --role witness)

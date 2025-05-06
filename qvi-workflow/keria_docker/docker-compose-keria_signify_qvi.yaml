@@ -23,7 +23,9 @@ x-keria-image: &keria-image
 x-vlei-image: &vlei-image
   image: gleif/vlei:0.2.0
 x-sally-image: &sally-image
-  image: gleif/sally:0.10.2
+  image: gleif/sally:1.0.0-rc1
+x-direct-sally-image: &direct-sally-image
+  image: gleif/sally:1.0.0-rc1
 
 x-healthcheck: &healthcheck
   interval: 15s
@@ -45,6 +47,7 @@ volumes:
   qar-wit-vol:
   person-wit-vol:
   sally-wit-vol:
+  direct-sally-vol:
   keria-vol:
   sally-vol:
 
@@ -62,6 +65,34 @@ services:
       <<: *healthcheck
     ports:
       - "7723:7723"
+
+  # Direct mode Sally (runs own mailbox, no witnesses or witness mailbox)
+  direct-sally:
+    <<: *direct-sally-image
+    environment:
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - DIRECT_SALLY=${DIRECT_SALLY}
+      - DIRECT_SALLY_SALT=${DIRECT_SALLY_SALT}
+      - DIRECT_SALLY_PASSCODE=${DIRECT_SALLY_PASSCODE}
+      - WEBHOOK_HOST=${WEBHOOK_HOST}
+      - GEDA_PRE=${GEDA_PRE}
+      - PYTHONWARNINGS=ignore::SyntaxWarning
+      - DIRECT_PORT=9823
+    volumes:
+      - ./direct-sally/keri/cf/direct-sally.json:/sally/conf/keri/cf/direct-sally.json
+      - ./direct-sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json
+      - ./direct-sally/entry-point.sh:/sally/entry-point.sh
+      - direct-sally-vol:/usr/local/var/keri
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9823/health" ]
+      <<: *healthcheck
+    ports:
+      - 9823:9823
+    entrypoint: "/sally/entry-point.sh"
+    depends_on:
+      vlei-server:
+        condition: service_healthy
 
   # GARs use one of the six demo witnesses, wan
   gar-witnesses:
@@ -193,7 +224,7 @@ services:
       - GEDA_PRE=${GEDA_PRE}
       - PYTHONWARNINGS=ignore::SyntaxWarning
     volumes:
-      - ./sally/keri/cf/sally-habery-docker.json:/sally/conf/keri/cf/sally-habery.json
+      - ./sally/keri/cf/sally.json:/sally/conf/keri/cf/sally.json
       - ./sally/sally-incept.json:/sally/conf/sally-incept.json
       - ./sally/entry-point.sh:/sally/entry-point.sh
       - sally-vol:/usr/local/var/keri
@@ -211,6 +242,7 @@ services:
       sally-witnesses:
         condition: service_healthy
 
+  # Debugging container
   kli:
     <<: *keri_1_1-image
     environment:
