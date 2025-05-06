@@ -21,7 +21,8 @@ export function parseOobiInfo(oobiInfoArg: string) {
     const LAR1 = oobiObjs.find((oobiInfo) => oobiInfo.position === 'lar1') as OobiInfo;
     const LAR2 = oobiObjs.find((oobiInfo) => oobiInfo.position === 'lar2') as OobiInfo;
     const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'sally') as OobiInfo;
-    return {GAR1: GAR1, GAR2: GAR2, LAR1: LAR1, LAR2: LAR2, SALLY};
+    const DIRECT_SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'direct-sally') as OobiInfo;
+    return {GAR1, GAR2, LAR1, LAR2, SALLY, DIRECT_SALLY};
 }
 
 // Resolve OOBIs between the QARs and the person and the GEDA, GIDA, and Sally based on script arguments
@@ -38,29 +39,33 @@ async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: 
     ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
     
     // resolve OOBIs for all participants
-    const {GAR1, GAR2, LAR1, LAR2, SALLY} = parseOobiInfo(oobiStrArg);
+    const {GAR1, GAR2, LAR1, LAR2, SALLY, DIRECT_SALLY} = parseOobiInfo(oobiStrArg);
     await Promise.all([
         getOrCreateContact(QAR1Client, GAR1.position, GAR1.oobi),
         getOrCreateContact(QAR1Client, GAR2.position, GAR2.oobi),
         getOrCreateContact(QAR1Client, LAR1.position, LAR1.oobi),
         getOrCreateContact(QAR1Client, LAR2.position, LAR2.oobi),
         getOrCreateContact(QAR1Client, SALLY.position, SALLY.oobi),
+        getOrCreateContact(QAR1Client, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
 
         getOrCreateContact(QAR2Client, GAR1.position, GAR1.oobi),
         getOrCreateContact(QAR2Client, GAR2.position, GAR2.oobi),
         getOrCreateContact(QAR2Client, LAR1.position, LAR1.oobi),
         getOrCreateContact(QAR2Client, LAR2.position, LAR2.oobi),
         getOrCreateContact(QAR2Client, SALLY.position, SALLY.oobi),
+        getOrCreateContact(QAR2Client, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
 
         getOrCreateContact(QAR3Client, GAR1.position, GAR1.oobi),
         getOrCreateContact(QAR3Client, GAR2.position, GAR2.oobi),
         getOrCreateContact(QAR3Client, LAR1.position, LAR1.oobi),
         getOrCreateContact(QAR3Client, LAR2.position, LAR2.oobi),
         getOrCreateContact(QAR3Client, SALLY.position, SALLY.oobi),
+        getOrCreateContact(QAR3Client, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
 
         getOrCreateContact(personClient, LAR1.position, LAR1.oobi),
         getOrCreateContact(personClient, LAR2.position, LAR2.oobi),
         getOrCreateContact(personClient, SALLY.position, SALLY.oobi),
+        getOrCreateContact(personClient, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
     ])
 }
 await resolveOobis(args[1], args[2], env);

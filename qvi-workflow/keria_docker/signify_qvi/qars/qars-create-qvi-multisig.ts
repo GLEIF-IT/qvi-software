@@ -123,5 +123,7 @@ async function createQviMultisig(multisigName: string, aidInfo: string, delpre: 
     }
 }
 const multisigOobiObj: any = await createQviMultisig(multisigName, aidInfoArg, delegationPrefix, witnessIds, env);
+console.log("Writing QVI multisig AID info to file...");
+console.log(multisigOobiObj);
 await fs.promises.writeFile(`${dataDir}/qvi-multisig-info.json`, JSON.stringify(multisigOobiObj));
 console.log("QVI delegated multisig AID created, waiting for GEDA to confirm delegation...");

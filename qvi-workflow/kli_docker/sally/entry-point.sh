@@ -12,7 +12,7 @@ kli init \
     --salt "${SALLY_SALT}" \
     --passcode "${SALLY_PASSCODE}" \
     --config-dir /sally/conf \
-    --config-file sally-habery.json
+    --config-file sally.json
 
 # Create sally identifier
 kli incept \
@@ -24,7 +24,7 @@ kli incept \
 sally server start --name "${SALLY}" --alias "${SALLY}" \
   --passcode "${SALLY_PASSCODE}" \
   --config-dir /sally/conf \
-  --config-file sally-habery.json \
+  --config-file sally.json \
   --web-hook "${WEBHOOK_HOST}" \
   --auth "${GEDA_PRE}" \
   --loglevel INFO

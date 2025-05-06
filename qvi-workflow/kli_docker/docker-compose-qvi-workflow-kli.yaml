@@ -127,7 +127,7 @@ services:
       - GEDA_PRE=${GEDA_PRE}
       - PYTHONWARNINGS=ignore::SyntaxWarning
     volumes:
-      - ./sally/keri/cf/sally-habery-docker.json:/sally/conf/keri/cf/sally-habery.json
+      - ./sally/keri/cf/sally.json:/sally/conf/keri/cf/sally.json
       - ./sally/sally-incept.json:/sally/conf/sally-incept.json
       - ./sally/entry-point.sh:/sally/entry-point.sh
       - sally-vol:/usr/local/var/keri
