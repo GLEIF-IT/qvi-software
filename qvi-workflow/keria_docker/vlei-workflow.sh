@@ -24,15 +24,20 @@ set -u  # undefined variable detection
 # 1) $HOME/.qvi_workflow_docker should be cleared out prior to running this script.
 #    By specifying a directory as the first argument to this script you can control where the keystores are located.
 
-# NOTE: (used by resolve-env.ts)
-ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
-KEYSTORE_DIR=${1:-./docker-keystores}
-
 # Load utility functions
 source color-printing.sh
 
 # Load kli commands
-source ./kli-commands.sh ${1:-}
+source ./kli-commands.sh
+
+ALT_SALLY_ALIAS="alternate"
+ALT_SALLY_OOBI="http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
+
+# NOTE: (used by resolve-env.ts)
+ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
+KEYSTORE_DIR=./docker-keystores
+print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
+print_yellow "Using $ENVIRONMENT configuration files"
 
 # Check system dependencies
 required_sys_commands=(docker jq tsx)
@@ -63,13 +68,11 @@ function clear_containers() {
     fi
     done
 }
-clear_containers
 
-# Create docker network if it does not exist
-docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
-
-print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
-print_yellow "Using $ENVIRONMENT configuration files"
+function create_docker_network() {
+  # Create docker network if it does not exist
+  docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
+}
 
 # QVI Config
 QVI_SIGNIFY_DIR=$(dirname "$0")/signify_qvi
@@ -93,35 +96,6 @@ WIT_PRE=BM35JN8XeJSEfpxopjn5jr7tAHCE5749f0OobhMLCorE
 
 # Container configuration (name of the config dir in docker containers kli*)
 CONT_CONFIG_DIR=/config
-
-#### Prepare Salts and Passcodes ####
-function generate_salts_and_passcodes(){
-  # salts and passcodes need to be new and dynamic on each run so that when presenting credentials to
-  # other sally instances, not this one, that duplicity is not created by virtue of using the same
-  # identifier salt, passcode, and inception configuration.
-
-  # Does not include Sally because it is okay if sally stays the same.
-
-  print_green "Generating salts for GARs and LARs"
-  # Export these variables so they are available in the child docker compose processes
-  export GAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "GAR1_SALT: ${GAR1_SALT}"
-  export GAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "GAR2_SALT: ${GAR2_SALT}"
-  export LAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "LAR1_SALT: ${LAR1_SALT}"
-  export LAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "LAR2_SALT: ${LAR2_SALT}"
-  export QAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR1_SALT: ${QAR1_SALT}"
-  export QAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR2_SALT: ${QAR2_SALT}"
-  export QAR3_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR3_SALT: ${QAR3_SALT}"
-  export PERSON_SALT=$(kli salt | tr -d " \t\n\r" ) && print_lcyan "PERSON_SALT: ${PERSON_SALT}"
-
-  export GAR1_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "GAR1_PASSCODE: ${GAR1_PASSCODE}"
-  export GAR2_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "GAR2_PASSCODE: ${GAR2_PASSCODE}"
-  export LAR1_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "LAR1_PASSCODE: ${LAR1_PASSCODE}"
-  export LAR2_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "LAR2_PASSCODE: ${LAR2_PASSCODE}"
-  export PERSON_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" ) && print_lcyan "PERSON_PASSCODE: ${PERSON_PASSCODE}"
-
-  # Does not include Sally because it is okay if sally stays the same.
-}
-generate_salts_and_passcodes
 
 #### Identifier Information ####
 # GEDA AIDs - GLEIF External Delegated AID
@@ -246,49 +220,80 @@ EOM
     print_lcyan "${DOCKER_ENV}"
     echo "${DOCKER_ENV}" > ./keria-signify-docker.env
 }
-write_docker_env
 
-# Containers
-DOCKER_COMPOSE_FILE=docker-compose-keria_signify_qvi.yaml
-docker compose -f $DOCKER_COMPOSE_FILE up -d --wait
-if [ $? -ne 0 ]; then
-    print_red "Docker services failed to start properly. Exiting."
-    cleanup
-    exit 1
-fi
+function start_docker_containers() {
+  # Containers
+  DOCKER_COMPOSE_FILE=docker-compose-keria_signify_qvi.yaml
+  docker compose -f $DOCKER_COMPOSE_FILE up -d --wait
+  if [ $? -ne 0 ]; then
+      print_red "Docker services failed to start properly. Exiting."
+      cleanup
+      exit 1
+  fi
+}
 
 ################################################
 # QVI Workflow with KERIpy, KERIA, and SignifyTS
 ################################################
+#### Prepare Salts and Passcodes ####
+SIGTS_AIDS=""
+function generate_salts_and_passcodes(){
+  # salts and passcodes need to be new and dynamic on each run so that when presenting credentials to
+  # other sally instances, not this one, that duplicity is not created by virtue of using the same
+  # identifier salt, passcode, and inception configuration.
 
-# KERIA SignifyTS QVI cryptographic names and seeds to feed into SignifyTS as a bespoke, delimited data format
-SIGTS_AIDS="qar1|$QAR1|$QAR1_SALT,qar2|$QAR2|$QAR2_SALT,qar3|$QAR3|$QAR3_SALT,person|$PERSON|$PERSON_SALT"
+  # Does not include Sally because it is okay if sally stays the same.
 
-print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
-tsx "${QVI_SIGNIFY_DIR}/qars/qars-and-person-setup.ts" "${ENVIRONMENT}" "${QVI_DATA_DIR}" "${SIGTS_AIDS}"
+  print_green "Generating salts for GARs and LARs"
+  # Export these variables so they are available in the child docker compose processes
+  export GAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "GAR1_SALT: ${GAR1_SALT}"
+  export GAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "GAR2_SALT: ${GAR2_SALT}"
+  export LAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "LAR1_SALT: ${LAR1_SALT}"
+  export LAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "LAR2_SALT: ${LAR2_SALT}"
+  export QAR1_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR1_SALT: ${QAR1_SALT}"
+  export QAR2_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR2_SALT: ${QAR2_SALT}"
+  export QAR3_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR3_SALT: ${QAR3_SALT}"
+  export PERSON_SALT=$(kli salt | tr -d " \t\n\r" ) && print_lcyan "PERSON_SALT: ${PERSON_SALT}"
 
-print_green "QVI and Person Identifiers from SignifyTS + KERIA are "
-# Extract prefixes from the SignifyTS output because they are dynamically generated and unique each run.
-# They are needed for doing OOBI resolutions to connect SignifyTS AIDs to KERIpy AIDs.
-qvi_setup_data=$(cat "${QVI_DATA_DIR}"/qars-and-person-info.json)
-QAR1_PRE=$(echo    $qvi_setup_data | jq -r ".QAR1.aid"         | tr -d '"')
-QAR2_PRE=$(echo    $qvi_setup_data | jq -r ".QAR2.aid"         | tr -d '"')
-QAR3_PRE=$(echo    $qvi_setup_data | jq -r ".QAR3.aid"         | tr -d '"')
-PERSON_PRE=$(echo  $qvi_setup_data | jq -r ".PERSON.aid"       | tr -d '"')
-QAR1_OOBI=$(echo   $qvi_setup_data | jq -r ".QAR1.agentOobi"   | tr -d '"')
-QAR2_OOBI=$(echo   $qvi_setup_data | jq -r ".QAR2.agentOobi"   | tr -d '"')
-QAR3_OOBI=$(echo   $qvi_setup_data | jq -r ".QAR3.agentOobi"   | tr -d '"')
-PERSON_OOBI=$(echo $qvi_setup_data | jq -r ".PERSON.agentOobi" | tr -d '"')
+  export GAR1_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "GAR1_PASSCODE: ${GAR1_PASSCODE}"
+  export GAR2_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "GAR2_PASSCODE: ${GAR2_PASSCODE}"
+  export LAR1_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "LAR1_PASSCODE: ${LAR1_PASSCODE}"
+  export LAR2_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "LAR2_PASSCODE: ${LAR2_PASSCODE}"
+  export PERSON_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" ) && print_lcyan "PERSON_PASSCODE: ${PERSON_PASSCODE}"
 
-# Show dyncamic, extracted Signify identifiers and OOBIs
-print_green     "QAR1   Prefix: $QAR1_PRE"
-print_dark_gray "QAR1     OOBI: $QAR1_OOBI"
-print_green     "QAR2   Prefix: $QAR2_PRE"
-print_dark_gray "QAR2     OOBI: $QAR2_OOBI"
-print_green     "QAR3   Prefix: $QAR3_PRE"
-print_dark_gray "QAR3     OOBI: $QAR3_OOBI"
-print_green     "Person Prefix: $PERSON_PRE"
-print_dark_gray "Person   OOBI: $PERSON_OOBI"
+  # Does not include Sally because it is okay if sally stays the same.
+
+  # KERIA SignifyTS QVI cryptographic names and seeds to feed into SignifyTS as a bespoke, delimited data format
+  SIGTS_AIDS="qar1|$QAR1|$QAR1_SALT,qar2|$QAR2|$QAR2_SALT,qar3|$QAR3|$QAR3_SALT,person|$PERSON|$PERSON_SALT"
+}
+
+function setup_keria_identifiers() {
+  print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
+  tsx "${QVI_SIGNIFY_DIR}/qars/qars-and-person-setup.ts" "${ENVIRONMENT}" "${QVI_DATA_DIR}" "${SIGTS_AIDS}"
+
+  print_green "QVI and Person Identifiers from SignifyTS + KERIA are "
+  # Extract prefixes from the SignifyTS output because they are dynamically generated and unique each run.
+  # They are needed for doing OOBI resolutions to connect SignifyTS AIDs to KERIpy AIDs.
+  qvi_setup_data=$(cat "${QVI_DATA_DIR}"/qars-and-person-info.json)
+  QAR1_PRE=$(echo    $qvi_setup_data | jq -r ".QAR1.aid"         | tr -d '"')
+  QAR2_PRE=$(echo    $qvi_setup_data | jq -r ".QAR2.aid"         | tr -d '"')
+  QAR3_PRE=$(echo    $qvi_setup_data | jq -r ".QAR3.aid"         | tr -d '"')
+  PERSON_PRE=$(echo  $qvi_setup_data | jq -r ".PERSON.aid"       | tr -d '"')
+  QAR1_OOBI=$(echo   $qvi_setup_data | jq -r ".QAR1.agentOobi"   | tr -d '"')
+  QAR2_OOBI=$(echo   $qvi_setup_data | jq -r ".QAR2.agentOobi"   | tr -d '"')
+  QAR3_OOBI=$(echo   $qvi_setup_data | jq -r ".QAR3.agentOobi"   | tr -d '"')
+  PERSON_OOBI=$(echo $qvi_setup_data | jq -r ".PERSON.agentOobi" | tr -d '"')
+
+  # Show dyncamic, extracted Signify identifiers and OOBIs
+  print_green     "QAR1   Prefix: $QAR1_PRE"
+  print_dark_gray "QAR1     OOBI: $QAR1_OOBI"
+  print_green     "QAR2   Prefix: $QAR2_PRE"
+  print_dark_gray "QAR2     OOBI: $QAR2_OOBI"
+  print_green     "QAR3   Prefix: $QAR3_PRE"
+  print_dark_gray "QAR3     OOBI: $QAR3_OOBI"
+  print_green     "Person Prefix: $PERSON_PRE"
+  print_dark_gray "Person   OOBI: $PERSON_OOBI"
+}
 
 # initializes a keystore and creates a single sig AID
 function create_aid() {
@@ -335,7 +340,6 @@ function create_aids() {
     create_aid "${LAR1}" "${LAR1_SALT}" "${LAR1_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" "/config/incept-cfg-qars.json"
     create_aid "${LAR2}" "${LAR2_SALT}" "${LAR2_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" "/config/incept-cfg-qars.json"
 }
-create_aids
 
 function read_prefixes() {
   export GAR1_PRE=$(kli status  --name "${GAR1}"  --alias "${GAR1}"  --passcode "${GAR1_PASSCODE}" | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r" )
@@ -349,7 +353,6 @@ function read_prefixes() {
   print_lcyan "LAR1 Prefix: ${LAR1_PRE}"
   print_lcyan "LAR2 Prefix: ${LAR2_PRE}"
 }
-read_prefixes
 
 # OOBI resolutions between single sig AIDs
 function resolve_oobis() {
@@ -421,16 +424,13 @@ function resolve_oobis() {
     
     echo
 }
-resolve_oobis
 
 # TODO write Challenge Response between GARs, LARs, QARs, and Person
 function challenge_response() {
   print_green "------------------------------Authenticating Keystore control with Challenge Responses------------------------------"
 }
-# challenge_response() including SignifyTS Integration
 
 ################# Create Multisigs and perform delegation ################
-
 # Create Multisig AID for GLEIF External Delegated AID (GEDA)
 function create_multisig_icp_config() {
     PRE1=$1
@@ -489,11 +489,12 @@ function create_geda_multisig() {
     export GEDA_PRE=$(echo "${ms_prefix}" | tr -d '[:space:]')
     print_green "[External] GEDA Multisig AID ${GEDA_NAME} with prefix: ${GEDA_PRE}"
 }
-create_geda_multisig
 
-# Recreate sally container with new GEDA prefix
-print_yellow "Recreating Sally container with new GEDA prefix ${GEDA_PRE}"
-docker compose -f $DOCKER_COMPOSE_FILE up -d sally direct-sally --wait
+function recreate_sally_containers() {
+  # Recreate sally container with new GEDA prefix
+  print_yellow "Recreating Sally container with new GEDA prefix ${GEDA_PRE}"
+  docker compose -f $DOCKER_COMPOSE_FILE up -d sally direct-sally --wait
+}
 
 function qars_resolve_geda_oobi() {
     GEDA_OOBI=$(kli oobi generate --name "${GAR1}" --passcode "${GAR1_PASSCODE}" --alias "${GEDA_NAME}" --role witness)
@@ -505,7 +506,6 @@ function qars_resolve_geda_oobi() {
     tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${GEDA_NAME}" "${GEDA_OOBI}"
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" "${ENVIRONMENT}" "${SIGTS_AIDS}" "${GEDA_PRE}"
 }
-qars_resolve_geda_oobi
 
 # QAR: Create delegated multisig QVI AID with GEDA as delegator
 function create_qvi_multisig() {
@@ -554,11 +554,11 @@ function create_qvi_multisig() {
     docker rm gar1 gar2
 
     tsx "${QVI_SIGNIFY_DIR}/qars/qars-complete-multisig-incept.ts" "${ENVIRONMENT}" "${SIGTS_AIDS}" "${GEDA_PRE}"
+
+    MULTISIG_INFO=$(cat "${QVI_DATA_DIR}"/qvi-multisig-info.json)
+    QVI_PRE=$(echo "${MULTISIG_INFO}" | jq .msPrefix | tr -d '"')
+    print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 }
-create_qvi_multisig
-MULTISIG_INFO=$(cat "${QVI_DATA_DIR}"/qvi-multisig-info.json)
-QVI_PRE=$(echo "${MULTISIG_INFO}" | jq .msPrefix | tr -d '"')
-print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 
 # QVI: Perform endpoint role authorizations and generate OOBI for QVI to send to GEDA and LE
 QVI_OOBI=""
@@ -570,9 +570,8 @@ function authorize_qvi_multisig_agent_endpoint_role(){
       "${QVI_DATA_DIR}" \
       "${SIGTS_AIDS}"
     QVI_OOBI=$(cat "${QVI_DATA_DIR}/qvi-oobi.json" | jq .oobi | tr -d '"')
+    print_green "QVI Agent OOBI: ${QVI_OOBI}"
 }
-authorize_qvi_multisig_agent_endpoint_role
-print_green "QVI Agent OOBI: ${QVI_OOBI}"
 
 # QVI: Delegated multisig rotation() {
 function qvi_rotate() {
@@ -643,7 +642,6 @@ function qvi_rotate() {
     sleep 8
 
 }
-#qvi_rotate
 
 # Create Legal Entity Multisig
 function create_le_multisig() {
@@ -692,7 +690,6 @@ function create_le_multisig() {
     export LE_PRE=$(echo "${ms_prefix}" | tr -d '[:space:]')
     print_green "[LE] LE Multisig AID ${LE_NAME} with prefix: ${LE_PRE}"
 }
-create_le_multisig
 
 # QAR: Resolve GEDA and LE multisig OOBIs
 function qars_resolve_le_oobi() {
@@ -704,7 +701,6 @@ function qars_resolve_le_oobi() {
     echo "LE OOBI: ${LE_OOBI}"
     tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${LE_NAME}" "${LE_OOBI}"
 }
-qars_resolve_le_oobi
 
 # GEDA and LE: Resolve QVI OOBI
 function resolve_qvi_oobi() {
@@ -730,7 +726,6 @@ function resolve_qvi_oobi() {
       "${QVI_OOBI}"
     echo
 }
-resolve_qvi_oobi
 
 ############################ QVI Credential ##################################
 # GEDA: Create GEDA credential registry
@@ -773,7 +768,6 @@ function create_geda_reg() {
     print_green "QVI Credential Registry created for GEDA"
     echo
 }
-create_geda_reg
 
 # GEDA: Create QVI credential
 function prepare_qvi_cred_data() {
@@ -789,7 +783,6 @@ EOM
     print_lcyan "QVI Credential Data"
     print_lcyan "$(cat ./acdc-info/temp-data/qvi-cred-data.json)"
 }
-prepare_qvi_cred_data
 
 function create_qvi_credential() {
     # Check if QVI credential already exists
@@ -844,7 +837,6 @@ function create_qvi_credential() {
     print_lcyan "[External] QVI Credential created for GEDA"
     echo
 }
-create_qvi_credential
 
 # GEDA: IPEX Grant QVI credential to QVI
 function grant_qvi_credential() {
@@ -903,7 +895,6 @@ function grant_qvi_credential() {
     print_green "[External] QVI Credential issued to QVI"
     echo
 }
-grant_qvi_credential
 
 # QVI: Admit QVI credential from GEDA
 function admit_qvi_credential() {
@@ -938,7 +929,6 @@ function admit_qvi_credential() {
     print_green "[QVI] Admitted QVI credential"
     echo
 }
-admit_qvi_credential
 
 function present_qvi_cred_to_sally_kli() {
     SAID=$(kli vc list \
@@ -981,7 +971,6 @@ function present_qvi_cred_to_sally_kli() {
     print_green "[External] QVI Credential issued to QVI"
     echo
 }
-present_qvi_cred_to_sally_kli
 
 function present_qvi_cred_to_sally_signify() {
   print_yellow "[QVI] Presenting QVI Credential to Sally"
@@ -1010,7 +999,6 @@ function present_qvi_cred_to_sally_signify() {
 
   print_green "[QVI] QVI Credential presented to Sally"
 }
-present_qvi_cred_to_sally_signify
 
 ############################ LE Credential ##################################
 # QVI: Prepare, create, and Issue LE credential to GEDA
@@ -1025,7 +1013,6 @@ function create_qvi_reg() {
     QVI_REG_REGK=$(cat "${QVI_DATA_DIR}/qvi-registry-info.json" | jq .registryRegk | tr -d '"')
     print_green "[QVI] Credential Registry created for QVI with regk: ${QVI_REG_REGK}"
 }
-create_qvi_reg
 
 # QVI: Prepare QVI edge data
 function prepare_qvi_edge() {
@@ -1052,7 +1039,6 @@ EOM
     print_lcyan "Legal Entity edge Data"
     print_lcyan "$(cat ./acdc-info/temp-data/qvi-edge.json | jq )"
 }
-prepare_qvi_edge
 
 # QVI: Prepare LE credential data
 function prepare_le_cred_data() {
@@ -1065,7 +1051,6 @@ EOM
 
     echo "$LE_CRED_DATA" > ./acdc-info/temp-data/legal-entity-data.json
 }
-prepare_le_cred_data
 
 # QVI: Create LE credential
 function create_and_grant_le_credential() {
@@ -1105,7 +1090,6 @@ function create_and_grant_le_credential() {
     sleep 10
     echo
 }
-create_and_grant_le_credential
 
 # LE: Admit LE credential from QVI
 function admit_le_credential() {
@@ -1166,9 +1150,6 @@ function admit_le_credential() {
     print_green "[LE] Admitted LE credential"
     echo
 }
-admit_le_credential
-
-
 
 function present_le_cred_to_sally() {
   print_yellow "[QVI] Presenting LE Credential to Sally"
@@ -1198,7 +1179,6 @@ function present_le_cred_to_sally() {
   print_green "[PERSON] LE Credential presented to Sally"
 
 }
-present_le_cred_to_sally
 
 # LE: Create LE credential registry
 function create_le_reg() {
@@ -1238,7 +1218,6 @@ function create_le_reg() {
     print_green "[LE] Legal Entity Credential Registry created for LE"
     echo
 }
-create_le_reg
 
 ########################## OOR Auth ####################################
 # Prepare LE edge for OOR Auth credential, also used for ECR Auth credential.
@@ -1263,7 +1242,6 @@ EOM
     echo "$LE_EDGE_JSON" > ./acdc-info/temp-data/legal-entity-edge.json
     kli saidify --file /acdc-info/temp-data/legal-entity-edge.json
 }
-prepare_le_edge
 
 # Prepare OOR Auth credential data
 function prepare_oor_auth_data() {
@@ -1278,7 +1256,6 @@ EOM
 
     echo "$OOR_AUTH_DATA_JSON" > ./acdc-info/temp-data/oor-auth-data.json
 }
-prepare_oor_auth_data
 
 # LE: Create OOR Auth credential
 function create_oor_auth_credential() {
@@ -1334,7 +1311,6 @@ function create_oor_auth_credential() {
     print_lcyan "[LE] LE created OOR Auth credential"
     echo
 }
-create_oor_auth_credential
 
 # LE: Grant OOR Auth credential to QVI
 function grant_oor_auth_credential() {
@@ -1390,7 +1366,6 @@ function grant_oor_auth_credential() {
     print_green "[LE] Granted OOR Auth credential to QVI"
     echo
 }
-grant_oor_auth_credential
 
 # QVI: Admit OOR Auth credential
 function admit_oor_auth_credential() {
@@ -1428,7 +1403,6 @@ function admit_oor_auth_credential() {
     print_green "[QVI] Admitted OOR Auth Credential"
     echo
 }
-admit_oor_auth_credential
 
 ########################### OOR Credential ##############################
 # 24. QVI: Issue, grant OOR to Person and Person admits OOR
@@ -1455,7 +1429,6 @@ EOM
     echo "$OOR_AUTH_EDGE_JSON" > ./acdc-info/temp-data/oor-auth-edge.json
     kli saidify --file /acdc-info/temp-data/oor-auth-edge.json
 }
-prepare_oor_auth_edge
 
 # Prepare OOR credential data
 function prepare_oor_cred_data() {
@@ -1470,7 +1443,6 @@ EOM
 
     echo "${OOR_CRED_DATA}" > ./acdc-info/temp-data/oor-data.json
 }
-prepare_oor_cred_data
 
 # Create OOR credential in QVI, issued to the Person
 function create_and_grant_oor_credential() {
@@ -1511,7 +1483,6 @@ function create_and_grant_oor_credential() {
     print_lcyan "[QVI] OOR credential created"
     echo
 }
-create_and_grant_oor_credential
 
 # Person: Admit OOR credential from QVI
 function admit_oor_credential() {
@@ -1552,7 +1523,6 @@ function admit_oor_credential() {
     print_green "OOR Credential admitted"
     echo
 }
-admit_oor_credential
 
 # PERSON: Present OOR credential to Sally (vLEI Reporting API)
 function present_oor_cred_to_sally() {
@@ -1580,7 +1550,6 @@ function present_oor_cred_to_sally() {
 
     print_green "[PERSON] OOR Credential presented to Sally"
 }
-present_oor_cred_to_sally
 
 ############################ ECR Auth ##################################
 # LE: Prepare, create, and Issue ECR Auth & OOR Auth credential to QVI
@@ -1597,7 +1566,6 @@ EOM
 
     echo "$ECR_AUTH_DATA_JSON" > ./acdc-info/temp-data/ecr-auth-data.json
 }
-prepare_ecr_auth_data
 
 # Create ECR Auth credential
 function create_ecr_auth_credential() {
@@ -1660,7 +1628,6 @@ function create_ecr_auth_credential() {
     print_lcyan "[LE] LE created ECR Auth credential"
     echo
 }
-create_ecr_auth_credential
 
 # Grant ECR Auth credential to QVI
 function grant_ecr_auth_credential() {
@@ -1715,7 +1682,6 @@ function grant_ecr_auth_credential() {
     print_green "[LE] ECR Auth Credential granted to QVI"
     echo
 }
-grant_ecr_auth_credential
 
 # Admit ECR Auth credential from LE
 function admit_ecr_auth_credential() {
@@ -1753,8 +1719,6 @@ function admit_ecr_auth_credential() {
     print_green "[QVI] Admitted ECR Auth Credential"
     echo
 }
-admit_ecr_auth_credential
-
 
 ############################ ECR ##################################
 # 23 Create and Issue ECR credential to Person
@@ -1781,7 +1745,6 @@ EOM
     echo "$ECR_AUTH_EDGE_JSON" > ./acdc-info/temp-data/ecr-auth-edge.json
     kli saidify --file /acdc-info/temp-data/ecr-auth-edge.json
 }
-prepare_ecr_auth_edge
 
 # Prepare ECR credential data
 function prepare_ecr_cred_data() {
@@ -1796,7 +1759,6 @@ EOM
 
     echo "${ECR_CRED_DATA}" > ./acdc-info/temp-data/ecr-data.json
 }
-prepare_ecr_cred_data
 
 # QVI Grant ECR credential to PERSON
 function create_and_grant_ecr_credential() {
@@ -1837,7 +1799,6 @@ function create_and_grant_ecr_credential() {
     print_lcyan "[QVI] ECR credential created and granted"
     echo
 }
-create_and_grant_ecr_credential
 
 # Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
@@ -1878,7 +1839,6 @@ function admit_ecr_credential() {
     print_green "ECR Credential admitted"
     echo
 }
-admit_ecr_credential
 
 # Present ECR credential to Sally (vLEI Reporting API)
 # Sally does not recognize the ECR credential and will reject it.
@@ -1910,17 +1870,309 @@ function present_ecr_cred_to_sally() {
 
     print_green "[PERSON] ECR Credential presented to Sally"
 }
-present_ecr_cred_to_sally
-
-# TODO Add OOR and ECR credential revocation by the QVI
-# TODO Add presentation of revoked OOR and ECR credentials to Sally
 
 # QVI: Revoke ECR Auth and OOR Auth credentials
 
 # QVI: Present revoked credentials to Sally
 
-print_lcyan "Full chain workflow completed"
+############################ Staging Sally Presentation ##################################
+# Present LE credential to GLEIF Staging Sally
+function present_le_gleif_staging() {
+  SALLY_WIT_OOBI="http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
+  OOBI_ALIAS="sally-staging-wit-oc-au"
+  kli oobi resolve --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --oobi-alias "${OOBI_ALIAS}" --oobi "${SALLY_WIT_OOBI}"
+  kli oobi resolve --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --oobi-alias "${OOBI_ALIAS}" --oobi "${SALLY_WIT_OOBI}"
+  LE_SAID=$(kli vc list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --alias "${LE_NAME}" --said --schema "${LE_SCHEMA}" | tr -d '[:space:]')
 
-# Script cleanup calls
-clear_containers
-cleanup
+  print_yellow "[LE] Granting LE credential to GLEIF Staging Sally  at ${SALLY_WIT_OOBI}"
+  klid lar1 ipex grant --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" --said "${LE_SAID}" \
+        --recipient "${OOBI_ALIAS}"
+
+  klid lar2 ipex join --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --auto
+
+  print_dark_gray "[LE] Waiting for GLEIF Staging Sally to receive the LE Credential"
+  docker wait lar1 lar2
+  docker logs lar1
+  docker logs lar2
+  docker rm lar1 lar2
+}
+
+function present_le_gleif_production() {
+  SALLY_WIT_OOBI="http://5.161.69.25:5623/oobi/EMRlhEQK44_V5804rsRvQ99Gtf7uDpYQqZuvrw0LhV3S/witness/BNfDO63ZpGc3xiFb0-jIOUnbr_bA-ixMva5cZb3s4BHB"
+  OOBI_ALIAS="sally-production-wit-na-us"
+  kli oobi resolve --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --oobi-alias "${OOBI_ALIAS}" --oobi "${SALLY_WIT_OOBI}"
+  kli oobi resolve --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --oobi-alias "${OOBI_ALIAS}" --oobi "${SALLY_WIT_OOBI}"
+  LE_SAID=$(kli vc list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --alias "${LE_NAME}" --said --schema "${LE_SCHEMA}" | tr -d '[:space:]')
+
+  print_yellow "[LE] Granting LE credential to GLEIF Production Sally  at ${SALLY_WIT_OOBI}"
+  klid lar1 ipex grant --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" --said "${LE_SAID}" \
+        --recipient "${OOBI_ALIAS}"
+
+  klid lar2 ipex join --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --auto
+
+  print_dark_gray "[LE] Waiting for GLEIF Staging Sally to receive the LE Credential"
+  docker wait lar1 lar2
+  docker logs lar1
+  docker logs lar2
+  docker rm lar1 lar2
+}
+
+function present_le_to_alternate() {
+  local alt_alias=$1
+  local alt_oobi=$2
+  kli oobi resolve --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --oobi-alias "${alt_alias}" --oobi "${alt_oobi}"
+  kli oobi resolve --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --oobi-alias "${alt_alias}" --oobi "${alt_oobi}"
+  LE_SAID=$(kli vc list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --alias "${LE_NAME}" --said --schema "${LE_SCHEMA}" | tr -d '[:space:]')
+
+  print_yellow "[LE] Granting LE credential to alternate Sally at ${alt_oobi}"
+  klid lar1 ipex grant --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" --said "${LE_SAID}" \
+        --recipient "${alt_alias}"
+
+  klid lar2 ipex join --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --auto
+
+  print_dark_gray "[LE] Waiting for Alternate Sally to receive the LE Credential"
+  docker wait lar1 lar2
+  docker logs lar1
+  docker logs lar2
+  docker rm lar1 lar2
+}
+# Prepare ECR Auth edge data
+
+############################ Workflow functions ##################################
+# main setup function
+function setup() {
+  clear_containers
+  create_docker_network
+  generate_salts_and_passcodes
+  write_docker_env
+  start_docker_containers
+  setup_keria_identifiers
+  create_aids
+  read_prefixes
+  resolve_oobis
+  # challenge_response() including SignifyTS Integration
+}
+
+# Sets up GEDA, GEDA registry, delegation to the QVI, and QVI OOBI resolution for GARs and LARs
+function geda_delegation_to_qvi() {
+  create_geda_multisig
+  create_geda_reg
+  recreate_sally_containers
+  qars_resolve_geda_oobi
+  create_qvi_multisig
+  authorize_qvi_multisig_agent_endpoint_role
+  resolve_qvi_oobi
+  #qvi_rotate
+}
+
+# Creates the QVI credential, grants it from the GEDA to the QVI, and presents it to sally
+function qvi_credential() {
+  prepare_qvi_cred_data
+  create_qvi_credential
+  grant_qvi_credential
+  admit_qvi_credential
+  present_qvi_cred_to_sally_kli
+  present_qvi_cred_to_sally_signify
+}
+
+# Creates the LE multisig, resolves the LE OOBI, creates the QVI registry, and prepares and grants the LE credential
+function le_creation_and_granting() {
+  create_le_multisig
+  qars_resolve_le_oobi
+  create_qvi_reg
+  prepare_qvi_edge
+  prepare_le_cred_data
+  create_and_grant_le_credential
+  admit_le_credential
+  create_le_reg
+  prepare_le_edge
+}
+
+# Presents the LE credential to the local Sally deployment
+function le_sally_presentation() {
+  read -p "Press [ENTER] to present LE cred to Sally from QARs"
+  present_le_cred_to_sally
+}
+
+# Creates the OOR Auth credential and grants it to the QVI
+function oor_auth_cred() {
+  prepare_oor_auth_data
+  create_oor_auth_credential
+  grant_oor_auth_credential
+  admit_oor_auth_credential
+  prepare_oor_auth_edge
+}
+
+# Creates the OOR credential, grants it to the Person, and presents it to Sally from the person
+function oor_cred(){
+  prepare_oor_cred_data
+  create_and_grant_oor_credential
+  admit_oor_credential
+  present_oor_cred_to_sally
+}
+
+# Workflow function for the OOR Auth and OOR credentials
+function oor_auth_and_oor_cred() {
+  oor_auth_cred
+  oor_cred
+}
+
+# Creates the ECR Auth credential and grants it to the QVI
+function ecr_auth_cred() {
+  prepare_ecr_auth_data
+  create_ecr_auth_credential
+  grant_ecr_auth_credential
+  admit_ecr_auth_credential
+  prepare_ecr_auth_edge
+}
+
+# Creates the ECR credential, grants it to the Person, and presents it to Sally from the person
+function ecr_cred() {
+  prepare_ecr_cred_data
+  create_and_grant_ecr_credential
+  admit_ecr_credential
+  present_ecr_cred_to_sally
+}
+
+# Workflow function for the ECR Auth and ECR credentials
+function ecr_auth_and_ecr_cred() {
+  ecr_auth_cred
+  ecr_cred
+}
+
+# Main workflow driving the end to end QVI credentialing and reporting process
+function main_flow() {
+  setup
+  geda_delegation_to_qvi
+  qvi_credential
+  le_creation_and_granting
+  le_sally_presentation
+  oor_auth_and_oor_cred
+  ecr_auth_and_ecr_cred
+
+  # TODO Revoke OOR
+  # TODO Present revoked OOR to Sally
+  # TODO Revoke ECR
+  # TODO Present revoked ECR to Sally
+  end_workflow
+}
+
+# Runs the workflow and presents the LE credential to GLEIF Staging Sally
+function present_to_staging() {
+  print_green "--------------------------------------------------------------------------------"
+  print_green "Running workflow and presenting LE credential to GLEIF Staging Sally"
+  print_green "Using the following URL for Sally's mailbox:"
+  print_green "http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
+  print_green "--------------------------------------------------------------------------------"
+  setup
+  geda_delegation_to_qvi
+  qvi_credential
+  le_creation_and_granting
+  present_le_gleif_staging
+  end_workflow
+}
+
+# Runs the workflow and presents the LE credential to GLEIF Production Sally
+function present_to_production() {
+  print_green "--------------------------------------------------------------------------------"
+  print_green "Running workflow and presenting LE credential to GLEIF Production Sally"
+  print_green "Using the following URL for Sally's mailbox:"
+  print_green "http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
+  print_green "--------------------------------------------------------------------------------"
+  setup
+  geda_delegation_to_qvi
+  qvi_credential
+  le_creation_and_granting
+  present_le_gleif_production
+  end_workflow
+}
+
+# Runs the workflow and presents the LE credential to an alternate Sally
+function present_to_alternate_sally() {
+  print_green "--------------------------------------------------------------------------------"
+  print_green "Running workflow and presenting LE credential to alternate Sally: ${ALT_SALLY_ALIAS}"
+  print_green "Using the following URL for Sally's mailbox:"
+  print_green "${ALT_SALLY_OOBI}"
+  print_green "--------------------------------------------------------------------------------"
+  setup
+  geda_delegation_to_qvi
+  qvi_credential
+  le_creation_and_granting
+  present_le_to_alternate "${ALT_SALLY_ALIAS}" "${ALT_SALLY_OOBI}"
+  end_workflow
+}
+
+function end_workflow() {
+  # Script cleanup calls
+  clear_containers
+  cleanup
+}
+
+# Function to display usage
+usage() {
+    echo "Usage: $0 [options]"
+    echo "Options:"
+    echo "  -k, --keystore-dir DIR  Specify keystore directory directory (default: ./docker-keystores)"
+    echo "  -a, --alias ALIAS       OOBI alias for target Sally deployment (default: alternate)"
+    echo "  -o, --oobi OOBI         OOBI URL for target Sally deployment (default: staging OC AU Sally OOBI- http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2)"
+    echo "  -e, --environment ENV   Specify an environment (default: docker-witness-split)"
+    echo "  -t, --alternate         Run and present LE credential to alternate Sally"
+    echo "  -s, --staging           Run and present LE credential to GLEIF Staging Sally"
+    echo "  -p, --production        Run and present LE credential to GLEIF Production Sally"
+    echo "  -h, --help              Display this help message"
+    exit 1
+}
+
+# Parse command-line options
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -k|--keystore-dir)
+            if [[ -z $2 ]]; then
+                KEYSTORE_DIR="./docker-keystores"
+                print_dark_gray "Error: Keystore directory not specified, using default ${KEYSTORE_DIR}"
+            fi
+            KEYSTORE_DIR="$2"
+            source ./kli-commands.sh "${KEYSTORE_DIR}"
+            shift 2
+            ;;
+        -a|--alias)
+            if [[ -z $2 ]]; then
+               print_red "Error: OOBI Alias not specified yet argument used."
+               end_workflow
+            fi
+            ALT_SALLY_ALIAS="$2"
+            shift 2
+            ;;
+        -o|--oobi)
+            if [[ -z $2 ]]; then
+                print_red "Error: OOBI URL not specified yet argument used."
+                end_workflow
+            fi
+            ALT_SALLY_OOBI="$2"
+            shift 2
+            ;;
+        -t|--alternate)
+            present_to_alternate_sally $ALT_SALLY_ALIAS $ALT_SALLY_OOBI
+            shift
+            ;;
+        -s|--staging)
+            present_to_staging
+            shift
+            ;;
+        -p|--production)
+            present_to_production
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
+main_flow
+
+print_lcyan "Full chain workflow completed"
