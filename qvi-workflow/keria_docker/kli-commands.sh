@@ -6,7 +6,7 @@
 ##                                                              ##
 ##################################################################
 
-KEYSTORE_DIR=${1:-./docker-keystores}
+KEYSTORE_DIR=./docker-keystores
 
 if [ ! -d "${KEYSTORE_DIR}" ]; then
     echo "Creating Keystore directory ${KEYSTORE_DIR}"
