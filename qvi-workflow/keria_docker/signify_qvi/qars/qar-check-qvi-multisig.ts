@@ -2,12 +2,14 @@ import { HabState } from "signify-ts";
 import { parseAidInfo } from "../create-aid";
 import { getOrCreateClients } from "../keystore-creation";
 import { TestEnvironmentPreset } from "../resolve-env";
+import fs from 'fs';
 
 // process arguments
 const args = process.argv.slice(2);
 const env = args[0] as 'local' | 'docker';
 const multisigName = args[1]
 const aidInfoArg = args[2]
+const dataDir = args[3];
 
 
 /**
@@ -33,4 +35,9 @@ async function checkQviMultisig(multisigName: string, aidInfo: string, environme
     return parseInt(qar1Ms.state.s)
 }
 const sequenceNo = await checkQviMultisig(multisigName, aidInfoArg, env);
+const seqNoObj = {
+    sequenceNo: sequenceNo,
+}
+console.log("Writing QVI multisig sequence number to file");
+await fs.promises.writeFile(`${dataDir}/qvi-sequence-no.json`, JSON.stringify(seqNoObj))
 console.log(sequenceNo);

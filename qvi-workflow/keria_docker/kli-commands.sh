@@ -1,12 +1,16 @@
 #!/bin/bash
-
 ##################################################################
 ##                                                              ##
 ##          KLI Commands proxied by Docker Containers           ##
 ##                                                              ##
 ##################################################################
 
-KEYSTORE_DIR=./docker-keystores
+LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+export KLI_DATA_DIR="${LOCAL_DIR}/acdc-info"
+export KLI_CONFIG_DIR="${LOCAL_DIR}/config"
+
+KEYSTORE_DIR=${1:-./docker-keystores}
+ENVIRONMENT=${2:-docker-witness-split}
 
 if [ ! -d "${KEYSTORE_DIR}" ]; then
     echo "Creating Keystore directory ${KEYSTORE_DIR}"
@@ -17,16 +21,14 @@ fi
 KLI1IMAGE="weboftrust/keri:1.1.32"
 KLI2IMAGE="gleif/keri:1.2.8-rc1"
 
-LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-export KLI_DATA_DIR="${LOCAL_DIR}/acdc-info"
-export KLI_CONFIG_DIR="${LOCAL_DIR}/config"
+TSX_SIGNIFY_IMG="gleif/vlei-workflow-signify:1.0.0"
 
 # Separate function enables different version of KERIpy to be used for some identifiers.
 function kli() {
   docker run -it --rm \
     --network vlei \
     -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}:/config" \
+    -v "${KLI_CONFIG_DIR}":/config \
     -v "${KLI_DATA_DIR}":/acdc-info \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI1IMAGE}" "$@"
@@ -45,7 +47,7 @@ function klid() {
     --network vlei \
     --name $name \
     -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}:/config" \
+    -v "${KLI_CONFIG_DIR}":/config \
     -v "${KLI_DATA_DIR}":/acdc-info \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI1IMAGE}" "$@"
@@ -58,7 +60,7 @@ function kli2() {
   docker run -it --rm \
     --network vlei \
     -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}:/config" \
+    -v "${KLI_CONFIG_DIR}":/config \
     -v "${KLI_DATA_DIR}":/acdc-info \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI2IMAGE}" "$@"
@@ -77,13 +79,24 @@ function kli2d() {
     --network vlei \
     --name $name \
     -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}:/config" \
+    -v "${KLI_CONFIG_DIR}":/config \
     -v "${KLI_DATA_DIR}":/acdc-info \
     -e PYTHONWARNINGS="ignore::SyntaxWarning" \
     "${KLI2IMAGE}" "$@"
 }
 
 export -f kli2d
+
+function sig_tsx() {
+  docker run -it --rm \
+    --network vlei \
+    -e ENVIRONMENT="${ENVIRONMENT}" \
+    -v "${LOCAL_DIR}/signify_qvi/qvi_data":/vlei-workflow/qvi_data \
+    -v "${KLI_DATA_DIR}":/acdc-info \
+    "${TSX_SIGNIFY_IMG}" "tsx" "$@"
+}
+
+export -f sig_tsx
 
 echo "Keystore directory is ${KEYSTORE_DIR}"
 echo "Data directory is ${KLI_DATA_DIR}"

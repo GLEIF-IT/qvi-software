@@ -1,4 +1,4 @@
-export type TestEnvironmentPreset = 'local' | 'docker' | 'docker-witness-split';
+export type TestEnvironmentPreset = 'local' | 'docker' | 'docker-witness-split' | 'docker-tsx';
 
 export interface TestEnvironment {
     preset: TestEnvironmentPreset;
@@ -50,10 +50,26 @@ export function resolveEnvironment(
                 vleiServerUrl: 'http://vlei-server:7723',
             };
         case 'docker-witness-split':
+            // Use this when running from localhost and want to connect to the running docker containers
             return {
                 preset: preset,
                 url: `${host}:3901`,     // Because keria is called from the
                 bootUrl: `${host}:3903`, // host not from within the docker network
+                witnessUrls: [
+                    'http://gar-witnesses:5642',    // wan
+                    'http://qar-witnesses:5643',    // wil
+                    'http://person-witnesses:5644', // wes
+                    'http://sally-witnesses:5645'   // wit
+                ],
+                witnessIds: [WAN, WIL, WES, WIT],
+                vleiServerUrl: 'http://vlei-server:7723',
+            };
+        case 'docker-tsx':
+            // use this when running within the tsx container
+            return {
+                preset: preset,
+                url: `http://keria:3901`,
+                bootUrl: `http://keria:3903`,
                 witnessUrls: [
                     'http://gar-witnesses:5642',    // wan
                     'http://qar-witnesses:5643',    // wil

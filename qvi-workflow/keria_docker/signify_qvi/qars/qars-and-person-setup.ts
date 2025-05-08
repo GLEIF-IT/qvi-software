@@ -171,4 +171,5 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
     }
 }
 const clientInfo: any = await setupQVIAndPerson(aidInfoArg, env);
+console.log("Writing QAR and Person data to file...");
 await fs.promises.writeFile(`${dataDir}/qars-and-person-info.json`, JSON.stringify(clientInfo));
