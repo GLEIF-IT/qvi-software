@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 
-#########################################
-# Work In Progress - DO NOT USE
-#########################################
-
-# Runs the entire QVI issuance workflow end to end starting from multisig AID creatin including the
-# GLEIF External Delegated AID (GEDA) creation all the way to OOR and ECR credential issuance to the
-# Person AID for usage in the iXBRL data attestation.
+# Runs the entire QVI issuance workflow end to end
+# Starts from multisig GLEIF External Delegated AID (GEDA) creation all the way to
+# OOR and ECR credential issuance and finally to the creation of the Person AID for OOR and ECR
+# credential usage.
 #
 # Note:
-# 1) This script uses a dockerized containers for KERIA, witnesses, and the vLEI-server for vLEI schemas,
+# 1) This script uses Docker containers for the KERIpy keystores via the KLI, KERIA, witnesses,
+#    the vLEI-server for vLEI schemas, Sally for the vLEI Reporting API, the webhook Sally hits,
 #    and local NodeJS scripts for the SignifyTS creation of both QVI QAR AIDs and the Person AID.
 # 2) This script starts up and tears down the necessary Docker Compose environment.
 # 3) This script uses the kli and kli2 commands as defined in ./kli-commands.sh to perform the QVI
@@ -27,17 +25,16 @@ set -u  # undefined variable detection
 # Load utility functions
 source color-printing.sh
 
+# NOTE: (used by resolve-env.ts)
+ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
+KEYSTORE_DIR=./docker-keystores
+
 # Load kli commands
-source ./kli-commands.sh
+source ./kli-commands.sh "${KEYSTORE_DIR}" "${ENVIRONMENT}"
 
 ALT_SALLY_ALIAS="alternate"
 ALT_SALLY_OOBI="http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
 
-# NOTE: (used by resolve-env.ts)
-ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
-KEYSTORE_DIR=./docker-keystores
-print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
-print_yellow "Using $ENVIRONMENT configuration files"
 
 # Check system dependencies
 required_sys_commands=(docker jq tsx)
@@ -50,6 +47,7 @@ done
 
 # Cleanup functions
 trap cleanup INT
+trap cleanup ERR
 function cleanup() {
     echo
     docker compose -f $DOCKER_COMPOSE_FILE kill
@@ -58,9 +56,8 @@ function cleanup() {
     exit 0
 }
 
-# TODO check later if qvi1 and qvi2 are needed here
 function clear_containers() {
-    container_names=("gar1" "gar2" "lar1" "lar2" "qvi1" "qvi2")
+    container_names=("gar1" "gar2" "lar1" "lar2")
 
     for name in "${container_names[@]}"; do
     if docker ps -a | grep -q "$name"; then
@@ -69,14 +66,29 @@ function clear_containers() {
     done
 }
 
+DOCKER_COMPOSE_FILE=docker-compose-keria_signify_qvi.yaml
+
 function create_docker_network() {
+  print_yellow "KEYSTORE_DIR: ${KEYSTORE_DIR}"
+  print_yellow "Using environment $ENVIRONMENT"
   # Create docker network if it does not exist
   docker network inspect vlei >/dev/null 2>&1 || docker network create vlei
 }
 
+function create_docker_containers() {
+  print_green "-------------------Building gleif/vlei-workflow-signify container---------------"
+  # Build gleif/vlei-workflow-signify container
+  docker build \
+		--platform=linux/amd64,linux/arm64 \
+		-f signify-ts.Dockerfile \
+		-t gleif/vlei-workflow-signify:1.0.0 \
+		-t gleif/vlei-workflow-signify:latest .
+}
+
 # QVI Config
-QVI_SIGNIFY_DIR=$(dirname "$0")/signify_qvi
-QVI_DATA_DIR="${QVI_SIGNIFY_DIR}/qvi_data"
+QVI_SIGNIFY_DIR=/vlei-workflow/signify_qvi
+QVI_DATA_DIR=/vlei-workflow/qvi_data
+LOCAL_QVI_DATA_DIR=$(dirname "$0")/signify_qvi/qvi_data
 
 SCHEMA_SERVER=http://vlei-server:7723
 
@@ -171,7 +183,7 @@ export GEDA_PRE=DUMMY_VALUE_INVALID_________________________
 #### Write keria-signify-docker.env file with updated values ####
 function write_docker_env(){
   print_bg_blue "[ADMIN] Writing prefixes, salts, passcodes, and schemas to keria-signfiy-docker.env"
-    read -r -d '' DOCKER_ENV << EOM
+  read -r -d '' DOCKER_ENV << EOM
 #### Identifier Information ####
 # GLEIF Authorized Representatives (GAR) AIDs
 GAR1=$GAR1
@@ -216,14 +228,14 @@ OOR_AUTH_SCHEMA=$OOR_AUTH_SCHEMA
 ECR_SCHEMA=$ECR_SCHEMA
 OOR_SCHEMA=$OOR_SCHEMA
 EOM
-    print_dark_gray "Writing keystore and identifier information to docker.env"
-    print_lcyan "${DOCKER_ENV}"
-    echo "${DOCKER_ENV}" > ./keria-signify-docker.env
+
+  print_dark_gray "Writing keystore and identifier information to docker.env"
+  print_lcyan "${DOCKER_ENV}"
+  echo "${DOCKER_ENV}" > ./keria-signify-docker.env
 }
 
 function start_docker_containers() {
   # Containers
-  DOCKER_COMPOSE_FILE=docker-compose-keria_signify_qvi.yaml
   docker compose -f $DOCKER_COMPOSE_FILE up -d --wait
   if [ $? -ne 0 ]; then
       print_red "Docker services failed to start properly. Exiting."
@@ -269,12 +281,13 @@ function generate_salts_and_passcodes(){
 
 function setup_keria_identifiers() {
   print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
-  tsx "${QVI_SIGNIFY_DIR}/qars/qars-and-person-setup.ts" "${ENVIRONMENT}" "${QVI_DATA_DIR}" "${SIGTS_AIDS}"
+
+  sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-and-person-setup.ts" "${ENVIRONMENT}" "${QVI_DATA_DIR}" "${SIGTS_AIDS}"
 
   print_green "QVI and Person Identifiers from SignifyTS + KERIA are "
   # Extract prefixes from the SignifyTS output because they are dynamically generated and unique each run.
   # They are needed for doing OOBI resolutions to connect SignifyTS AIDs to KERIpy AIDs.
-  qvi_setup_data=$(cat "${QVI_DATA_DIR}"/qars-and-person-info.json)
+  qvi_setup_data=$(cat "${LOCAL_QVI_DATA_DIR}"/qars-and-person-info.json)
   QAR1_PRE=$(echo    $qvi_setup_data | jq -r ".QAR1.aid"         | tr -d '"')
   QAR2_PRE=$(echo    $qvi_setup_data | jq -r ".QAR2.aid"         | tr -d '"')
   QAR3_PRE=$(echo    $qvi_setup_data | jq -r ".QAR3.aid"         | tr -d '"')
@@ -374,7 +387,7 @@ function resolve_oobis() {
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
     OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,sally|$SALLY_OOBI,direct-sally|$DIRECT_SALLY_OOBI"
 
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
     echo
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
@@ -503,32 +516,29 @@ function qars_resolve_geda_oobi() {
         exit 1
     fi
     print_yellow "GEDA OOBI: ${GEDA_OOBI}"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${GEDA_NAME}" "${GEDA_OOBI}"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" "${ENVIRONMENT}" "${SIGTS_AIDS}" "${GEDA_PRE}"
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${GEDA_NAME}" "${GEDA_OOBI}"
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" "${ENVIRONMENT}" "${SIGTS_AIDS}" "${GEDA_PRE}"
 }
 
 # QAR: Create delegated multisig QVI AID with GEDA as delegator
 function create_qvi_multisig() {
-    QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}"
-      )
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" "${ENVIRONMENT}" "${QVI_NAME}" "${SIGTS_AIDS}" "${QVI_DATA_DIR}"
+    QVI_MULTISIG_SEQ_NO=$(cat "${LOCAL_QVI_DATA_DIR}"/qvi-sequence-no.json | jq .sequenceNo | tr -d '"')
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt -1 ]]; then
         print_dark_gray "[QVI] Multisig AID ${QVI_NAME} already exists"
         return
-    fi 
+    fi
+    print_yellow "Creating QVI multisig AID with GEDA as delegator"
 
-    print_yellow "Creating QVI multisig"
     local delegator_prefix=$(kli status --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} | awk '/Identifier:/ {print $2}' | tr -d " \t\n\r")
     print_yellow "Delegator Prefix: ${delegator_prefix}"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-create-qvi-multisig.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-create-qvi-multisig.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${QVI_DATA_DIR}" \
       "${SIGTS_AIDS}" \
       "${delegator_prefix}"
-    local delegated_multisig_info=$(cat "${QVI_DATA_DIR}"/qvi-multisig-info.json)
+    local delegated_multisig_info=$(cat "${LOCAL_QVI_DATA_DIR}"/qvi-multisig-info.json)
     print_yellow "Delegated Multisig Info:"
     QVI_PRE=$(echo "${delegated_multisig_info}" | jq .msPrefix | tr -d '"')
     echo
@@ -553,9 +563,9 @@ function create_qvi_multisig() {
     docker logs gar2
     docker rm gar1 gar2
 
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-complete-multisig-incept.ts" "${ENVIRONMENT}" "${SIGTS_AIDS}" "${GEDA_PRE}"
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-complete-multisig-incept.ts" "${ENVIRONMENT}" "${SIGTS_AIDS}" "${GEDA_PRE}"
 
-    MULTISIG_INFO=$(cat "${QVI_DATA_DIR}"/qvi-multisig-info.json)
+    MULTISIG_INFO=$(cat "${LOCAL_QVI_DATA_DIR}"/qvi-multisig-info.json)
     QVI_PRE=$(echo "${MULTISIG_INFO}" | jq .msPrefix | tr -d '"')
     print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 }
@@ -564,32 +574,29 @@ function create_qvi_multisig() {
 QVI_OOBI=""
 function authorize_qvi_multisig_agent_endpoint_role(){
     print_yellow "Authorizing QVI multisig agent endpoint role"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-authorize-endroles-get-qvi-oobi.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-authorize-endroles-get-qvi-oobi.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${QVI_DATA_DIR}" \
       "${SIGTS_AIDS}"
-    QVI_OOBI=$(cat "${QVI_DATA_DIR}/qvi-oobi.json" | jq .oobi | tr -d '"')
+    QVI_OOBI=$(cat "${LOCAL_QVI_DATA_DIR}/qvi-oobi.json" | jq .oobi | tr -d '"')
     print_green "QVI Agent OOBI: ${QVI_OOBI}"
 }
 
 # QVI: Delegated multisig rotation() {
 function qvi_rotate() {
-  QVI_MULTISIG_SEQ_NO=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}"
-      )
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-qvi-multisig.ts" "${ENVIRONMENT}" "${QVI_NAME}" "${SIGTS_AIDS}" "${QVI_DATA_DIR}"
+    QVI_MULTISIG_SEQ_NO=$(cat "${LOCAL_QVI_DATA_DIR}"/qvi-sequence-no.json | jq .sequenceNo | tr -d '"')
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt 1 ]]; then
         print_dark_gray "[QVI] Multisig AID ${QVI_NAME} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
         return
     fi
     print_yellow "[QVI] Rotating QVI Multisig"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-rotate-qvi-multisig.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${SIGTS_AIDS}"
-    QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
+    QVI_PREFIX=$(cat "${LOCAL_QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
     print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
 
     # GEDA participants Query keystate from QARs
@@ -629,14 +636,14 @@ function qvi_rotate() {
     klid gar2 delegate confirm --name ${GAR2} --alias ${GEDA_NAME} --passcode ${GAR2_PASSCODE} --interact --auto
 
     print_yellow "[GEDA] Waiting 5s on delegated rotation completion"
-    print_dark_gray "waiting on Docker containers qvi1, qvi2, gar1, gar2"
+    print_dark_gray "waiting on Docker containers gar1, gar2"
     docker wait gar1 gar2
     docker logs gar1
     docker logs gar2
     docker rm gar1 gar2
 
     print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
 
     print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
     sleep 8
@@ -699,7 +706,7 @@ function qars_resolve_le_oobi() {
         exit 1
     fi
     echo "LE OOBI: ${LE_OOBI}"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${LE_NAME}" "${LE_OOBI}"
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${LE_NAME}" "${LE_OOBI}"
 }
 
 # GEDA and LE: Resolve QVI OOBI
@@ -719,7 +726,7 @@ function resolve_qvi_oobi() {
     kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${QVI_OOBI}"
 
     print_yellow "Resolving QVI OOBI for Person"
-    tsx "${QVI_SIGNIFY_DIR}/person-resolve-qvi-oobi.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/person-resolve-qvi-oobi.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${SIGTS_AIDS}" \
@@ -905,7 +912,7 @@ function admit_qvi_credential() {
         --issued \
         --said \
         --schema "${QVI_SCHEMA}" | tr -d " \t\n\r")
-    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
+    received=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${SIGTS_AIDS}" \
@@ -918,7 +925,7 @@ function admit_qvi_credential() {
 
     echo
     print_yellow "[QVI] Admitting QVI Credential ${QVI_CRED_SAID} from GEDA"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${SIGTS_AIDS}" \
@@ -975,7 +982,7 @@ function present_qvi_cred_to_sally_kli() {
 function present_qvi_cred_to_sally_signify() {
   print_yellow "[QVI] Presenting QVI Credential to Sally"
 
-  tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+  sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
     "${ENVIRONMENT}" \
     "${QVI_NAME}" \
     "${SIGTS_AIDS}" \
@@ -1004,13 +1011,13 @@ function present_qvi_cred_to_sally_signify() {
 # QVI: Prepare, create, and Issue LE credential to GEDA
 # Create QVI credential registry
 function create_qvi_reg() {
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-registry-create.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-registry-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${QVI_REGISTRY}" \
       "${QVI_DATA_DIR}" \
       "${SIGTS_AIDS}"
-    QVI_REG_REGK=$(cat "${QVI_DATA_DIR}/qvi-registry-info.json" | jq .registryRegk | tr -d '"')
+    QVI_REG_REGK=$(cat "${LOCAL_QVI_DATA_DIR}/qvi-registry-info.json" | jq .registryRegk | tr -d '"')
     print_green "[QVI] Credential Registry created for QVI with regk: ${QVI_REG_REGK}"
 }
 
@@ -1055,7 +1062,7 @@ EOM
 # QVI: Create LE credential
 function create_and_grant_le_credential() {
     # Check if LE credential already exists
-    le_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    le_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       $ENVIRONMENT \
       $QVI_NAME \
       $SIGTS_AIDS \
@@ -1076,10 +1083,10 @@ function create_and_grant_le_credential() {
     print_lcyan "[QVI] Legal Entity Credential Data"
     print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-data.json)"
 
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-le-credential-create.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-le-credential-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
-      "./acdc-info" \
+      "/acdc-info" \
       "${SIGTS_AIDS}" \
       "${LE_PRE}" \
       "${QVI_DATA_DIR}"
@@ -1154,7 +1161,7 @@ function admit_le_credential() {
 function present_le_cred_to_sally() {
   print_yellow "[QVI] Presenting LE Credential to Sally"
 
-  tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+  sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
     "${ENVIRONMENT}" \
     "${QVI_NAME}" \
     "${SIGTS_AIDS}" \
@@ -1376,7 +1383,7 @@ function admit_oor_auth_credential() {
         --issued \
         --said \
         --schema ${OOR_AUTH_SCHEMA} | tr -d '[:space:]')
-    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
+    received=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${SIGTS_AIDS}" \
@@ -1389,7 +1396,7 @@ function admit_oor_auth_credential() {
 
     echo
     print_yellow "[QVI] Admitting OOR Auth Credential ${OOR_AUTH_SAID} from LE"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${SIGTS_AIDS}" \
@@ -1447,7 +1454,7 @@ EOM
 # Create OOR credential in QVI, issued to the Person
 function create_and_grant_oor_credential() {
     # Check if OOR credential already exists
-    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
@@ -1468,10 +1475,10 @@ function create_and_grant_oor_credential() {
     echo
     print_green "[QVI] creating and granting OOR credential"
 
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-oor-credential-create.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-oor-credential-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
-      "./acdc-info" \
+      "/acdc-info" \
       "${SIGTS_AIDS}" \
       "${PERSON_PRE}" \
       "${QVI_DATA_DIR}"
@@ -1487,7 +1494,7 @@ function create_and_grant_oor_credential() {
 # Person: Admit OOR credential from QVI
 function admit_oor_credential() {
     # check if OOR has been admitted to receiver
-    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+    oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${OOR_SCHEMA}" \
@@ -1499,7 +1506,7 @@ function admit_oor_credential() {
     fi
 
     # get OOR cred SAID from issuer
-    oor_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
@@ -1510,7 +1517,7 @@ function admit_oor_credential() {
     echo
     print_yellow "[PERSON] Admitting OOR credential ${oor_said} to ${PERSON}"
 
-    tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${QVI_PRE}" \
@@ -1528,7 +1535,7 @@ function admit_oor_credential() {
 function present_oor_cred_to_sally() {
     print_yellow "[QVI] Presenting OOR Credential to Sally"
 
-    tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${OOR_SCHEMA}" \
@@ -1692,7 +1699,7 @@ function admit_ecr_auth_credential() {
         --issued \
         --said \
         --schema ${ECR_AUTH_SCHEMA} | tr -d '[:space:]')
-    received=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
+    received=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${SIGTS_AIDS}" \
@@ -1705,7 +1712,7 @@ function admit_ecr_auth_credential() {
 
     echo
     print_yellow "[QVI] Admitting ECR Auth Credential ${ECR_AUTH_SAID} from LE"
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "${SIGTS_AIDS}" \
@@ -1763,7 +1770,7 @@ EOM
 # QVI Grant ECR credential to PERSON
 function create_and_grant_ecr_credential() {
     # Check if ECR credential already exists
-    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
@@ -1784,10 +1791,10 @@ function create_and_grant_ecr_credential() {
     echo
     print_green "[QVI] creating and granting ECR credential"
 
-    tsx "${QVI_SIGNIFY_DIR}/qars/qars-ecr-credential-create.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-ecr-credential-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
-      "./acdc-info" \
+      "/acdc-info" \
       "${SIGTS_AIDS}" \
       "${PERSON_PRE}" \
       "${QVI_DATA_DIR}"
@@ -1803,7 +1810,7 @@ function create_and_grant_ecr_credential() {
 # Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
     # check if ECR has been admitted to receiver
-    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+    ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${ECR_SCHEMA}" \
@@ -1815,7 +1822,7 @@ function admit_ecr_credential() {
     fi
 
     # get ECR cred SAID from issuer
-    ecr_said=$(tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
@@ -1826,7 +1833,7 @@ function admit_ecr_credential() {
     echo
     print_yellow "[PERSON] Admitting ECR credential ${ecr_said} to ${PERSON}"
 
-    tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${QVI_PRE}" \
@@ -1846,7 +1853,7 @@ function admit_ecr_credential() {
 function present_ecr_cred_to_sally() {
     print_yellow "[QVI] Presenting ECR Credential to Sally"
 
-    tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
+    sig_tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${ECR_SCHEMA}" \
@@ -1942,6 +1949,7 @@ function present_le_to_alternate() {
 # main setup function
 function setup() {
   clear_containers
+  create_docker_containers
   create_docker_network
   generate_salts_and_passcodes
   write_docker_env
@@ -2108,6 +2116,34 @@ function end_workflow() {
   cleanup
 }
 
+function debug_workflow() {
+  # Use this function as a work in progress for debugging or otherwise playing with the script.
+  # It's okay to commit non-working code in this function as it exists just as a tool.
+  # Run this with `./vlei-workflow.sh -d`
+  print_lcyan "--------DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-------"
+  print_lcyan "Running DEBUG workflow "
+  print_lcyan "--------DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-------"
+
+  clear_containers
+  create_docker_containers
+  create_docker_network
+  generate_salts_and_passcodes
+  write_docker_env
+  start_docker_containers
+  setup_keria_identifiers
+  create_aids
+  read_prefixes
+  resolve_oobis
+  geda_delegation_to_qvi
+  qvi_credential
+  le_creation_and_granting
+  read -p "Press [ENTER] to present to Sally"
+  le_sally_presentation
+  # challenge_response() including SignifyTS Integration
+
+  end_workflow
+}
+
 # Function to display usage
 usage() {
     echo "Usage: $0 [options]"
@@ -2119,6 +2155,8 @@ usage() {
     echo "  -t, --alternate         Run and present LE credential to alternate Sally"
     echo "  -s, --staging           Run and present LE credential to GLEIF Staging Sally"
     echo "  -p, --production        Run and present LE credential to GLEIF Production Sally"
+    echo "  -d, --debug             Run the Debug workflow"
+    echo "  -c, --clear             Clear all containers, keystores, and networks"
     echo "  -h, --help              Display this help message"
     exit 1
 }
@@ -2126,13 +2164,26 @@ usage() {
 # Parse command-line options
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -e|--environment)
+            if [[ -z $2 ]]; then
+                ENVIRONMENT="docker-witness-split"
+                print_red "Error: Environment not specified"
+                end_workflow
+            fi
+            ENVIRONMENT="$2"
+            print_yellow "Using environment: ${ENVIRONMENT}"
+            source ./kli-commands.sh "${KEYSTORE_DIR}" "${ENVIRONMENT}"
+            shift 2
+            ;;
         -k|--keystore-dir)
             if [[ -z $2 ]]; then
                 KEYSTORE_DIR="./docker-keystores"
-                print_dark_gray "Error: Keystore directory not specified, using default ${KEYSTORE_DIR}"
+                print_red "Error: Keystore directory not specified"
+                end_workflow
             fi
             KEYSTORE_DIR="$2"
-            source ./kli-commands.sh "${KEYSTORE_DIR}"
+            print_yellow "Using keystore directory: ${KEYSTORE_DIR}"
+            source ./kli-commands.sh "${KEYSTORE_DIR}" "${ENVIRONMENT}"
             shift 2
             ;;
         -a|--alias)
@@ -2152,16 +2203,19 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -t|--alternate)
-            present_to_alternate_sally $ALT_SALLY_ALIAS $ALT_SALLY_OOBI
-            shift
+            present_to_alternate_sally "${ALT_SALLY_ALIAS}" "${ALT_SALLY_OOBI}"
             ;;
         -s|--staging)
             present_to_staging
-            shift
             ;;
         -p|--production)
             present_to_production
-            shift
+            ;;
+        -d|--debug)
+            debug_workflow
+            ;;
+        -c|--clear)
+            end_workflow
             ;;
         -h|--help)
             usage

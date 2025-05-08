@@ -28,9 +28,9 @@ x-direct-sally-image: &direct-sally-image
   image: gleif/sally:1.0.0-rc1
 
 x-healthcheck: &healthcheck
-  interval: 15s
-  timeout: 5s
-  retries: 3
+  interval: 3s
+  timeout: 3s
+  retries: 5
   start_period: 2s
 x-witness-env: &witness-env
   PYTHONUNBUFFERED: 1 # Ensure output is logged in real-time
@@ -54,6 +54,7 @@ volumes:
 services:
   # vLEI schema caching server
   vlei-server:
+    stop_grace_period: 1s
     <<: *vlei-image
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
@@ -68,6 +69,7 @@ services:
 
   # Direct mode Sally (runs own mailbox, no witnesses or witness mailbox)
   direct-sally:
+    stop_grace_period: 1s
     <<: *direct-sally-image
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
@@ -96,6 +98,7 @@ services:
 
   # GARs use one of the six demo witnesses, wan
   gar-witnesses:
+    stop_grace_period: 1s
     <<: *gar-witness-image
     environment:
       <<: *witness-env
@@ -115,6 +118,7 @@ services:
 
   # GARs use one of the six demo witnesses, wan
   qar-witnesses:
+    stop_grace_period: 1s
     <<: *qar-witness-image
     environment:
       <<: *witness-env
@@ -133,6 +137,7 @@ services:
 
   # GARs use one of the six demo witnesses, wan
   person-witnesses:
+    stop_grace_period: 1s
     <<: *person-witness-image
     environment:
       <<: *witness-env
@@ -151,6 +156,7 @@ services:
 
   # GARs use one of the six demo witnesses, wan
   sally-witnesses:
+    stop_grace_period: 1s
     <<: *sally-witness-image
     environment:
       <<: *witness-env
@@ -169,6 +175,7 @@ services:
         condition: service_healthy
 
   keria:
+    stop_grace_period: 1s
     <<: *keria-image
     environment:
       - KERI_AGENT_CORS=True # Enable CORS for the KERI agent
@@ -198,6 +205,7 @@ services:
 
   # Sample Webhook that will receive IPEX credential presentation bodies as JSON from Sally
   hook:
+    stop_grace_period: 1s
     <<: *sally-image
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
@@ -213,6 +221,7 @@ services:
 
   # The reporting endpoint service receiving IPEX credential presentations
   sally:
+    stop_grace_period: 1s
     <<: *sally-image
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
@@ -244,6 +253,7 @@ services:
 
   # Debugging container
   kli:
+    stop_grace_period: 1s
     <<: *keri_1_1-image
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
