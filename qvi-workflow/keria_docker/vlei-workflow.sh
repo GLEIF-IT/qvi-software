@@ -26,7 +26,7 @@ set -u  # undefined variable detection
 source color-printing.sh
 
 # NOTE: (used by resolve-env.ts)
-ENVIRONMENT=docker-witness-split # means separate witnesses for GARs, QARs + LARs, Person, and Sally
+ENVIRONMENT=docker-tsx # means separate witnesses for GARs, QARs + LARs, Person, and Sally
 KEYSTORE_DIR=./docker-keystores
 
 # Load kli commands
@@ -153,6 +153,7 @@ WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
 export WEBHOOK_HOST=http://hook:9923
 export SALLY_HOST=http://sally:9723
 export SALLY=sally
+export SALLY_ALIAS=sallyIndirect
 export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
 export SALLY_PRE=EA69Z5sR2kr-05QmZ7v3VuMq8MdhVupve3caHXbhom0D # Different here because Sally uses witness Wit instead of Wan
@@ -160,6 +161,7 @@ export SALLY_PRE=EA69Z5sR2kr-05QmZ7v3VuMq8MdhVupve3caHXbhom0D # Different here b
 # Direct mode Sally
 export DIRECT_SALLY_HOST=http://direct-sally:9823
 export DIRECT_SALLY=direct-sally
+export DIRECT_SALLY_ALIAS=directSally
 export DIRECT_SALLY_PASSCODE=4TBjjhmKu9oeDp49J7Xdy
 export DIRECT_SALLY_SALT=0ABVqAtad0CBkhDhCEPd514T
 export DIRECT_SALLY_PRE=ECLwKe5b33BaV20x7HZWYi_KUXgY91S41fRL2uCaf4WQ # Different here because of direct mode sally with no witnesses and a new passcode and salt
@@ -209,12 +211,14 @@ LE_NAME=gareth
 
 # Sally AID
 SALLY=$SALLY
+SALLY_ALIAS=$SALLY_ALIAS
 SALLY_PRE=$SALLY_PRE
 SALLY_SALT=$SALLY_SALT
 SALLY_PASSCODE=$SALLY_PASSCODE
 
 # Direct Sally AID
 DIRECT_SALLY=$DIRECT_SALLY
+DIRECT_SALLY_ALIAS=$DIRECT_SALLY_ALIAS
 DIRECT_SALLY_PRE=$DIRECT_SALLY_PRE
 DIRECT_SALLY_SALT=$DIRECT_SALLY_SALT
 DIRECT_SALLY_PASSCODE=$DIRECT_SALLY_PASSCODE
@@ -385,7 +389,7 @@ function resolve_oobis() {
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
     LAR1_OOBI="${WIT_HOST_QAR}/oobi/${LAR1_PRE}/witness/${WIL_PRE}"
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
-    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,sally|$SALLY_OOBI,direct-sally|$DIRECT_SALLY_OOBI"
+    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,sallyIndirect|$SALLY_OOBI,directSally|$DIRECT_SALLY_OOBI"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
@@ -399,8 +403,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR2_OOBI}" 
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR3}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${SALLY}"  --passcode "${GAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${DIRECT_SALLY}" --passcode "${GAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${GAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${GAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for GAR 2"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${GAR1_OOBI}"
@@ -410,8 +414,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR3}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${SALLY}"  --passcode "${GAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${DIRECT_SALLY}" --passcode "${GAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${GAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${GAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 1"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${LAR2_OOBI}"
@@ -421,8 +425,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR3}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${PERSON}" --passcode "${LAR1_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${SALLY}"  --passcode "${LAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${DIRECT_SALLY}" --passcode "${LAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${LAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${LAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 2"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${LAR1_OOBI}"
@@ -432,8 +436,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR3}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${PERSON}" --passcode "${LAR2_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${SALLY}"  --passcode "${LAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${DIRECT_SALLY}" --passcode "${LAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${LAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${LAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
     
     echo
 }
@@ -2151,7 +2155,7 @@ usage() {
     echo "  -k, --keystore-dir DIR  Specify keystore directory directory (default: ./docker-keystores)"
     echo "  -a, --alias ALIAS       OOBI alias for target Sally deployment (default: alternate)"
     echo "  -o, --oobi OOBI         OOBI URL for target Sally deployment (default: staging OC AU Sally OOBI- http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2)"
-    echo "  -e, --environment ENV   Specify an environment (default: docker-witness-split)"
+    echo "  -e, --environment ENV   Specify an environment (default: docker-tsx)"
     echo "  -t, --alternate         Run and present LE credential to alternate Sally"
     echo "  -s, --staging           Run and present LE credential to GLEIF Staging Sally"
     echo "  -p, --production        Run and present LE credential to GLEIF Production Sally"
@@ -2166,7 +2170,6 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         -e|--environment)
             if [[ -z $2 ]]; then
-                ENVIRONMENT="docker-witness-split"
                 print_red "Error: Environment not specified"
                 end_workflow
             fi

@@ -243,6 +243,20 @@ services:
     ports:
       - 9723:9723
     entrypoint: "/sally/entry-point.sh"
+    # The below entrypoint is for testing the migration from indirect to direct mode
+#    entrypoint: [
+#      "sally", "server", "start",
+#      "--name", "sally",
+#      "--alias", "sally",
+#      "--passcode", "VVmRdBTe5YCyLMmYRqTAi",
+#      "--config-dir", "/sally/conf",
+#      "--config-file", "sally.json",
+#      "--web-hook", "https://hook:9923",
+#      "--auth", "ELgGpX0qEu1zvualkjb0FX2Nu48mCV1ExOVw_TrJ_6l-",
+#      "--loglevel", "INFO",
+#      "--http", "9723",
+#      "--direct"
+#    ]
     depends_on:
       hook:
         condition: service_healthy
