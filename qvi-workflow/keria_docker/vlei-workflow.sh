@@ -35,6 +35,16 @@ source ./kli-commands.sh "${KEYSTORE_DIR}" "${ENVIRONMENT}"
 ALT_SALLY_ALIAS="alternate"
 ALT_SALLY_OOBI="http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
 
+PAUSE_ENABLED=false
+function pause() {
+    # uses IFS= to avoid trimming leading/trailing whitespace
+    # and -r to avoid interpreting backslashes and line feeds. See https://github.com/koalaman/shellcheck/wiki/SC2162
+    if [[ $PAUSE_ENABLED == true ]]; then
+        IFS= read -r -p "$*"
+    else
+        print_dark_gray "Skipping pause ${*}"
+    fi
+}
 
 # Check system dependencies
 required_sys_commands=(docker jq tsx)
@@ -2002,7 +2012,6 @@ function le_creation_and_granting() {
 
 # Presents the LE credential to the local Sally deployment
 function le_sally_presentation() {
-  read -p "Press [ENTER] to present LE cred to Sally from QARs"
   present_le_cred_to_sally
 }
 
@@ -2020,7 +2029,6 @@ function oor_cred(){
   prepare_oor_cred_data
   create_and_grant_oor_credential
   admit_oor_credential
-  present_oor_cred_to_sally
 }
 
 # Workflow function for the OOR Auth and OOR credentials
@@ -2043,7 +2051,6 @@ function ecr_cred() {
   prepare_ecr_cred_data
   create_and_grant_ecr_credential
   admit_ecr_credential
-  present_ecr_cred_to_sally
 }
 
 # Workflow function for the ECR Auth and ECR credentials
@@ -2054,13 +2061,24 @@ function ecr_auth_and_ecr_cred() {
 
 # Main workflow driving the end to end QVI credentialing and reporting process
 function main_flow() {
+  print_lcyan "--------------------------------------------------------------------------------"
+  print_lcyan "                       Running Main workflow (env: ${ENVIRONMENT})"
+  print_lcyan "--------------------------------------------------------------------------------"
   setup
   geda_delegation_to_qvi
   qvi_credential
+
   le_creation_and_granting
+  pause "Press [ENTER] to present LE to Sally"
   le_sally_presentation
+
   oor_auth_and_oor_cred
+  pause "Press [ENTER] to present OOR to Sally"
+  present_oor_cred_to_sally
+
   ecr_auth_and_ecr_cred
+  pause "Press [ENTER] to present ECR to Sally"
+  present_ecr_cred_to_sally
 
   # TODO Revoke OOR
   # TODO Present revoked OOR to Sally
@@ -2128,20 +2146,11 @@ function debug_workflow() {
   print_lcyan "Running DEBUG workflow "
   print_lcyan "--------DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-------"
 
-  clear_containers
-  create_docker_containers
-  create_docker_network
-  generate_salts_and_passcodes
-  write_docker_env
-  start_docker_containers
-  setup_keria_identifiers
-  create_aids
-  read_prefixes
-  resolve_oobis
+  setup
   geda_delegation_to_qvi
   qvi_credential
   le_creation_and_granting
-  read -p "Press [ENTER] to present to Sally"
+  pause "Press [ENTER] to present to Sally"
   le_sally_presentation
   # challenge_response() including SignifyTS Integration
 
@@ -2162,12 +2171,17 @@ usage() {
     echo "  -d, --debug             Run the Debug workflow"
     echo "  -c, --clear             Clear all containers, keystores, and networks"
     echo "  -h, --help              Display this help message"
+    echo "  --pause                 Enable pausing between steps"
     exit 1
 }
 
 # Parse command-line options
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --pause)
+            PAUSE_ENABLED=true
+            shift
+            ;;
         -e|--environment)
             if [[ -z $2 ]]; then
                 print_red "Error: Environment not specified"
