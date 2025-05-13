@@ -20,8 +20,8 @@ export function parseOobiInfo(oobiInfoArg: string) {
     const GAR2 = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gar2') as OobiInfo;
     const LAR1 = oobiObjs.find((oobiInfo) => oobiInfo.position === 'lar1') as OobiInfo;
     const LAR2 = oobiObjs.find((oobiInfo) => oobiInfo.position === 'lar2') as OobiInfo;
-    const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'sally') as OobiInfo;
-    const DIRECT_SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'direct-sally') as OobiInfo;
+    const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'sallyIndirect') as OobiInfo;
+    const DIRECT_SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'directSally') as OobiInfo;
     return {GAR1, GAR2, LAR1, LAR2, SALLY, DIRECT_SALLY};
 }
 

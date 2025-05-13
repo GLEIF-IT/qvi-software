@@ -1176,7 +1176,7 @@ EOM
 create_le_multisig
 
 # QVI OOBIs with LE
-function resolve_le_and_qvi_oobis() {
+function qars_resolve_le_oobi() {
     echo
     LE_OOBI=$(kli oobi generate --name ${LAR1} --passcode ${LAR1_PASSCODE} --alias ${LE_MS_NAME} --role witness)
     echo "LE OOBI: ${LE_OOBI}"
@@ -1185,7 +1185,7 @@ function resolve_le_and_qvi_oobis() {
 
     echo
 }
-resolve_le_and_qvi_oobis
+qars_resolve_le_oobi
 
 # LE: Create LE credential registry
 function create_le_reg() {

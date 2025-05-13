@@ -10,7 +10,7 @@ export KLI_DATA_DIR="${LOCAL_DIR}/acdc-info"
 export KLI_CONFIG_DIR="${LOCAL_DIR}/config"
 
 KEYSTORE_DIR=${1:-./docker-keystores}
-ENVIRONMENT=${2:-docker-witness-split}
+ENVIRONMENT=${2:-docker-tsx}
 
 if [ ! -d "${KEYSTORE_DIR}" ]; then
     echo "Creating Keystore directory ${KEYSTORE_DIR}"

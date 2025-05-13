@@ -1,9 +1,5 @@
 {
   "dt": "2025-01-12T20:09:59.823350+00:00",
-  "sally": {
-    "dt": "2022-01-20T12:57:59.823350+00:00",
-    "curls": ["http://sally:9723/"]
-  },
   "iurls": [
     "http://sally-witnesses:5645/oobi/BM35JN8XeJSEfpxopjn5jr7tAHCE5749f0OobhMLCorE/controller?name=Wit&tag=witness"
   ],
