@@ -16,23 +16,16 @@ const aidInfoArg = args[1]
 const issuerPrefixArg = args[2]
 const credSAIDArg = args[3]
 
-// resolve witness IDs for QVI multisig AID configuration
-const {witnessIds} = resolveEnvironment(env);
-
-
 /**
  * Admits a credential for the person AID
  *
  * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
  * @param issuerPrefix identifier of the issuer AID who issued the credential to admit by the QARs for the QVI multisig
- * @param witnessIds list of witness IDs for the QVI multisig AID configuration
  * @param credSAID the SAID of the credential to admit
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function admitCredential(aidInfo: string, issuerPrefix: string, witnessIds: Array<string>, credSAID: string, environment: TestEnvironmentPreset) {
-    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
-
+async function admitCredential(aidInfo: string, issuerPrefix: string, credSAID: string, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3, PERSON} = parseAidInfo(aidInfo);
     const [
@@ -42,15 +35,11 @@ async function admitCredential(aidInfo: string, issuerPrefix: string, witnessIds
         PersonClient
     ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
 
-    // get AIDs
-    const aidConfigPerson = {
-        toad: 1,
-        wits: [WES],
-    };
-    const PersonId = await getOrCreateAID(PersonClient, PERSON.name, aidConfigPerson);
+    const PersonId = await PersonClient.identifiers().get(PERSON.name);
 
-    let credByQAR1 = await getReceivedCredential(PersonClient, credSAID);
-    if (!(credByQAR1)) {
+    let cred = await getReceivedCredential(PersonClient, credSAID);
+    if (!(cred)) {
+        console.log(`Credential ${credSAID} not found for ${PersonId.name}, admitting...`);
         const admitTime = createTimestamp();
         try {
             await admitSinglesig(
@@ -78,10 +67,19 @@ async function admitCredential(aidInfo: string, issuerPrefix: string, witnessIds
             console.log(`QAR3 did not have a notification to mark: ${e}`);
         }
 
-        const credByPerson = await waitForCredential(PersonClient, credSAID);
+        try {
+            const credByPerson = await waitForCredential(PersonClient, credSAID, 20);
+            cred = credByPerson;
+        } catch (e) {
+            console.log(`Error waiting for credential: ${e}`);
+            cred = await getReceivedCredential(PersonClient, credSAID);
+        }
+    } else{
+        console.log(`Credential ${credSAID} already admitted`);
     }
-
+    return cred;
 }
-const admitResult: any = await admitCredential(aidInfoArg, issuerPrefixArg, witnessIds, credSAIDArg, env);
-
-console.log(`Person admitted credential ${credSAIDArg}`);
+console.log(`Admitting credential with issuer ${issuerPrefixArg} of SAID ${credSAIDArg} `);
+const admitResult: any = await admitCredential(aidInfoArg, issuerPrefixArg, credSAIDArg, env);
+console.log(`Person admitted credential with SAID: ${credSAIDArg}`);
+console.log("Credential admitted:", admitResult.sad.a);
