@@ -145,7 +145,7 @@ export async function getIssuedCredential(
 /**
  * Returns a credential that has been received through an IPEX Admit by the client.
  * @param client SignifyClient for the recipient or for multisig the client of one of the recipients
- * @param schemaSAID SAID of the credential to retrieve
+ * @param credId SAID of the credential to retrieve
  * @returns the credential body
  */
 export async function getReceivedCredential(
@@ -197,10 +197,12 @@ export async function waitForCredential(
     let retryCount = 0;
     while (retryCount < MAX_RETRIES) {
         const cred = await getReceivedCredential(client, credSAID);
-        if (cred) return cred;
+        if (cred) {
+            return cred;
+        }
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        console.log(` retry-${retryCount}: No credentials yet...`);
+        console.log(`waitForCredential retry-${retryCount} of ${MAX_RETRIES} for ${credSAID}: Credential not yet received...`);
         retryCount = retryCount + 1;
     }
     throw Error('Credential SAID: ' + credSAID + ' has not been received');
@@ -286,9 +288,9 @@ export async function admitSinglesig(
 
     const [admit, sigs, aend] = await client.ipex().admit({
         senderName: aidName,
+        recipient: recipientPrefix,
         message: '',
         grantSaid: grantMsgSaid,
-        recipient: recipientPrefix,
     });
 
     await client

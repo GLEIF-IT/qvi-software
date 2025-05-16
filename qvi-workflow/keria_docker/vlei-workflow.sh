@@ -37,10 +37,8 @@ ALT_SALLY_OOBI="http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2
 
 PAUSE_ENABLED=false
 function pause() {
-    # uses IFS= to avoid trimming leading/trailing whitespace
-    # and -r to avoid interpreting backslashes and line feeds. See https://github.com/koalaman/shellcheck/wiki/SC2162
     if [[ $PAUSE_ENABLED == true ]]; then
-        IFS= read -r -p "$*"
+        read -p "$*"
     else
         print_dark_gray "Skipping pause ${*}"
     fi
@@ -1468,7 +1466,7 @@ EOM
 # Create OOR credential in QVI, issued to the Person
 function create_and_grant_oor_credential() {
     # Check if OOR credential already exists
-    oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    local oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
@@ -1508,34 +1506,33 @@ function create_and_grant_oor_credential() {
 # Person: Admit OOR credential from QVI
 function admit_oor_credential() {
     # check if OOR has been admitted to receiver
-    oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+    local person_oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${OOR_SCHEMA}" \
       "${QVI_PRE}"
     )
-    if [[ ! "$oor_said" =~ "false" ]]; then
-        print_dark_gray "[PERSON] OOR Credential already admitted with SAID ${oor_said}"
+    if [[ ! "$person_oor_said" =~ "false" ]]; then
+        print_dark_gray "[PERSON] OOR Credential already admitted with SAID ${person_oor_said}"
         return
     fi
 
     # get OOR cred SAID from issuer
-    oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    local qars_oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
       "$PERSON_PRE" \
-      "$OOR_SCHEMA"
+      "$OOR_SCHEMA" | tr -d '[:space:]' # remove whitespace
     )
+    print_lcyan "OOR Credential SAID: ${qars_oor_said}"
 
-    echo
-    print_yellow "[PERSON] Admitting OOR credential ${oor_said} to ${PERSON}"
-
+    print_yellow "[PERSON] Admitting OOR credential ${qars_oor_said} to ${PERSON}"
     sig_tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${QVI_PRE}" \
-      "${oor_said}"
+      "${qars_oor_said}"
 
     print_yellow "[PERSON] Waiting for OOR Cred IPEX messages to be witnessed"
     sleep 5
@@ -1545,9 +1542,65 @@ function admit_oor_credential() {
     echo
 }
 
+function qars_present_oor_cred_to_sally() {
+  print_yellow "[QVI] Presenting OOR Credential to Sally from the QVI"
+
+  sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+    "${ENVIRONMENT}" \
+    "${QVI_NAME}" \
+    "${SIGTS_AIDS}" \
+    "${OOR_SCHEMA}" \
+    "${QVI_PRE}" \
+    "${PERSON_PRE}"\
+    "${SALLY_PRE}"
+
+  start=$(date +%s)
+  present_result=0
+  print_dark_gray "[QVI] Waiting for Sally to receive the OOR Credential"
+  while [ $present_result -ne 200 ]; do
+    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${QVI_PRE}")
+    print_dark_gray "[QVI] received OOR present result ${present_result} from Sally"
+    sleep 1
+    if (( $(date +%s)-start > 25 )); then
+      print_red "[QVI] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${QVI_PRE}"
+      break;
+    fi # 25 seconds timeout
+  done
+
+  print_green "[QVI] OOR Credential presented to Sally"
+}
+
+function qars_present_oor_auth_cred_to_sally () {
+  print_yellow "[QVI] Presenting OOR Auth Credential to Sally from the QVI"
+
+  sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+    "${ENVIRONMENT}" \
+    "${QVI_NAME}" \
+    "${SIGTS_AIDS}" \
+    "${OOR_AUTH_SCHEMA}" \
+    "${LE_PRE}" \
+    "${QVI_PRE}"\
+    "${SALLY_PRE}"
+
+  start=$(date +%s)
+  present_result=0
+  print_dark_gray "[QVI] Waiting for Sally to receive the OOR Auth Credential"
+  while [ $present_result -ne 200 ]; do
+    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${QVI_PRE}")
+    print_dark_gray "[QVI] received OOR Auth present result ${present_result} from Sally"
+    sleep 1
+    if (( $(date +%s)-start > 25 )); then
+      print_red "[QVI] TIMEOUT - Sally did not receive the OOR Auth Credential for QVI ${QVI_PRE} from LE ${LE_PRE}"
+      break;
+    fi # 25 seconds timeout
+  done
+
+  print_green "[QVI] OOR Auth Credential presented to Sally"
+}
+
 # PERSON: Present OOR credential to Sally (vLEI Reporting API)
-function present_oor_cred_to_sally() {
-    print_yellow "[QVI] Presenting OOR Credential to Sally"
+function person_present_oor_cred_to_sally() {
+    print_yellow "[QVI] Presenting OOR Credential to Sally from the Person"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
       "${ENVIRONMENT}" \
@@ -2069,12 +2122,11 @@ function main_flow() {
   qvi_credential
 
   le_creation_and_granting
-  pause "Press [ENTER] to present LE to Sally"
   le_sally_presentation
 
   oor_auth_and_oor_cred
-  pause "Press [ENTER] to present OOR to Sally"
-  present_oor_cred_to_sally
+  person_present_oor_cred_to_sally
+  person_present_oor_cred_to_sally # second presentation for now since there is a bug where the first presentation does not succeed
 
   ecr_auth_and_ecr_cred
   pause "Press [ENTER] to present ECR to Sally"

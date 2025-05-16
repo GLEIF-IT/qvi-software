@@ -241,7 +241,7 @@ services:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9723/health" ]
       <<: *healthcheck
     ports:
-      - 9723:9723
+      - "9723:9723"
     entrypoint: "/sally/entry-point.sh"
     # The below entrypoint is for testing the migration from indirect to direct mode
 #    entrypoint: [
