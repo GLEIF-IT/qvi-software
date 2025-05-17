@@ -19,6 +19,7 @@ const recipientPrefix = args[4]
  * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
  * @param schemaSAID The schema SAID of the type of credential issuance to check for.
  * @param issuerPrefix identifier of the issuer AID who issued the credential
+ * @param recipientPrefix identifier of the recipient AID who is receiving the credential
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<string>} String true/false if QVI credential exists or not for the QAR
  */

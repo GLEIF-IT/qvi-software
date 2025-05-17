@@ -68,7 +68,7 @@ async function admitCredential(aidInfo: string, issuerPrefix: string, credSAID: 
         }
 
         try {
-            const credByPerson = await waitForCredential(PersonClient, credSAID, 20);
+            const credByPerson = await waitForCredential(PersonClient, credSAID);
             cred = credByPerson;
         } catch (e) {
             console.log(`Error waiting for credential: ${e}`);
