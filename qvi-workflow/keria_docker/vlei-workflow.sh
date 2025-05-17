@@ -1837,12 +1837,12 @@ EOM
 # QVI Grant ECR credential to PERSON
 function create_and_grant_ecr_credential() {
     # Check if ECR credential already exists
-    ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    local ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
       "$PERSON_PRE" \
-      "$ECR_SCHEMA"
+      "$ECR_SCHEMA" | tr -d '[:space:]' # remove whitespace
     )
     if [[ ! "$ecr_said" =~ "false" ]]; then
         print_dark_gray "[QVI] ECR Credential already created"
@@ -1855,7 +1855,7 @@ function create_and_grant_ecr_credential() {
     print_lcyan "[QVI] ECR Credential Data"
     print_lcyan "$(cat ./acdc-info/temp-data/ecr-data.json)"
 
-    echo
+    pause "Press [enter] to create and grant the ECR credential"
     print_green "[QVI] creating and granting ECR credential"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-ecr-credential-create.ts" \
@@ -1877,11 +1877,11 @@ function create_and_grant_ecr_credential() {
 # Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
     # check if ECR has been admitted to receiver
-    ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+    local ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${ECR_SCHEMA}" \
-      "${QVI_PRE}"
+      "${QVI_PRE}" | tr -d '[:space:]' # remove whitespace
     )
     if [[ ! "$ecr_said" =~ "false" ]]; then
         print_dark_gray "[PERSON] ECR Credential already admitted with SAID ${ecr_said}"
@@ -1894,10 +1894,8 @@ function admit_ecr_credential() {
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
       "$PERSON_PRE" \
-      "$ECR_SCHEMA"
+      "$ECR_SCHEMA" | tr -d '[:space:]' # remove whitespace
     )
-
-    echo
     print_yellow "[PERSON] Admitting ECR credential ${ecr_said} to ${PERSON}"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
@@ -2131,11 +2129,14 @@ function main_flow() {
   ecr_auth_and_ecr_cred
   pause "Press [ENTER] to present ECR to Sally"
   present_ecr_cred_to_sally
+  pause "Press [ENTER] to present ECR to Sally again"
+  present_ecr_cred_to_sally
 
   # TODO Revoke OOR
   # TODO Present revoked OOR to Sally
   # TODO Revoke ECR
   # TODO Present revoked ECR to Sally
+  pause "Press [enter] to end workflow"
   end_workflow
 }
 
