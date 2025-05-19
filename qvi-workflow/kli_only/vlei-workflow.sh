@@ -26,18 +26,11 @@
 
 source ./color-printing.sh
 
-KEYSTORE_DIR=${1:-$HOME/.keri}
-NO_CHALLENGE=${2:-true}
-DIRECT_MODE_SALLY=${3:-false}
-
-if $NO_CHALLENGE; then
-    print_dark_gray "skipping challenge and response"
-fi
-
 SALLY_PID=""
 WEBHOOK_PID=""
 
 START_TIME=$(date +%s)
+export DEBUG_KLI=true
 
 # send sigterm to sally PID
 function sally_teardown() {
@@ -62,93 +55,17 @@ function cleanup() {
     sally_teardown
 }
 
-echo
-print_bg_blue "------------------------------vLEI QVI Workflow Script (KLI)------------------------------"
-echo
+PAUSE_ENABLED=false
+function pause() {
+    if [[ $PAUSE_ENABLED == true ]]; then
+        read -p "$*"
+    else
+        print_dark_gray "Skipping pause ${*}"
+    fi
+}
 
-# Prepare environment
-print_dark_gray "KEYSTORE_DIR: ${KEYSTORE_DIR}"
-echo
-
-CONFIG_DIR=./config
-INIT_CFG=common-habery-config.json
-WAN_PRE=BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha
-WIT_HOST=http://127.0.0.1:5642
-SCHEMA_SERVER=http://127.0.0.1:7723
-
-LE_LEI=254900OPPU84GM83MG36 # GLEIF Americas
-
-# GEDA AIDs - GLEIF External Delegated AID
-GAR1=accolon
-GAR1_PRE=ENFbr9MI0K7f4Wz34z4hbzHmCTxIPHR9Q_gWjLJiv20h
-GAR1_SALT=0AA2-S2YS4KqvlSzO7faIEpH
-GAR1_PASSCODE=18b2c88fd050851c45c67
-
-GAR2=bedivere
-GAR2_PRE=EJ7F9XcRW85_S-6F2HIUgXcIcywAy0Nv-GilEBSRnicR
-GAR2_SALT=0ADD292rR7WEU4GPpaYK4Z6h
-GAR2_PASSCODE=b26ef3dd5c85f67c51be8
-
-GEDA_NAME=dagonet
-GEDA_PRE=EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv
-
-# QAR AIDs
-QAR1=galahad
-QAR1_PRE=ELPwNB8R_CsMNHw_amyp-xnLvpxxTgREjEIvc7oJgqfW
-QAR1_SALT=0ACgCmChLaw_qsLycbqBoxDK
-QAR1_PASSCODE=e6b3402845de8185abe94
-
-QAR2=lancelot
-QAR2_PRE=ENlxz3lZXjEo73a-JBrW1eL8nxSWyLU49-VkuqQZKMtt
-QAR2_SALT=0ACaYJJv0ERQmy7xUfKgR6a4
-QAR2_PASSCODE=bdf1565a750ff3f76e4fc
-
-QVI_NAME=percival
-QVI_PRE=EAwP4xBP4C8KzoKCYV2e6767OTnmR5Bt8zmwhUJr9jHh
-
-# Legal Entity AIDs
-LAR1=elaine
-LAR1_PRE=ELTDtBrcFsHTMpfYHIJFvuH6awXY1rKq4w6TBlGyucoF
-LAR1_SALT=0AB90ainJghoJa8BzFmGiEWa
-LAR1_PASSCODE=tcc6Yj4JM8MfTDs1IiidP
-
-LAR2=finn
-LAR2_PRE=EBpwQouCaOlglS6gYo0uD0zLbuAto5sUyy7AK9_O0aI1
-LAR2_SALT=0AA4m2NxBxn0w5mM9oZR2kHz
-LAR2_PASSCODE=2pNNtRkSx8jFd7HWlikcg
-
-LE_MS_NAME=gareth
-LE_MS_PRE=EBsmQ6zMqopxMWhfZ27qXVpRKIsRNKbTS_aXMtWt67eb
-
-# Person AID
-PERSON_NAME="Mordred Delacqs"
-PERSON=mordred
-PERSON_PRE=EIV2RRWifgojIlyX1CyEIJEppNzNKTidpOI7jYnpycne
-PERSON_SALT=0ABlXAYDE2TkaNDk4UXxxtaN
-PERSON_PASSCODE=c4479ae785625c8e50a7e
-PERSON_ECR="Consultant"
-PERSON_OOR="Advisor"
-
-# Sally - vLEI Reporting API
-SALLY=sally
-SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
-SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm
-
-# Registries
-GEDA_REGISTRY=vLEI-external
-QVI_REGISTRY=vLEI-qvi
-LE_REGISTRY=vLEI-internal
-
-# Credentials
-QVI_SCHEMA=EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao
-LE_SCHEMA=ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY
-OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
-ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
-OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
-ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
-
-SALLY_HOST=http://127.0.0.1:9723
+#### Prepare environment ####
+source vlei-env.sh
 
 function test_dependencies() {
   # check that sally is installed and available on the PATH
@@ -175,7 +92,6 @@ function test_dependencies() {
       exit 0
   fi
 }
-test_dependencies
 
 ################# Functions
 temp_icp_config=""
@@ -252,17 +168,24 @@ function create_aids() {
     create_keystore_and_aid "${SALLY}"  "${SALLY_SALT}"  "${SALLY_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     rm "$temp_icp_config"
 }
-create_aids
 
-# Indirect mode Sally
-SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
+function add_mailboxes() {
+    # Not needed yet - testing something
+    print_yellow "[QVI] QARs adding mailbox endpoints"
+    kli ends add --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --role mailbox --eid "${WAN_PRE}" --loglevel INFO
+    kli ends add --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --role mailbox --eid "${WAN_PRE}" --loglevel INFO
+    kli ends add --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --role mailbox --eid "${WAN_PRE}" --loglevel INFO
+    kli ends add --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --role mailbox --eid "${WAN_PRE}" --loglevel INFO
+}
+
+export SALLY_OOBI="http://127.0.0.1:9723/oobi"
 function sally_setup() {
-    print_yellow "[GLEIF] setting up webhook"
+    print_yellow "Setting up webhook"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
 
     if $DIRECT_MODE_SALLY; then
-      print_yellow "[GLEIF] starting sally on ${SALLY_HOST} in direct mode"
+      print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
       sally server start \
         --name $SALLY \
         --alias $SALLY \
@@ -274,8 +197,9 @@ function sally_setup() {
         --web-hook http://127.0.0.1:9923 \
         --auth "${GEDA_PRE}" & # who will be presenting the credential
       SALLY_PID=$!
+      export SALLY_OOBI="http://127.0.0.1:9723/oobi"
     else
-      print_yellow "[GLEIF] starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
+      print_yellow "Starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
       sally server start \
         --name $SALLY \
         --alias $SALLY \
@@ -286,15 +210,11 @@ function sally_setup() {
         --web-hook http://127.0.0.1:9923 \
         --auth "${GEDA_PRE}" & # who will be presenting the credential
       SALLY_PID=$!
+      export SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
     fi
-    print_yellow "[GLEIF] waiting 8 seconds for Sally to start..."
-    sleep 8
+    print_yellow "Waiting 3 seconds for Sally to start..."
+    sleep 3
 }
-sally_setup
-
-print_yellow "[GLEIF] waiting for Sally to start..."
-# Direct mode Sally
-#SALLY_OOBI="http://127.0.0.1:9723/oobi/ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K/controller"
 
 # GAR: OOBI resolutions between single sig AIDs
 function resolve_oobis() {
@@ -303,75 +223,68 @@ function resolve_oobis() {
         print_yellow "OOBIs already resolved"
         return
     fi
+    # Witness mailbox OOBIs
+    GAR1_OOBI="${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+    GAR2_OOBI="${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+    QAR1_OOBI="${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+    QAR2_OOBI="${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+    LAR1_OOBI="${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+    LAR2_OOBI="${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    PERSON_OOBI="${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
     echo
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
     print_yellow "Resolving OOBIs for GAR1"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${GAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "$SALLY"    --passcode "${GAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${GAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${GAR2_OOBI}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR1_OOBI}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR2_OOBI}"
 
     print_yellow "Resolving OOBIs for GAR2"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "$SALLY"    --passcode "${GAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${GAR1_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR1_OOBI}"
 
     print_yellow "Resolving OOBIs for LE 1"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${PERSON}" --passcode "${LAR1_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${LAR2_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR1_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR2_OOBI}"
 
     print_yellow "Resolving OOBIs for LE 2"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${PERSON}" --passcode "${LAR2_PASSCODE}" --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${LAR1_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR1_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
 
     print_yellow "Resolving OOBIs for QAR 1"
-    kli oobi resolve --name "${QAR1}" --oobi-alias "${QAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR1}" --oobi-alias "${GAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR1}" --oobi-alias "${GAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR1}" --oobi-alias "${LAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR1}" --oobi-alias "${LAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR1}" --oobi-alias "${PERSON}" --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${QAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${QAR2_OOBI}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${GAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${GAR1_OOBI}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${GAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${GAR2_OOBI}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${LAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${LAR1_OOBI}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${LAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${LAR2_OOBI}"
+    kli oobi resolve --name "${QAR1}" --oobi-alias "${PERSON}" --passcode "${QAR1_PASSCODE}"  --oobi "${PERSON_OOBI}"
     kli oobi resolve --name "${QAR1}" --oobi-alias "$SALLY"    --passcode "${QAR1_PASSCODE}"  --oobi "${SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for QAR 2"
-    kli oobi resolve --name "${QAR2}" --oobi-alias "${QAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR2}" --oobi-alias "${GAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR2}" --oobi-alias "${GAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${QAR2}" --oobi-alias "${PERSON}" --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${QAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${QAR1_OOBI}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${GAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${GAR2_OOBI}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${GAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${GAR1_OOBI}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${LAR1_OOBI}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${LAR2_OOBI}"
+    kli oobi resolve --name "${QAR2}" --oobi-alias "${PERSON}" --passcode "${QAR2_PASSCODE}"  --oobi "${PERSON_OOBI}"
     kli oobi resolve --name "${QAR2}" --oobi-alias "$SALLY"    --passcode "${QAR2_PASSCODE}"  --oobi "${SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for Person"
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${GAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${LAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
-    kli oobi resolve --name "${PERSON}"  --oobi-alias "${LAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${QAR1_OOBI}"
+    kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR2}" --passcode "${PERSON_PASSCODE}"   --oobi "${QAR2_OOBI}"
     
     echo
 }
-resolve_oobis
 
 # GAR: Challenge responses between single sig AIDs
 function challenge_response() {
+    if [[ ! $CHALLENGE_ENABLED ]]; then
+        print_yellow "Skipping challenge and response"
+        return
+    fi
     chall_length=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq "select(.alias == \"${GAR2}\") | .challenges | length")
     if [[ "$chall_length" -gt 0 ]]; then
         print_yellow "Challenges already processed"
@@ -462,11 +375,6 @@ function challenge_response() {
 
     print_green "-----Finished challenge and response-----"
 }
-if [[ $NO_CHALLENGE ]]; then
-    print_yellow "Skipping challenge and response"
-else
-    challenge_response
-fi
 
 # GAR: Create Multisig AID (GEDA)
 function create_geda_multisig() {
@@ -537,10 +445,9 @@ EOM
 
     rm "$temp_multisig_config"
 }
-create_geda_multisig
 
-# QAR: Resolve GEDA OOBI
-function resolve_geda_oobis() {
+# QARs: Resolve GEDA OOBI
+function resolve_geda_oobi() {
     exists=$(kli contacts list --name "${QAR1}" --passcode "${QAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GEDA_NAME}")
     if [[ "$exists" =~ "${GEDA_NAME}" ]]; then
         print_yellow "GEDA OOBIs already resolved"
@@ -552,11 +459,6 @@ function resolve_geda_oobis() {
     kli oobi resolve --name "${QAR1}" --oobi-alias "${GEDA_NAME}" --passcode "${QAR1_PASSCODE}" --oobi "${GEDA_OOBI}"
     kli oobi resolve --name "${QAR2}" --oobi-alias "${GEDA_NAME}" --passcode "${QAR2_PASSCODE}" --oobi "${GEDA_OOBI}"
 }
-resolve_geda_oobis
-
-echo
-print_green "------------------------------GEDA Delegating to QVI identifier------------------------------"
-echo
 
 # QARs: Create delegated multisig QVI AID with GEDA as delegator
 function create_qvi_multisig() {
@@ -565,6 +467,10 @@ function create_qvi_multisig() {
         print_dark_gray "[QVI] Multisig AID ${QVI_NAME} already exists"
         return
     fi
+
+    echo
+    print_green "------------------------------GEDA Delegating to QVI identifier------------------------------"
+    echo
 
     echo
     print_yellow "[QVI] delegated multisig inception from ${GEDA_NAME} | ${GEDA_PRE}"
@@ -629,7 +535,6 @@ EOM
     print_lcyan "[External] GEDA members approve delegated inception with 'kli delegate confirm'"
     echo
 
-
     print_lcyan "[External] GAR1 approves delegation"
     kli delegate confirm --name ${GAR1} --alias ${GAR1} --passcode ${GAR1_PASSCODE} --interact --auto &
     pid=$!
@@ -664,11 +569,15 @@ EOM
 
     ms_prefix=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
     print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${ms_prefix}"
+
+    QVI_OOBI=$(kli oobi generate --name ${QAR1} --passcode ${QAR1_PASSCODE} --alias ${QVI_NAME} --role witness)
+    kli oobi resolve --name "${GAR1}" --passcode "${GAR1_PASSCODE}" --oobi-alias "${QVI_NAME}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${GAR2}" --passcode "${GAR2_PASSCODE}" --oobi-alias "${QVI_NAME}" --oobi "${QVI_OOBI}"
 }
-create_qvi_multisig
 
 # QVI & GEDA: perform multisig delegated rotation
 function qvi_rotate() {
+#    pause "Press enter to rotate QVI multisig"
     QVI_MULTISIG_SEQ_NO=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Seq No:/ {print $3}')
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt 0 ]]; then
         print_yellow "[QVI] Multisig AID ${QVI_NAME} already rotated, at SN ${QVI_MULTISIG_SEQ_NO}"
@@ -689,34 +598,47 @@ function qvi_rotate() {
     # QARs begin rotation
     print_yellow "[QVI] Rotating delegated multisig AID"
     kli multisig rotate \
-      --name ${QAR1} \
-      --alias ${QVI_NAME} \
-      --passcode ${QAR1_PASSCODE} \
+      --name "${QAR1}" \
+      --alias "${QVI_NAME}" \
+      --passcode "${QAR1_PASSCODE}" \
       --isith "2" \
-      --smids $QAR1_PRE --smids $QAR2_PRE \
+      --smids "${QAR1_PRE}" --smids "${QAR2_PRE}" \
       --nsith "2" \
-      --rmids $QAR1_PRE --rmids $QAR2_PRE &
+      --rmids "${QAR1_PRE}" --rmids "${QAR2_PRE}" --loglevel INFO &
     pid=$!
     PID_LIST+=" $pid"
 
     kli multisig rotate \
-      --name ${QAR2} \
-      --alias ${QVI_NAME} \
-      --passcode ${QAR2_PASSCODE} \
+      --name "${QAR2}" \
+      --alias "${QVI_NAME}" \
+      --passcode "${QAR2_PASSCODE}" \
       --isith '2' \
-      --smids $QAR1_PRE --smids $QAR2_PRE \
+      --smids "${QAR1_PRE}" --smids "${QAR2_PRE}" \
       --nsith '2' \
-      --rmids $QAR1_PRE --rmids $QAR2_PRE &
+      --rmids "${QAR1_PRE}" --rmids "${QAR2_PRE}" --loglevel INFO &
     pid=$!
     PID_LIST+=" $pid"
 
+    kli query --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --prefix "${QVI_PRE}" >/dev/null 2>&1
+    kli query --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --prefix "${QVI_PRE}" >/dev/null 2>&1
+
+#    print_lcyan "GEDA queries QARs latest keystate"
+    kli query --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --prefix "${QAR1_PRE}" >/dev/null 2>&1
+    kli query --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --prefix "${QAR2_PRE}" >/dev/null 2>&1
+    kli query --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --prefix "${QAR1_PRE}" >/dev/null 2>&1
+    kli query --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --prefix "${QAR2_PRE}" >/dev/null 2>&1
+
     print_yellow "[GEDA] GARs confirm delegated multisig rotation"
-    kli delegate confirm --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} --interact --auto &
+    kli delegate confirm --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --interact --auto --loglevel INFO &
     pid=$!
     PID_LIST+=" $pid"
-    kli delegate confirm --name ${GAR2} --alias ${GEDA_NAME} --passcode ${GAR2_PASSCODE} --interact --auto &
+    kli delegate confirm --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --interact --auto --loglevel INFO &
     pid=$!
     PID_LIST+=" $pid"
+
+    # QARs refresh GEDA delegator keystate
+    kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${GEDA_PRE}"
+    kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${GEDA_PRE}"
 
     wait $PID_LIST
     PID_LIST=""
@@ -737,12 +659,6 @@ function qvi_rotate() {
     kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${GAR1_PRE}" >/dev/null 2>&1
     kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${GAR2_PRE}" >/dev/null 2>&1
 }
-qvi_rotate
-
-# QVI: (skip) Perform endpoint role authorizations - done automatically in KLI
-
-# QVI: Generate OOBI for QVI to send to GEDA and LE
-QVI_OOBI=$(kli oobi generate --name ${QAR1} --passcode ${QAR1_PASSCODE} --alias ${QVI_NAME} --role witness)
 
 # GEDA and LE: Resolve QVI OOBI
 function resolve_qvi_oobi() {
@@ -752,8 +668,10 @@ function resolve_qvi_oobi() {
         return
     fi
 
-    echo
+    # QVI: Generate OOBI for QVI to send to GEDA and LE
+    QVI_OOBI=$(kli oobi generate --name ${QAR1} --passcode ${QAR1_PASSCODE} --alias ${QVI_NAME} --role witness)
     echo "QVI OOBI: ${QVI_OOBI}"
+
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${QVI_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${QVI_OOBI}"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${QVI_OOBI}"
@@ -761,7 +679,6 @@ function resolve_qvi_oobi() {
     kli oobi resolve --name "${PERSON}"   --oobi-alias "${QVI_NAME}" --passcode "${PERSON_PASSCODE}"   --oobi "${QVI_OOBI}"
     echo
 }
-resolve_qvi_oobi
 
 # GEDA: Create GEDA credential registry
 function create_geda_reg() {
@@ -769,7 +686,7 @@ function create_geda_reg() {
     REGISTRY=$(kli vc registry list \
         --name "${GAR1}" \
         --passcode "${GAR1_PASSCODE}" | awk '{print $1}')
-    if [ ! -z "${REGISTRY}" ]; then
+    if [ -n "${REGISTRY}" ]; then
         print_dark_gray "GEDA registry already created"
         return
     fi
@@ -803,7 +720,6 @@ function create_geda_reg() {
     print_green "QVI Credential Registry created for GEDA"
     echo
 }
-create_geda_reg
 
 # GEDA: Create QVI credential
 function prepare_qvi_cred_data() {
@@ -819,7 +735,6 @@ EOM
     print_lcyan "QVI Credential Data"
     print_lcyan "$(cat ./acdc-info/temp-data/qvi-cred-data.json)"
 }
-prepare_qvi_cred_data
 
 function create_qvi_credential() {
     # Check if QVI credential already exists
@@ -830,14 +745,14 @@ function create_qvi_credential() {
         --issued \
         --said \
         --schema "${QVI_SCHEMA}")
-    if [ ! -z "${SAID}" ]; then
+    if [ -n "${SAID}" ]; then
         print_dark_gray "[External] GEDA QVI credential already created"
         return
     fi
 
     echo
-    print_green "[External] GEDA creating QVI credential"
     KLI_TIME=$(kli time)
+    print_green "[External] GEDA creating QVI credential at time ${KLI_TIME}"
     PID_LIST=""
     kli vc create \
         --name "${GAR1}" \
@@ -871,7 +786,6 @@ function create_qvi_credential() {
     print_lcyan "[External] QVI Credential created for GEDA"
     echo
 }
-create_qvi_credential
 
 # GEDA: IPEX Grant QVI credential to QVI
 function grant_qvi_credential() {
@@ -881,7 +795,7 @@ function grant_qvi_credential() {
         --passcode "${QAR1_PASSCODE}" \
         --poll \
         --said)
-    if [ ! -z "${QVI_GRANT_SAID}" ]; then
+    if [ -n "${QVI_GRANT_SAID}" ]; then
         print_dark_gray "[External] GEDA QVI credential already granted"
         return
     fi
@@ -950,7 +864,6 @@ function grant_qvi_credential() {
     print_green "[External] QVI Credential issued to QVI"
     echo
 }
-grant_qvi_credential
 
 # QVI: Admit QVI credential from GEDA
 function admit_qvi_credential() {
@@ -960,7 +873,7 @@ function admit_qvi_credential() {
         --passcode "${QAR2_PASSCODE}" \
         --said \
         --schema "${QVI_SCHEMA}")
-    if [ ! -z "${VC_SAID}" ]; then
+    if [ -n "${VC_SAID}" ]; then
         print_dark_gray "[QVI] QVI Credential already admitted"
         return
     fi
@@ -998,7 +911,6 @@ function admit_qvi_credential() {
     print_green "[QVI] Admitted QVI credential"
     echo
 }
-admit_qvi_credential
 
 # QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
 function present_qvi_cred_to_sally() {
@@ -1030,7 +942,6 @@ function present_qvi_cred_to_sally() {
     print_dark_gray "[QVI] Waiting 15 s for Sally to call webhook"
 
 }
-present_qvi_cred_to_sally
 
 # Create QVI credential registry
 function create_qvi_reg() {
@@ -1038,7 +949,7 @@ function create_qvi_reg() {
     REGISTRY=$(kli vc registry list \
         --name "${QAR1}" \
         --passcode "${QAR1_PASSCODE}" | awk '{print $1}')
-    if [ ! -z "${REGISTRY}" ]; then
+    if [ -n "${REGISTRY}" ]; then
         print_dark_gray "[QVI] QVI registry already created"
         return
     fi
@@ -1072,7 +983,6 @@ function create_qvi_reg() {
     print_green "[QVI] Credential Registry created for QVI"
     echo
 }
-create_qvi_reg
 
 # QVI: Prepare, create, and Issue LE credential to GEDA
 
@@ -1101,7 +1011,6 @@ EOM
     print_lcyan "Legal Entity edge Data"
     print_lcyan "$(cat ./acdc-info/temp-data/qvi-edge.json | jq )"
 }
-prepare_qvi_edge
 
 # Create Multisig Legal Entity identifier
 function create_le_multisig() {
@@ -1173,7 +1082,6 @@ EOM
 
     rm "$temp_multisig_config"
 }
-create_le_multisig
 
 # QVI OOBIs with LE
 function qars_resolve_le_oobi() {
@@ -1185,7 +1093,6 @@ function qars_resolve_le_oobi() {
 
     echo
 }
-qars_resolve_le_oobi
 
 # LE: Create LE credential registry
 function create_le_reg() {
@@ -1193,7 +1100,7 @@ function create_le_reg() {
     REGISTRY=$(kli vc registry list \
         --name "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" | awk '{print $1}')
-    if [ ! -z "${REGISTRY}" ]; then
+    if [ -n "${REGISTRY}" ]; then
         print_dark_gray "[LE] LE registry already created"
         return
     fi
@@ -1227,7 +1134,6 @@ function create_le_reg() {
     print_green "[LE] Legal Entity Credential Registry created for LE"
     echo
 }
-create_le_reg
 
 # Prepare LE credential data
 function prepare_le_cred_data() {
@@ -1243,7 +1149,6 @@ EOM
     print_lcyan "[QVI] Legal Entity Credential Data"
     print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-data.json)"
 }
-prepare_le_cred_data
 
 # Create LE credential in QVI
 function create_le_credential() {
@@ -1255,7 +1160,7 @@ function create_le_credential() {
         --issued \
         --said \
         --schema ${LE_SCHEMA})
-    if [ ! -z "${SAID}" ]; then
+    if [ -n "${SAID}" ]; then
         print_dark_gray "[QVI] LE credential already created"
         return
     fi
@@ -1300,7 +1205,6 @@ function create_le_credential() {
     print_lcyan "[QVI] LE Credential created"
     echo
 }
-create_le_credential
 
 function grant_le_credential() {
     # This only works because there will be only one grant in the list for the GEDA
@@ -1311,7 +1215,7 @@ function grant_le_credential() {
         --passcode "${LAR1_PASSCODE}" \
         --poll \
         --said)
-    if [ ! -z "${LE_GRANT_SAID}" ]; then
+    if [ -n "${LE_GRANT_SAID}" ]; then
         print_dark_gray "[LE] LE credential already granted"
         return
     fi
@@ -1382,7 +1286,6 @@ function grant_le_credential() {
     print_green "[QVI] LE Credential granted to LE"
     echo
 }
-grant_le_credential
 
 # LE: Admit LE credential from QVI
 function admit_le_credential() {
@@ -1392,7 +1295,7 @@ function admit_le_credential() {
         --passcode "${LAR2_PASSCODE}" \
         --said \
         --schema ${LE_SCHEMA})
-    if [ ! -z "${VC_SAID}" ]; then
+    if [ -n "${VC_SAID}" ]; then
         print_dark_gray "[LE] LE Credential already admitted"
         return
     fi
@@ -1431,7 +1334,6 @@ function admit_le_credential() {
     print_green "[LE] Admitted LE credential"
     echo
 }
-admit_le_credential
 
 # LE: Prepare, create, and Issue ECR Auth & OOR Auth credential to QVI
 
@@ -1460,7 +1362,6 @@ EOM
     print_lcyan "[LE] Legal Entity edge JSON"
     print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-edge.json | jq)"
 }
-prepare_le_edge
 
 # Prepare ECR Auth credential data
 function prepare_ecr_auth_data() {
@@ -1477,7 +1378,6 @@ EOM
     print_lcyan "[LE] ECR Auth data JSON"
     print_lcyan "$(cat ./acdc-info/temp-data/ecr-auth-data.json)"
 }
-prepare_ecr_auth_data
 
 # Create ECR Auth credential
 function create_ecr_auth_credential() {
@@ -1489,7 +1389,7 @@ function create_ecr_auth_credential() {
         --issued \
         --said \
         --schema "${ECR_AUTH_SCHEMA}")
-    if [ ! -z "${SAID}" ]; then
+    if [ -n "${SAID}" ]; then
         print_dark_gray "[LE] ECR Auth credential already created"
         return
     fi
@@ -1534,7 +1434,6 @@ function create_ecr_auth_credential() {
     print_lcyan "[LE] LE created ECR Auth credential"
     echo
 }
-create_ecr_auth_credential
 
 # Grant ECR Auth credential to QVI
 function grant_ecr_auth_credential() {
@@ -1608,7 +1507,6 @@ function grant_ecr_auth_credential() {
     print_green "[LE] ECR Auth Credential granted to QVI"
     echo
 }
-grant_ecr_auth_credential
 
 # Admit ECR Auth credential from LE
 function admit_ecr_auth_credential() {
@@ -1618,7 +1516,7 @@ function admit_ecr_auth_credential() {
         --passcode "${QAR2_PASSCODE}" \
         --said \
         --schema ${ECR_AUTH_SCHEMA})
-    if [ ! -z "${VC_SAID}" ]; then
+    if [ -n "${VC_SAID}" ]; then
         print_dark_gray "[QVI] ECR Auth Credential already admitted"
         return
     fi
@@ -1658,7 +1556,6 @@ function admit_ecr_auth_credential() {
     print_green "[QVI] Admitted ECR Auth Credential"
     echo
 }
-admit_ecr_auth_credential
 
 # Prepare OOR Auth credential data
 function prepare_oor_auth_data() {
@@ -1675,7 +1572,6 @@ EOM
     print_lcyan "[LE] OOR Auth data JSON"
     print_lcyan "$(cat ./acdc-info/temp-data/oor-auth-data.json)"
 }
-prepare_oor_auth_data
 
 # Create OOR Auth credential
 function create_oor_auth_credential() {
@@ -1687,7 +1583,7 @@ function create_oor_auth_credential() {
         --issued \
         --said \
         --schema "${OOR_AUTH_SCHEMA}")
-    if [ ! -z "${SAID}" ]; then
+    if [ -n "${SAID}" ]; then
         print_yellow "[QVI] OOR Auth credential already created"
         return
     fi
@@ -1732,7 +1628,6 @@ function create_oor_auth_credential() {
     print_lcyan "[LE] LE created OOR Auth credential"
     echo
 }
-create_oor_auth_credential
 
 # Grant OOR Auth credential to QVI
 function grant_oor_auth_credential() {
@@ -1807,7 +1702,6 @@ function grant_oor_auth_credential() {
     print_green "[LE] Granted OOR Auth credential to QVI"
     echo
 }
-grant_oor_auth_credential
 
 # QVI: Admit OOR Auth credential
 function admit_oor_auth_credential() {
@@ -1817,7 +1711,7 @@ function admit_oor_auth_credential() {
         --passcode "${QAR2_PASSCODE}" \
         --said \
         --schema ${OOR_AUTH_SCHEMA})
-    if [ ! -z "${VC_SAID}" ]; then
+    if [ -n "${VC_SAID}" ]; then
         print_dark_gray "[QVI] OOR Auth Credential already admitted"
         return
     fi
@@ -1857,7 +1751,6 @@ function admit_oor_auth_credential() {
     print_green "[QVI] OOR Auth Credential admitted"
     echo
 }
-admit_oor_auth_credential
 
 # QVI: Create and Issue ECR credential to Person
 # Prepare ECR Auth edge data
@@ -1886,7 +1779,6 @@ EOM
     print_lcyan "[QVI] ECR Auth edge Data"
     print_lcyan "$(cat ./acdc-info/temp-data/ecr-auth-edge.json | jq )"
 }
-prepare_ecr_auth_edge      
 
 # Prepare ECR credential data
 function prepare_ecr_cred_data() {
@@ -1904,7 +1796,6 @@ EOM
     print_lcyan "[QVI] ECR Credential Data"
     print_lcyan "$(cat ./acdc-info/temp-data/ecr-data.json)"
 }
-prepare_ecr_cred_data
 
 # Create ECR credential in QVI, issued to the Person
 function create_ecr_credential() {
@@ -1916,7 +1807,7 @@ function create_ecr_credential() {
         --issued \
         --said \
         --schema "${ECR_SCHEMA}")
-    if [ ! -z "${SAID}" ]; then
+    if [ -n "${SAID}" ]; then
         print_dark_gray "[QVI] ECR credential already created"
         return
     fi
@@ -1968,7 +1859,6 @@ function create_ecr_credential() {
     print_lcyan "[QVI] ECR credential created"
     echo
 }
-create_ecr_credential
 
 # QVI Grant ECR credential to PERSON
 function grant_ecr_credential() {
@@ -1981,7 +1871,7 @@ function grant_ecr_credential() {
         --poll \
         --said | \
         tail -1) # get the last grant
-    if [ ! -z "${ECR_GRANT_SAID}" ]; then
+    if [ -n "${ECR_GRANT_SAID}" ]; then
         print_yellow "[QVI] ECR credential already granted"
         return
     fi
@@ -2033,7 +1923,6 @@ function grant_ecr_credential() {
     print_green "ECR Credential granted to ${PERSON}"
     echo
 }
-grant_ecr_credential
 
 # Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
@@ -2043,7 +1932,7 @@ function admit_ecr_credential() {
         --passcode "${PERSON_PASSCODE}" \
         --said \
         --schema "${ECR_SCHEMA}")
-    if [ ! -z "${VC_SAID}" ]; then
+    if [ -n "${VC_SAID}" ]; then
         print_yellow "[PERSON] ECR credential already admitted"
         return
     fi
@@ -2072,7 +1961,6 @@ function admit_ecr_credential() {
     print_green "ECR Credential admitted"
     echo
 }
-admit_ecr_credential
 
 # QVI: Issue, grant OOR to Person and Person admits OOR
 # Prepare OOR Auth edge data
@@ -2101,7 +1989,6 @@ EOM
     print_lcyan "[QVI] OOR Auth edge Data"
     print_lcyan "$(cat ./acdc-info/temp-data/oor-auth-edge.json | jq )"
 }
-prepare_oor_auth_edge      
 
 # Prepare OOR credential data
 function prepare_oor_cred_data() {
@@ -2119,7 +2006,6 @@ EOM
     print_lcyan "[QVI] OOR Credential Data"
     print_lcyan "$(cat ./acdc-info/temp-data/oor-data.json)"
 }
-prepare_oor_cred_data
 
 # Create OOR credential in QVI, issued to the Person
 function create_oor_credential() {
@@ -2131,7 +2017,7 @@ function create_oor_credential() {
         --issued \
         --said \
         --schema "${OOR_SCHEMA}")
-    if [ ! -z "${SAID}" ]; then
+    if [ -n "${SAID}" ]; then
         print_dark_gray "[QVI] OOR credential already created"
         return
     fi
@@ -2175,7 +2061,6 @@ function create_oor_credential() {
     print_lcyan "[QVI] OOR credential created"
     echo
 }
-create_oor_credential
 
 # QVI Grant OOR credential to PERSON
 function grant_oor_credential() {
@@ -2237,7 +2122,6 @@ function grant_oor_credential() {
     print_green "OOR Credential granted to ${PERSON}"
     echo
 }
-grant_oor_credential
 
 # Person: Admit OOR credential from QVI
 function admit_oor_credential() {
@@ -2247,7 +2131,7 @@ function admit_oor_credential() {
         --passcode "${PERSON_PASSCODE}" \
         --said \
         --schema "${OOR_SCHEMA}")
-    if [ ! -z "${VC_SAID}" ]; then
+    if [ -n "${VC_SAID}" ]; then
         print_yellow "[PERSON] OOR credential already admitted"
         return
     fi
@@ -2276,10 +2160,8 @@ function admit_oor_credential() {
     print_green "OOR Credential admitted"
     echo
 }
-admit_oor_credential
 
 # QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
-
 function present_le_cred_to_sally() {
     print_yellow "[QVI] Presenting LE Credential to Sally"
     LE_SAID=$(kli vc list --name "${LAR1}" \
@@ -2309,7 +2191,90 @@ function present_le_cred_to_sally() {
     print_dark_gray "[QVI] Waiting 15 s for Sally to call webhook"
     sleep 15
 }
-present_le_cred_to_sally
+
+# TODO QVI: Revoke ECR Auth and OOR Auth credentials
+# TODO QVI: Present revoked credentials to Sally
+
+### Workflow Functions
+function setup() {
+  test_dependencies
+  create_aids
+#  add_mailboxes
+  sally_setup
+  resolve_oobis
+  challenge_response
+}
+
+function end_workflow() {
+  cleanup
+  END_TIME=$(date +%s)
+  SCRIPT_TIME=$(($END_TIME - $START_TIME))
+  print_lcyan "Script took ${SCRIPT_TIME} seconds to run"
+  print_lcyan "KLI only vLEI workflow completed"
+  exit 0
+}
+
+function geda_delegation_to_qvi() {
+  create_geda_multisig
+  resolve_geda_oobi
+  create_qvi_multisig
+#  qvi_rotate
+}
+
+function qvi_credential() {
+  prepare_qvi_cred_data
+  create_qvi_credential
+  grant_qvi_credential
+  admit_qvi_credential
+}
+
+function le_credential() {
+  prepare_qvi_edge
+  prepare_le_cred_data
+  create_le_credential
+  grant_le_credential
+  admit_le_credential
+}
+
+function oor_auth_cred() {
+  prepare_oor_auth_data
+  create_oor_auth_credential
+  grant_oor_auth_credential
+  admit_oor_auth_credential
+}
+
+function oor_cred () {
+  prepare_oor_auth_edge
+  prepare_oor_cred_data
+  create_oor_credential
+  grant_oor_credential
+  admit_oor_credential
+}
+
+function oor_auth_and_oor_cred() {
+  oor_auth_cred
+  oor_cred
+}
+
+function ecr_auth_cred() {
+  prepare_ecr_auth_data
+  create_ecr_auth_credential
+  grant_ecr_auth_credential
+  admit_ecr_auth_credential
+}
+
+function ecr_cred() {
+  prepare_ecr_auth_edge
+  prepare_ecr_cred_data
+  create_ecr_credential
+  grant_ecr_credential
+  admit_ecr_credential
+}
+
+function ecr_auth_and_ecr_cred() {
+  ecr_auth_cred
+  ecr_cred
+}
 
 function present_oor_cred_to_sally() {
   # remember to add the --issued flag to find the issued credential in the QVI's registry
@@ -2343,13 +2308,140 @@ function present_oor_cred_to_sally() {
   print_dark_gray "[QVI] Waiting 15 s for Sally to call webhook"
   sleep 15
 }
-present_oor_cred_to_sally
 
-cleanup
-print_lcyan "Full chain workflow completed"
-END_TIME=$(date +%s)
-SCRIPT_TIME=$(($END_TIME - $START_TIME))
-print_lcyan "Script took ${SCRIPT_TIME} seconds to run"
+function present_ecr_cred_to_sally() {
+  print_lcyan "TODO"
+}
 
-# TODO QVI: Revoke ECR Auth and OOR Auth credentials
-# TODO QVI: Present revoked credentials to Sally
+function main_flow() {
+  print_lcyan "--------------------------------------------------------------------------------"
+  print_lcyan "                   KLI Only vLEI Workflow script - Main Flow"
+  print_lcyan "--------------------------------------------------------------------------------"
+  setup
+  geda_delegation_to_qvi
+  resolve_qvi_oobi
+  create_geda_reg
+
+  qvi_credential
+  present_qvi_cred_to_sally
+
+  create_le_multisig
+  qars_resolve_le_oobi
+  create_qvi_reg
+  le_credential
+  pause "Press [enter] to present le credential to Sally"
+  present_le_cred_to_sally
+
+  create_le_reg
+  prepare_le_edge
+
+  oor_auth_and_oor_cred
+  pause "Press [enter] to present oor credential to Sally"
+  present_oor_cred_to_sally
+
+  ecr_auth_and_ecr_cred
+  pause "Press [enter] to present ecr credential to Sally"
+  present_ecr_cred_to_sally
+
+  end_workflow
+}
+
+function debug_workflow() {
+  print_lcyan "--------------------------------------------------------------------------------"
+  print_red   "                   KLI Only vLEI Workflow script - DEBUG FLOW"
+  print_lcyan "--------------------------------------------------------------------------------"
+  setup
+  create_geda_multisig
+  resolve_geda_oobi
+  create_qvi_multisig
+  resolve_qvi_oobi
+
+  create_geda_reg
+
+  qvi_credential
+  present_qvi_cred_to_sally
+
+  create_le_multisig
+  qars_resolve_le_oobi
+  create_qvi_reg
+  le_credential
+#  pause "Press [enter] to present le credential to Sally"
+  present_le_cred_to_sally
+
+  create_le_reg
+  prepare_le_edge
+
+  oor_auth_and_oor_cred
+  pause "Press [enter] to present oor credential to Sally"
+  present_oor_cred_to_sally
+
+  pause "Press [enter] to end the workflow"
+  end_workflow
+}
+
+# Function to display usage
+usage() {
+    echo "Usage: $0 [options]"
+    echo "Options:"
+    echo "  -k, --keystore-dir DIR  Specify keystore directory directory (default: ./docker-keystores)"
+    echo "  -a, --alias ALIAS       OOBI alias for target Sally deployment (default: alternate)"
+    echo "      --challenge         Use challenge and response section of workflow"
+    echo "      --direct            Use direct mode Sally (verification agent)"
+    echo "  -d, --debug             Run the Debug workflow"
+    echo "  -c, --clear             Clear all containers, keystores, and networks"
+    echo "  -h, --help              Display this help message"
+    echo "  --pause                 Enable pausing between steps"
+    exit 1
+}
+
+# Parse command-line options
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -c|--clear)
+            cleanup
+            ;;
+        -h|--help)
+            usage
+            ;;
+        --challenge)
+            CHALLENGE_ENABLED=true
+            shift
+            ;;
+        --direct)
+            DIRECT_MODE_SALLY=true
+            shift
+            ;;
+        --pause)
+            PAUSE_ENABLED=true
+            shift
+            ;;
+        -k|--keystore-dir)
+            if [[ -z $2 ]]; then
+                KEYSTORE_DIR="${HOME}/.keri"
+                print_red "Error: Keystore directory not specified"
+                end_workflow
+            fi
+            KEYSTORE_DIR="$2"
+            print_yellow "Using keystore directory: ${KEYSTORE_DIR}"
+            source ./kli-commands.sh "${KEYSTORE_DIR}" "${ENVIRONMENT}"
+            shift 2
+            ;;
+        -a|--alias)
+            if [[ -z $2 ]]; then
+               print_red "Error: OOBI Alias not specified yet argument used."
+               end_workflow
+            fi
+            ALT_SALLY_ALIAS="$2"
+            shift 2
+            ;;
+        -d|--debug)
+            debug_workflow
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
+main_flow
