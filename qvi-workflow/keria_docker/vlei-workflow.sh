@@ -2011,6 +2011,12 @@ function present_le_to_alternate() {
 # Prepare ECR Auth edge data
 
 ############################ Workflow functions ##################################
+function end_workflow() {
+  # Script cleanup calls
+  clear_containers
+  cleanup
+}
+
 # main setup function
 function setup() {
   clear_containers
@@ -2183,12 +2189,6 @@ function present_to_alternate_sally() {
   le_creation_and_granting
   present_le_to_alternate "${ALT_SALLY_ALIAS}" "${ALT_SALLY_OOBI}"
   end_workflow
-}
-
-function end_workflow() {
-  # Script cleanup calls
-  clear_containers
-  cleanup
 }
 
 function debug_workflow() {
