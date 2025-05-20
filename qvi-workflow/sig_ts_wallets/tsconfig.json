@@ -1,6 +1,6 @@
 {
   "exclude": ["node_modules"],
-  "include": ["signify_qvi/**/*.ts"],
+  "include": ["src/**/*.ts"],
   "ts-node": {
     // "transpileOnly": true,
     "compilerOptions": {

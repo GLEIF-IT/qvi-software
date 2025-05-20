@@ -14,7 +14,7 @@
             "program": "${file}",
             "args": [
                 "local", 
-                "./full/signify_qvi/qvi_data",
+                "./keria_docker/qvi_data",
                 "qar1|galahad|0ACgCmChLaw_qsLycbqBoxDK,qar2|lancelot|0ACaYJJv0ERQmy7xUfKgR6a4,qar3|tristan|0AAzX0tS638c9SEf5LnxTlj4,person|mordred|0ABlXAYDE2TkaNDk4UXxxtaN", 
                 "EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv"
             ],

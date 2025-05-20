@@ -6,7 +6,7 @@ x-keri-image: &keri-image
 x-keria-image: &keria-image
     image: weboftrust/keria:0.2.0-rc2
 x-vlei-image: &vlei-image
-    image: gleif/vlei:0.2.0
+    image: gleif/vlei:1.0.0
 
 # Healthcheck interval for all services
 x-healthcheck: &healthcheck
@@ -35,7 +35,7 @@ services:
             - PYTHONUNBUFFERED=1     # Ensure output is logged in real-time
             - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
         command:
-          [ 'vLEI-server', '-s','./schema/acdc','-c','./schema/acdc','-o','./samples/oobis' ]
+          [ 'vLEI-server', "-s", "/vLEI/schema", "-c", "/vLEI/credentials", "-o", "/vLEI/oobis" ]
         healthcheck:
             test: [ "CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao" ]
             <<: *healthcheck

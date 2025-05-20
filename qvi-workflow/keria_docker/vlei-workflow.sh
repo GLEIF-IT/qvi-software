@@ -70,7 +70,7 @@ function cleanup() {
 }
 
 function clear_containers() {
-    container_names=("gar1" "gar2" "lar1" "lar2")
+    container_names=("gar1" "gar2" "lar1" "lar2" "qar1" "qar2")
 
     for name in "${container_names[@]}"; do
     if docker ps -a | grep -q "$name"; then
@@ -91,17 +91,13 @@ function create_docker_network() {
 function create_docker_containers() {
   print_green "-------------------Building gleif/vlei-workflow-signify container---------------"
   # Build gleif/vlei-workflow-signify container
-  docker build \
-		--platform=linux/amd64,linux/arm64 \
-		-f signify-ts.Dockerfile \
-		-t gleif/vlei-workflow-signify:1.0.0 \
-		-t gleif/vlei-workflow-signify:latest .
+  make build-signify
 }
 
 # QVI Config
-QVI_SIGNIFY_DIR=/vlei-workflow/signify_qvi
+QVI_SIGNIFY_DIR=/vlei-workflow/src
 QVI_DATA_DIR=/vlei-workflow/qvi_data
-LOCAL_QVI_DATA_DIR=$(dirname "$0")/signify_qvi/qvi_data
+LOCAL_QVI_DATA_DIR=$(dirname "$0")/qvi_data
 
 SCHEMA_SERVER=http://vlei-server:7723
 
@@ -253,7 +249,7 @@ EOM
 
 function start_docker_containers() {
   # Containers
-  docker compose -f $DOCKER_COMPOSE_FILE up -d --wait
+  docker compose -f $DOCKER_COMPOSE_FILE up --wait
   if [ $? -ne 0 ]; then
       print_red "Docker services failed to start properly. Exiting."
       cleanup

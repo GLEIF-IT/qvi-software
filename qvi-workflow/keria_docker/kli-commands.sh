@@ -91,7 +91,7 @@ function sig_tsx() {
   docker run -it --rm \
     --network vlei \
     -e ENVIRONMENT="${ENVIRONMENT}" \
-    -v "${LOCAL_DIR}/signify_qvi/qvi_data":/vlei-workflow/qvi_data \
+    -v "${LOCAL_DIR}/qvi_data":/vlei-workflow/qvi_data \
     -v "${KLI_DATA_DIR}":/acdc-info \
     "${TSX_SIGNIFY_IMG}" "tsx" "$@"
 }
