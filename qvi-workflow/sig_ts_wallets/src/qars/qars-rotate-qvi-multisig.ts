@@ -1,6 +1,6 @@
 import signify, {HabState, Serder, Siger, SignifyClient, KeyState} from "signify-ts";
 import {parseAidInfo} from "../create-aid";
-import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {waitAndMarkNotification} from "../notifications.ts";
 import {waitOperation} from "../operations.ts";
@@ -29,11 +29,9 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
 
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
-    const [
-        QAR1Client,
-        QAR2Client,
-        QAR3Client,
-    ] = await getOrCreateClients(3, [QAR1.salt, QAR2.salt, QAR3.salt], environment);
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
+    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
+    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
 
     const qar1MSAID = await QAR1Client.identifiers().get(multisigName);
 

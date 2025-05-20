@@ -1,6 +1,6 @@
 import {TestEnvironmentPreset} from "../resolve-env.ts";
 import {createTimestamp, parseAidInfo} from "../create-aid.ts";
-import {getOrCreateClients} from "../keystore-creation.ts";
+import {getOrCreateClient} from "../keystore-creation.ts";
 import {getReceivedCredBySchemaAndIssuer} from "../credentials.ts";
 import {Serder} from "signify-ts";
 import {waitOperation} from "../operations.ts";
@@ -26,7 +26,7 @@ const recipientPrefix = args[4]
 export async function grantCredential(aidInfo: string, schemaSAID: string, issuerPrefix: string, recipientPrefix: string, environment: TestEnvironmentPreset) {
     // get Clients
     const {PERSON} = parseAidInfo(aidInfo);
-    const [PersonClient] = await getOrCreateClients(1, [PERSON.salt], environment);
+    const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
 
     // Check to see if the QVI credential exists
     let receivedCred = await getReceivedCredBySchemaAndIssuer(

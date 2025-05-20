@@ -1,9 +1,13 @@
-export type TestEnvironmentPreset = 'local' | 'docker' | 'docker-witness-split' | 'docker-tsx';
+export type TestEnvironmentPreset = 'local' | 'docker' | 'docker-tsx';
 
 export interface TestEnvironment {
     preset: TestEnvironmentPreset;
-    url: string;
-    bootUrl: string;
+    adminUrl1: string;
+    bootUrl1: string;
+    adminUrl2?: string;
+    bootUrl2?: string;
+    adminUrl3?: string;
+    bootUrl3?: string;
     vleiServerUrl: string;
     witnessUrls: string[];
     witnessIds: string[];
@@ -26,21 +30,26 @@ export function resolveEnvironment(
         case 'local':    
             return {
                 preset: preset,
-                url: `${host}:3901`,
-                bootUrl: `${host}:3903`,
-                vleiServerUrl: `${host}:7723`,
+                adminUrl1: `${host}:3901`,
+                bootUrl1: `${host}:3903`,
+                adminUrl2: `${host}:4901`,
+                bootUrl2: `${host}:4903`,
+                adminUrl3: `${host}:5901`,
+                bootUrl3: `${host}:5903`,
+                vleiServerUrl: 'http://vlei-server:7723',
                 witnessUrls: [
-                    `${host}:5642`,
-                    `${host}:5643`,
-                    `${host}:5644`,
+                    'http://gar-witnesses:5642',    // wan
+                    'http://qar-witnesses:5643',    // wil
+                    'http://person-witnesses:5644', // wes
+                    'http://sally-witnesses:5645'   // wit
                 ],
                 witnessIds: [WAN, WIL, WES],
             };
         case 'docker':
             return {
                 preset: preset,
-                url: `${host}:3901`,     //Because keria is called from the
-                bootUrl: `${host}:3903`, //host not from within the docker network
+                adminUrl1: `${host}:3901`,     //Because keria is called from the
+                bootUrl1: `${host}:3903`, //host not from within the docker network
                 witnessUrls: [
                     'http://witness-demo:5642',
                     'http://witness-demo:5643',
@@ -49,27 +58,16 @@ export function resolveEnvironment(
                 witnessIds: [WAN, WIL, WES],
                 vleiServerUrl: 'http://vlei-server:7723',
             };
-        case 'docker-witness-split':
-            // Use this when running from localhost and want to connect to the running docker containers
-            return {
-                preset: preset,
-                url: `${host}:3901`,     // Because keria is called from the
-                bootUrl: `${host}:3903`, // host not from within the docker network
-                witnessUrls: [
-                    'http://gar-witnesses:5642',    // wan
-                    'http://qar-witnesses:5643',    // wil
-                    'http://person-witnesses:5644', // wes
-                    'http://sally-witnesses:5645'   // wit
-                ],
-                witnessIds: [WAN, WIL, WES, WIT],
-                vleiServerUrl: 'http://vlei-server:7723',
-            };
         case 'docker-tsx':
             // use this when running within the tsx container
             return {
                 preset: preset,
-                url: `http://keria:3901`,
-                bootUrl: `http://keria:3903`,
+                adminUrl1: `http://keria1:3901`,
+                bootUrl1: `http://keria1:3903`,
+                adminUrl2: `http://keria2:3901`,
+                bootUrl2: `http://keria2:3903`,
+                adminUrl3: `http://keria3:3901`,
+                bootUrl3: `http://keria3:3903`,
                 witnessUrls: [
                     'http://gar-witnesses:5642',    // wan
                     'http://qar-witnesses:5643',    // wil

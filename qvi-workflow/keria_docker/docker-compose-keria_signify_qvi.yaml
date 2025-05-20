@@ -48,7 +48,9 @@ volumes:
   person-wit-vol:
   sally-wit-vol:
   direct-sally-vol:
-  keria-vol:
+  keria1-vol:
+  keria2-vol:
+  keria3-vol:
   sally-vol:
 
 services:
@@ -174,7 +176,7 @@ services:
       vlei-server:
         condition: service_healthy
 
-  keria:
+  keria1:
     stop_grace_period: 1s
     <<: *keria-image
     environment:
@@ -184,9 +186,9 @@ services:
       - PYTHONWARNINGS=ignore::SyntaxWarning
       - KERIA_RELEASER_TIMEOUT=3600
     volumes:
-      - ./config/keria/keria-qvi-witnesses-docker.json:/keria/config/keri/cf/keria.json
-      - keria-vol:/usr/local/var/keri
-    command: --config-dir /keria/config --config-file keria --name agent --loglevel INFO
+      - ./config/keria/keria1.json:/keria/config/keri/cf/keria.json
+      - keria1-vol:/usr/local/var/keri
+    command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
       <<: *healthcheck
@@ -194,7 +196,65 @@ services:
       - "3901:3901"
       - "3902:3902"
       - "3903:3903"
-    entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'agent', '--loglevel', 'INFO' ]
+    entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'keria', '--loglevel', 'INFO' ]
+    depends_on:
+      vlei-server:
+        condition: service_healthy
+      qar-witnesses:
+        condition: service_healthy
+      person-witnesses:
+        condition: service_healthy
+
+  keria2:
+    stop_grace_period: 1s
+    <<: *keria-image
+    environment:
+      - KERI_AGENT_CORS=True # Enable CORS for the KERI agent
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - PYTHONWARNINGS=ignore::SyntaxWarning
+      - KERIA_RELEASER_TIMEOUT=3600
+    volumes:
+      - ./config/keria/keria2.json:/keria/config/keri/cf/keria.json
+      - keria2-vol:/usr/local/var/keri
+    command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
+      <<: *healthcheck
+    ports:
+      - "4901:3901"
+      - "4902:3902"
+      - "4903:3903"
+    entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'keria', '--loglevel', 'INFO' ]
+    depends_on:
+      vlei-server:
+        condition: service_healthy
+      qar-witnesses:
+        condition: service_healthy
+      person-witnesses:
+        condition: service_healthy
+
+  keria3:
+    stop_grace_period: 1s
+    <<: *keria-image
+    environment:
+      - KERI_AGENT_CORS=True # Enable CORS for the KERI agent
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - PYTHONWARNINGS=ignore::SyntaxWarning
+      - KERIA_RELEASER_TIMEOUT=3600
+    volumes:
+      - ./config/keria/keria3.json:/keria/config/keri/cf/keria.json
+      - keria3-vol:/usr/local/var/keri
+    command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
+      <<: *healthcheck
+    ports:
+      - "5901:3901"
+      - "5902:3902"
+      - "5903:3903"
+    entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'keria', '--loglevel', 'INFO' ]
     depends_on:
       vlei-server:
         condition: service_healthy
