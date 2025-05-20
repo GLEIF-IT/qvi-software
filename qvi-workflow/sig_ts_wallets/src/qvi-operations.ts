@@ -1,4 +1,4 @@
-import {getOrCreateClients} from "./keystore-creation.ts";
+import {getOrCreateClient} from "./keystore-creation.ts";
 import {parseAidInfo} from "./create-aid.ts";
 import {TestEnvironmentPreset} from "./resolve-env.ts";
 import {getIssuedCredential, getReceivedCredential} from "./credentials.ts";
@@ -17,7 +17,8 @@ import {waitOperation} from "./operations.ts";
 export async function checkIssuedCredential(multisigName: string, aidInfo: string, schemaSAID: string, issueePrefix: string, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1} = parseAidInfo(aidInfo);
-    const [QAR1Client] = await getOrCreateClients(1, [QAR1.salt], environment);
+    // Create SignifyTS Clients
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
 
     // Check to see if QVI multisig exists
     const multisig = await QAR1Client.identifiers().get(multisigName);
@@ -47,7 +48,8 @@ export async function checkIssuedCredential(multisigName: string, aidInfo: strin
 export async function checkReceivedCredential(multisigName: string, aidInfo: string, credSAID: string, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1} = parseAidInfo(aidInfo);
-    const [QAR1Client] = await getOrCreateClients(1, [QAR1.salt], environment);
+    // Create SignifyTS Clients
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
 
     // Check to see if QVI multisig exists
     let multisig = await QAR1Client.identifiers().get(multisigName);
@@ -71,13 +73,10 @@ export async function checkReceivedCredential(multisigName: string, aidInfo: str
 export async function refreshGedaMultisigstate(aidInfoArg: string, gedaPrefix: string, environment: TestEnvironmentPreset) {
     const {QAR1, QAR2, QAR3, PERSON} = parseAidInfo(aidInfoArg);
 
-        // create SignifyTS Clients
-        const [
-            QAR1Client,
-            QAR2Client,
-            QAR3Client,
-            personClient,
-        ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
+    // create SignifyTS Clients
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
+    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
+    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
 
 
     // QARs query the GEDA's key state

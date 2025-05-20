@@ -1,5 +1,5 @@
 import { getOrCreateContact } from "./agent-contacts";
-import { getOrCreateClients } from "./keystore-creation";
+import {getOrCreateClient} from "./keystore-creation";
 import { TestEnvironmentPreset } from "./resolve-env";
 import { parseAidInfo } from "./create-aid";
 import { OobiInfo } from "./qvi-data";
@@ -33,8 +33,9 @@ export function parseOobiInfo(oobiInfo: string) {
 async function resolveQVIOobi(multisigName: string, aidInfo: string, qviOobi: string, environment: TestEnvironmentPreset) {
     // create SignifyTS Clients
     const {PERSON} = parseAidInfo(aidInfo);
-    const [PERSONClient] = await getOrCreateClients(1, [PERSON.salt], environment);
-    await getOrCreateContact(PERSONClient, multisigName, qviOobi);
+    // Create SignifyTS Clients
+    const personClient = await getOrCreateClient(PERSON.salt, environment, 1);
+    await getOrCreateContact(personClient, multisigName, qviOobi);
 }
 await resolveQVIOobi(multisigName, aidInfoArg, qviOobiArg, env);
 console.log('Person resolved QVI OOBI ' + qviOobiArg);

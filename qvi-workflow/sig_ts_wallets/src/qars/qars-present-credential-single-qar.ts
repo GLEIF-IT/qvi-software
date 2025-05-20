@@ -1,12 +1,11 @@
 import {TestEnvironmentPreset} from "../resolve-env.ts";
 import {createTimestamp, parseAidInfo} from "../create-aid.ts";
-import {getOrCreateClients} from "../keystore-creation.ts";
+import {getOrCreateClient} from "../keystore-creation.ts";
 import {
     getIssuedCredential,
     getReceivedCredBySchemaAndIssuer,
     grantMultisig
 } from "../credentials.ts";
-import {Notification, waitAndMarkNotification} from "../notifications.ts";
 import {Serder} from "signify-ts";
 import {waitOperation} from "../operations.ts";
 
@@ -37,7 +36,7 @@ export async function grantCredential(
     issueePrefix: string, recipientPrefix: string, environment: TestEnvironmentPreset): Promise<string> {
     // get QAR Clients
     const {QAR1} = parseAidInfo(aidInfo);
-    const [QAR1Client] = await getOrCreateClients(1, [QAR1.salt], environment);
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
 
     // get QVI participant AIDs
     const QAR1Id = await QAR1Client.identifiers().get(QAR1.name);

@@ -1,5 +1,5 @@
 import { getOrCreateContact } from "../agent-contacts";
-import { getOrCreateClients } from "../keystore-creation";
+import {getOrCreateClient} from "../keystore-creation";
 import { TestEnvironmentPreset } from "../resolve-env";
 import { OobiInfo } from "../qvi-data";
 import { parseAidInfo } from "../create-aid";
@@ -31,12 +31,10 @@ export function parseOobiInfo(oobiInfoArg: string) {
 async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: TestEnvironmentPreset) {
     // create SignifyTS Clients
     const {QAR1, QAR2, QAR3, PERSON} = parseAidInfo(aidStrArg);
-    const [
-        QAR1Client,
-        QAR2Client,
-        QAR3Client,
-        personClient,
-    ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
+    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
+    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
+    const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
     
     // resolve OOBIs for all participants
     const {GAR1, GAR2, LAR1, LAR2, SALLY, DIRECT_SALLY} = parseOobiInfo(oobiStrArg);
@@ -62,10 +60,10 @@ async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: 
         getOrCreateContact(QAR3Client, SALLY.position, SALLY.oobi),
         getOrCreateContact(QAR3Client, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
 
-        getOrCreateContact(personClient, LAR1.position, LAR1.oobi),
-        getOrCreateContact(personClient, LAR2.position, LAR2.oobi),
-        getOrCreateContact(personClient, SALLY.position, SALLY.oobi),
-        getOrCreateContact(personClient, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
+        getOrCreateContact(PersonClient, LAR1.position, LAR1.oobi),
+        getOrCreateContact(PersonClient, LAR2.position, LAR2.oobi),
+        getOrCreateContact(PersonClient, SALLY.position, SALLY.oobi),
+        getOrCreateContact(PersonClient, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
     ])
 }
 await resolveOobis(args[1], args[2], env);

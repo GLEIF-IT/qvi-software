@@ -2026,6 +2026,7 @@ function setup() {
   generate_salts_and_passcodes
   write_docker_env
   start_docker_containers
+#  pause "press enter to set up keria identifiers"
   setup_keria_identifiers
   create_aids
   read_prefixes

@@ -1,5 +1,5 @@
 import { getOrCreateContact } from "../agent-contacts";
-import { getOrCreateClients } from "../keystore-creation";
+import {getOrCreateClient} from "../keystore-creation";
 import { TestEnvironmentPreset } from "../resolve-env";
 import { parseAidInfo } from "../create-aid";
 import { OobiInfo } from "../qvi-data";
@@ -32,11 +32,9 @@ export function parseOobiInfo(oobiInfo: string) {
 async function resolveMultisigOobis(aidInfo: string, oobiInfo: string, environment: TestEnvironmentPreset) {
     // create SignifyTS Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
-    const [
-        QAR1Client,
-        QAR2Client,
-        QAR3Client,
-    ] = await getOrCreateClients(3, [QAR1.salt, QAR2.salt, QAR3.salt], environment);
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
+    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
+    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
 
     const {GEDA_NAME, LE_NAME} = parseOobiInfo(oobiInfo);
     await Promise.all([

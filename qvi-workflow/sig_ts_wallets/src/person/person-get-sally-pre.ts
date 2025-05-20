@@ -1,5 +1,5 @@
 import { getOrCreateContact } from "../agent-contacts";
-import { getOrCreateClients } from "../keystore-creation";
+import {getOrCreateClient} from "../keystore-creation";
 import { AidInfo, OobiInfo } from "../qvi-data";
 import { TestEnvironmentPreset } from "../resolve-env";
 
@@ -34,13 +34,11 @@ export function parseOobiInfo(oobiInfo: string) {
 async function getSallyPre(aidStrArg: string, oobiStrArg: string, environment: TestEnvironmentPreset) {
     // Get Client
     const {PERSON} = parseAidInfo(aidStrArg);
-    const [
-        personClient,
-    ] = await getOrCreateClients(1, [PERSON.salt], environment);
+    const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
     
     // resolve sally OOBIs 
     const {SALLY} = parseOobiInfo(oobiStrArg);
-    const sallyPre = await getOrCreateContact(personClient, SALLY.position, SALLY.oobi);
+    const sallyPre = await getOrCreateContact(PersonClient, SALLY.position, SALLY.oobi);
     return sallyPre;
 }
 const sallyPre: string = await getSallyPre(aidInfoArg, oobiArg, env);

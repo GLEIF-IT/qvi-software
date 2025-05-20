@@ -1,6 +1,6 @@
 import { HabState } from "signify-ts";
 import { parseAidInfo } from "../create-aid";
-import { getOrCreateClients } from "../keystore-creation";
+import {getOrCreateClient} from "../keystore-creation";
 import { TestEnvironmentPreset } from "../resolve-env";
 import fs from 'fs';
 
@@ -23,7 +23,7 @@ const dataDir = args[3];
 async function checkQviMultisig(multisigName: string, aidInfo: string, environment: TestEnvironmentPreset): Promise<number> {
     // get Clients
     const {QAR1} = parseAidInfo(aidInfo);
-    const [QAR1Client] = await getOrCreateClients(1, [QAR1.salt], environment);
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
 
     // Check to see if QVI multisig exists    
     let qar1Ms: HabState;

@@ -1,8 +1,7 @@
 import {createTimestamp, parseAidInfo} from "../create-aid";
-import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
-import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
+import {getOrCreateClient} from "../keystore-creation";
+import {TestEnvironmentPreset} from "../resolve-env";
 import {
-    admitMultisig,
     admitSinglesig,
     getReceivedCredential,
     waitForCredential
@@ -28,12 +27,11 @@ const credSAIDArg = args[3]
 async function admitCredential(aidInfo: string, issuerPrefix: string, credSAID: string, environment: TestEnvironmentPreset) {
     // get Clients
     const {QAR1, QAR2, QAR3, PERSON} = parseAidInfo(aidInfo);
-    const [
-        QAR1Client,
-        QAR2Client,
-        QAR3Client,
-        PersonClient
-    ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
+    // Create SignifyTS Clients
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
+    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
+    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
+    const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
 
     const PersonId = await PersonClient.identifiers().get(PERSON.name);
 

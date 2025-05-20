@@ -15,13 +15,34 @@ import { waitOperation } from './operations';
  */
 export async function getOrCreateClient(
     bran: string | undefined = undefined, 
-    environment: TestEnvironmentPreset | undefined = undefined
+    environment: TestEnvironmentPreset | undefined = undefined,
+    keriaHost?: number
 ): Promise<SignifyClient> {
     const env = resolveEnvironment(environment);
     await ready();
     bran ??= randomPasscode();
     bran = bran.padEnd(21, '_');
-    const client = new SignifyClient(env.url, bran, Tier.low, env.bootUrl);
+    let adminUrl = env.adminUrl1;
+    let bootUrl = env.bootUrl1;
+    switch (keriaHost) {
+        case 1:
+            adminUrl = env.adminUrl1;
+            bootUrl = env.bootUrl1;
+            break;
+        case 2:
+            adminUrl = env.adminUrl2 ?? env.adminUrl1;
+            bootUrl = env.bootUrl2 ?? env.bootUrl1;
+            break;
+        case 3:
+            adminUrl = env.adminUrl3 ?? env.adminUrl1;
+            bootUrl = env.bootUrl3 ?? env.bootUrl1;
+            break;
+        default:
+            adminUrl = env.adminUrl1;
+            bootUrl = env.bootUrl1;
+            break;
+    }
+    const client = new SignifyClient(adminUrl, bran, Tier.low, bootUrl);
     try {
         await client.connect();
     } catch {
@@ -79,7 +100,7 @@ export async function getOrCreateAID(
         const op = await client
             .identifiers()
             .addEndRole(name, 'agent', client!.agent!.pre);
-        await waitOperation(client, await op.op());
+        const resp = await waitOperation(client, await op.op());
         // console.log(name, 'AID:', aid.prefix);
         return aid;
     }

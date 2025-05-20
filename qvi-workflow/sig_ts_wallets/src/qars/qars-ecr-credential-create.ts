@@ -1,7 +1,7 @@
 import fs from "fs";
 import {CredentialData, CredentialSubject, Salter} from "signify-ts";
 import {createTimestamp, parseAidInfo} from "../create-aid";
-import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {getIssuedCredential, grantMultisig, issueCredentialMultisig} from "../credentials";
 import {waitAndMarkNotification} from "../notifications";
@@ -35,11 +35,9 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
 
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
-    const [
-        QAR1Client,
-        QAR2Client,
-        QAR3Client,
-    ] = await getOrCreateClients(3, [QAR1.salt, QAR2.salt, QAR3.salt], environment);
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
+    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
+    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
 
     // get AIDs
     const aidConfigQARs = {

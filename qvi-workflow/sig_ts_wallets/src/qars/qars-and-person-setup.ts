@@ -1,9 +1,10 @@
 import { getOrCreateContact } from "../agent-contacts";
-import { getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import { resolveOobi } from "../oobis";
 import { resolveEnvironment, TestEnvironmentPreset } from "../resolve-env";
 import { parseAidInfo } from "../create-aid";
 import fs from 'fs';
+import {waitOperation} from "../operations.ts";
 
 /**
  * Expects the following arguments, in order:
@@ -18,7 +19,6 @@ const dataDir = args[1];
 const aidInfoArg = args[2];
 
 const {witnessIds, vleiServerUrl} = resolveEnvironment(env);
-
 
 // Credential schema IDs and URLs to resolve from the credential schema caching server (vLEI server)
 const QVI_SCHEMA="EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao"
@@ -43,12 +43,10 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
     const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
 
     // Create SignifyTS Clients
-    const [
-        QAR1Client,
-        QAR2Client,
-        QAR3Client,
-        personClient,
-    ] = await getOrCreateClients(4, [QAR1.salt, QAR2.salt, QAR3.salt, PERSON.salt], environment);
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
+    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
+    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
+    const personClient = await getOrCreateClient(PERSON.salt, environment, 1);
 
     // Create QAR AIDs
     const aidConfigQARs = {
@@ -98,8 +96,26 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
         personClient.oobis().get(PERSON.name, AgentRole),
     ]);
 
+    const op = await QAR1Client
+            .identifiers()
+            .addEndRole(QAR1.name, 'agent', QAR1Client!.agent!.pre);
+    const resp = await waitOperation(QAR1Client, await op.op());
+    const oobi = await QAR1Client.oobis().get(QAR1.name, AgentRole)
+
     // Perform all OOBI introductions between QAR participants and the person
     console.log("QARs and Person resolving each other's agent OOBIs...")
+    console.log(`QAR1 Resolving QAR2 OOBI: ${QAR2AgentOobiResp.oobis[0]}`)
+    console.log(`QAR1 Resolving QAR3 OOBI: ${QAR3AgentOobiResp.oobis[0]}`)
+    console.log(`QAR1 Resolving Person OOBI: ${personAgentOobiResp.oobis[0]}`)
+    console.log(`QAR2 Resolving QAR1 OOBI: ${QAR1AgentOobiResp.oobis[0]}`)
+    console.log(`QAR2 Resolving QAR3 OOBI: ${QAR3AgentOobiResp.oobis[0]}`)
+    console.log(`QAR2 Resolving Person OOBI: ${personAgentOobiResp.oobis[0]}`)
+    console.log(`QAR3 Resolving QAR1 OOBI: ${QAR1AgentOobiResp.oobis[0]}`)
+    console.log(`QAR3 Resolving QAR2 OOBI: ${QAR2AgentOobiResp.oobis[0]}`)
+    console.log(`QAR3 Resolving Person OOBI: ${personAgentOobiResp.oobis[0]}`)
+    console.log(`Person Resolving QAR1 OOBI: ${QAR1AgentOobiResp.oobis[0]}`)
+    console.log(`Person Resolving QAR2 OOBI: ${QAR2AgentOobiResp.oobis[0]}`)
+    console.log(`Person Resolving QAR3 OOBI: ${QAR3AgentOobiResp.oobis[0]}`)
     await Promise.all([
         getOrCreateContact(QAR1Client, QAR2.name, QAR2AgentOobiResp.oobis[0]),
         getOrCreateContact(QAR1Client, QAR3.name, QAR3AgentOobiResp.oobis[0]),

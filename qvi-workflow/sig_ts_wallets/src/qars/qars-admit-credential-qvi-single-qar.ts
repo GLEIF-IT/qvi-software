@@ -1,5 +1,5 @@
 import {createTimestamp, parseAidInfo} from "../create-aid";
-import {getOrCreateAID, getOrCreateClients} from "../keystore-creation";
+import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {
     admitSinglesig,
@@ -34,7 +34,7 @@ async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerP
 
     // get Clients
     const {QAR1} = parseAidInfo(aidInfo);
-    const [QAR1Client] = await getOrCreateClients(1, [QAR1.salt], environment);
+    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
 
     // get AIDs
     const aidConfigQARs = {
