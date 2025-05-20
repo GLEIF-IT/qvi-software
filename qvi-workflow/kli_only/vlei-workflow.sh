@@ -2365,7 +2365,6 @@ function debug_workflow() {
   qars_resolve_le_oobi
   create_qvi_reg
   le_credential
-#  pause "Press [enter] to present le credential to Sally"
   present_le_cred_to_sally
 
   create_le_reg

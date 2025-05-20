@@ -17,6 +17,7 @@
 # 5) make sure to perform "npm install" in this directory to be able to run the NodeJS scripts.
 
 set -u  # undefined variable detection
+START_TIME=$(date +%s)
 
 # Note:
 # 1) $HOME/.qvi_workflow_docker should be cleared out prior to running this script.
@@ -61,6 +62,10 @@ function cleanup() {
     docker compose -f $DOCKER_COMPOSE_FILE kill
     docker compose -f $DOCKER_COMPOSE_FILE down -v
     rm -rfv "${KEYSTORE_DIR}"/*
+    END_TIME=$(date +%s)
+    SCRIPT_TIME=$(($END_TIME - $START_TIME))
+    print_lcyan "Script took ${SCRIPT_TIME} seconds to run"
+    print_lcyan "KLI only vLEI workflow completed"
     exit 0
 }
 
@@ -2203,9 +2208,13 @@ function debug_workflow() {
   geda_delegation_to_qvi
   qvi_credential
   le_creation_and_granting
-  pause "Press [ENTER] to present to Sally"
   le_sally_presentation
-  # challenge_response() including SignifyTS Integration
+
+  oor_auth_and_oor_cred
+  pause "Press [ENTER] to present OOR to Sally"
+  person_present_oor_cred_to_sally
+  pause "Press [ENTER] to present OOR to Sally again"
+  person_present_oor_cred_to_sally
 
   end_workflow
 }
