@@ -1,4 +1,4 @@
-export type TestEnvironmentPreset = 'local' | 'docker' | 'docker-tsx';
+export type TestEnvironmentPreset = 'local' | 'local-single-keria' | 'docker' | 'docker-tsx' | 'single-sig-docker';
 
 export interface TestEnvironment {
     preset: TestEnvironmentPreset;
@@ -45,6 +45,20 @@ export function resolveEnvironment(
                 ],
                 witnessIds: [WAN, WIL, WES],
             };
+        case 'local-single-keria':
+            return {
+                preset: preset,
+                adminUrl1: `${host}:3901`,
+                bootUrl1: `${host}:3903`,
+                vleiServerUrl: 'http://vlei-server:7723',
+                witnessUrls: [
+                    'http://gar-witnesses:5642',    // wan
+                    'http://qar-witnesses:5643',    // wil
+                    'http://person-witnesses:5644', // wes
+                    'http://sally-witnesses:5645'   // wit
+                ],
+                witnessIds: [WAN, WIL, WES],
+            };
         case 'docker':
             return {
                 preset: preset,
@@ -68,6 +82,21 @@ export function resolveEnvironment(
                 bootUrl2: `http://keria2:3903`,
                 adminUrl3: `http://keria3:3901`,
                 bootUrl3: `http://keria3:3903`,
+                witnessUrls: [
+                    'http://gar-witnesses:5642',    // wan
+                    'http://qar-witnesses:5643',    // wil
+                    'http://person-witnesses:5644', // wes
+                    'http://sally-witnesses:5645'   // wit
+                ],
+                witnessIds: [WAN, WIL, WES, WIT],
+                vleiServerUrl: 'http://vlei-server:7723',
+            };
+        case 'single-sig-docker':
+            // use this when running within the tsx container
+            return {
+                preset: preset,
+                adminUrl1: `http://keria:3901`,
+                bootUrl1: `http://keria:3903`,
                 witnessUrls: [
                     'http://gar-witnesses:5642',    // wan
                     'http://qar-witnesses:5643',    // wil
