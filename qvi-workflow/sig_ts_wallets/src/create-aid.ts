@@ -14,6 +14,19 @@ export function parseAidInfo(aidInfoArg: string) {
     return {QAR1, QAR2, QAR3, PERSON};
 }
 
+export function parseAidInfoSingleSig(aidInfoArg: string) {
+    const aids = aidInfoArg.split(','); // expect format: "qar|Alice|salt,person|David|salt,qvi|QVI|salt"
+    const aidObjs: AidInfo[] = aids.map((aidInfo) => {
+        const [position, name, salt] = aidInfo.split('|'); // expect format: "qar1|Alice|salt1"
+        return {position, name, salt};
+    });
+
+    const QAR = aidObjs.find((aid) => aid.position === 'qar') as AidInfo;
+    const PERSON = aidObjs.find((aid) => aid.position === 'person') as AidInfo;
+    const QVI = aidObjs.find((aid) => aid.position === 'qvi') as AidInfo;
+    return {QAR, PERSON, QVI};
+}
+
 export function createTimestamp() {
     return new Date().toISOString().replace('Z', '000+00:00');
 }
