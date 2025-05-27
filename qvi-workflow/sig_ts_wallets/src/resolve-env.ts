@@ -50,12 +50,11 @@ export function resolveEnvironment(
                 preset: preset,
                 adminUrl1: `${host}:3901`,
                 bootUrl1: `${host}:3903`,
-                vleiServerUrl: 'http://vlei-server:7723',
+                vleiServerUrl: `${host}:7723`,
                 witnessUrls: [
-                    'http://gar-witnesses:5642',    // wan
-                    'http://qar-witnesses:5643',    // wil
-                    'http://person-witnesses:5644', // wes
-                    'http://sally-witnesses:5645'   // wit
+                    `${host}:5642`, // wan
+                    `${host}:5643`, // wil
+                    `${host}:5644`, // wes
                 ],
                 witnessIds: [WAN, WIL, WES],
             };

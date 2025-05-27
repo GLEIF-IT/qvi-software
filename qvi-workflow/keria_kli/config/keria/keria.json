@@ -1,9 +1,9 @@
 {
+    "dt": "2024-12-31T14:06:30.123456+00:00",
     "keria": {
         "dt": "2024-12-31T14:06:30.123456+00:00",
-        "curls": ["http://keria:3902/"]
+        "curls": ["http://127.0.0.1:3902/"]
     },
-    "dt": "2024-12-31T14:06:30.123456+00:00",
     "iurls": [
         "http://127.0.0.1:5642/oobi/BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha/controller?name=wan&tag=witness&tag=sample",
         "http://127.0.0.1:5643/oobi/BLskRTInXnMxWaGqcpSyMgo0nYbalW99cGZESrz3zapM/controller?name=wil&tag=witness&tag=sample",
