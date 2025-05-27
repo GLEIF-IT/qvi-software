@@ -409,15 +409,10 @@ function create_qvi_delegate() {
     print_lcyan "[External] GEDA member approves delegated inception with 'kli delegate confirm'"
     echo
 
-    print_yellow "GAR1 confirm delegated inception"
-    klid gar delegate confirm --name "${GAR}" --alias "${GAR}" --passcode "${GAR_PASSCODE}" --interact --auto
+    print_yellow "GAR confirm delegated inception"
+    kli delegate confirm --name "${GAR}" --alias "${GAR}" --passcode "${GAR_PASSCODE}" --interact --auto
 
     print_yellow "[GEDA] Waiting 5s on delegated inception completion"
-
-    print_dark_gray "waiting on Docker containers: gar"
-    docker wait gar
-    docker logs gar
-    docker rm gar
 
     sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/delegation-completion-qvi.ts" \
       "${ENVIRONMENT}" \

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-
+# vlei-workflow.sh - KERIA Docker workflow with multisig GEDA, QVI, and LE
+#
 # Runs the entire QVI issuance workflow end to end
 # Starts from multisig GLEIF External Delegated AID (GEDA) creation all the way to
 # OOR and ECR credential issuance and finally to the creation of the Person AID for OOR and ECR
@@ -61,11 +62,11 @@ function cleanup() {
     echo
     docker compose -f $DOCKER_COMPOSE_FILE kill
     docker compose -f $DOCKER_COMPOSE_FILE down -v
-    rm -rfv "${KEYSTORE_DIR}"/*
+    rm -rfv "${KEYSTORE_DIR:?}"/*
     END_TIME=$(date +%s)
     SCRIPT_TIME=$(($END_TIME - $START_TIME))
     print_lcyan "Script took ${SCRIPT_TIME} seconds to run"
-    print_lcyan "KLI only vLEI workflow completed"
+    print_lcyan "KERIA Docker vLEI workflow completed"
     exit 0
 }
 
@@ -400,7 +401,7 @@ function resolve_oobis() {
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
     OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,sallyIndirect|$SALLY_OOBI,directSally|$DIRECT_SALLY_OOBI"
 
-    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-person-single-sig-oobis-setup.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/resolve-oobi-gars-lars-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
     echo
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
@@ -896,10 +897,6 @@ function grant_qvi_credential() {
         --said "${SAID}" \
         --recipient "${QVI_PRE}" \
         --time "${KLI_TIME}"
-    # klid gar2 ipex join \
-    #     --name ${GAR2} \
-    #     --passcode ${GAR2_PASSCODE} \
-    #     --auto
 
     echo
     print_yellow "[External] Waiting for IPEX messages to be witnessed"
@@ -2052,8 +2049,11 @@ function qvi_credential() {
   create_qvi_credential
   grant_qvi_credential
   admit_qvi_credential
-  present_qvi_cred_to_sally_kli
+  pause "Press [ENTER] to present QVI credential to Sally"
   present_qvi_cred_to_sally_signify
+  pause "Press [ENTER] to present QVI credential to Sally again"
+  present_qvi_cred_to_sally_signify
+  present_qvi_cred_to_sally_kli
 }
 
 # Creates the LE multisig, resolves the LE OOBI, creates the QVI registry, and prepares and grants the LE credential
