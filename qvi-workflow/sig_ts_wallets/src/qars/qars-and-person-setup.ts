@@ -135,7 +135,14 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
     ]);
 
     // resolve credential OOBIs
-    console.log("QAR and Person resolving credential OOBIs...")
+    console.log("QARs and Person resolving credential OOBIs...")
+    console.log(`QAR1 Resolving QVI Schema OOBI: ${QVI_SCHEMA_URL}`)
+    console.log(`QAR1 Resolving LE Schema OOBI: ${LE_SCHEMA_URL}`)
+    console.log(`QAR1 Resolving ECR Auth Schema OOBI: ${ECR_AUTH_SCHEMA_URL}`)
+    console.log(`QAR1 Resolving OOR Auth Schema OOBI: ${OOR_AUTH_SCHEMA_URL}`)
+    console.log(`QAR1 Resolving ECR Schema OOBI: ${ECR_SCHEMA_URL}`)
+    console.log(`QAR1 Resolving OOR Schema OOBI: ${OOR_SCHEMA_URL}`)
+
     await Promise.all([
         resolveOobi(QAR1Client, QVI_SCHEMA_URL),
         resolveOobi(QAR2Client, QVI_SCHEMA_URL),

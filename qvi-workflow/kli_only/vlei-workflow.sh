@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# qvi-workflow-kli.sh
+# vlei-workflow.sh where the KLI is used for all participants.
+
 # See the README.md document accompanying this script for more information.
 # Runs the entire QVI issuance workflow end to end starting from multisig AID creation of the
 # GLEIF External Delegated multisig AID (GEDA) and Qualified vLEI Issuer (QVI) multisig AID,
@@ -2195,7 +2196,8 @@ function present_le_cred_to_sally() {
 # TODO QVI: Revoke ECR Auth and OOR Auth credentials
 # TODO QVI: Present revoked credentials to Sally
 
-### Workflow Functions
+#---------------------------------------- Workflow Functions ----------------------------------------
+
 function setup() {
   test_dependencies
   create_aids
