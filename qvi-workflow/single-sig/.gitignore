@@ -1,3 +1,4 @@
 qvi_data/*.json
 keria-signify-docker.env
 acdc-info/temp-data/*.json
+docker-keystores/*
