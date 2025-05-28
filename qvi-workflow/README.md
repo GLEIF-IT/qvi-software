@@ -16,7 +16,7 @@ There are three demonstrations:
 
 ### For kli_only and keria_kli
 
-- NodeJS - remember to do `npm install` in the `full` directory to install 
+- NodeJS - remember to do `npm install` in the `sig_ts_wallets` directory to install 
 - [`tsx`](https://tsx.is/getting-started) - TypeScript Execute - for easily running Typescript files like a shell script.
   - This MUST be installed globally with `npm i -g tsx` in order to run properly.
 
@@ -34,10 +34,10 @@ There are three demonstrations:
 
 These instructions show you how to run the end-to-end script demonstrations locally on your machine. This is useful for debugging using IDEs and log messages and understanding the process.
 
-TBD. See the qvi-workflow-kli.sh script for an example of how to run the process locally.
+TBD. See the `kli_only` and `keria_kli` workflow scripts for examples of how to run the process locally.
 
 ## Integration-friendly setup (running everything in containers)
 
 These instructions show you how to run the end-to-end script demonstrations using Docker containers. This is useful for integration testing and running the process in a more production-like environment.
 
-TBD.See the qvi-workflow-keria_signify_qvi-docker.sh script for an example of how to run the process in containers.
+TBD.See the `kli_docker` and `keria_docker` workflow scripts for examples of how to run the process in containers.

@@ -10,7 +10,6 @@ export function parseOobiInfoSingleSig(oobiInfoArg: string) {
 
     const GAR = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gar') as OobiInfo;
     const LAR = oobiObjs.find((oobiInfo) => oobiInfo.position === 'lar') as OobiInfo;
-    const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'sallyIndirect') as OobiInfo;
-    const DIRECT_SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'directSally') as OobiInfo;
-    return {GAR, LAR, SALLY, DIRECT_SALLY};
+    const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'directSally') as OobiInfo;
+    return {GAR, LAR, SALLY};
 }

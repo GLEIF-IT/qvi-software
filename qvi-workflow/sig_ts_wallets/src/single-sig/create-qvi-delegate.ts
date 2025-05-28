@@ -34,7 +34,7 @@ async function createQviDelegate(qviName: string, aidInfo: string, oobiInfo: str
     const QVIClient = await getOrCreateClient(QVI.salt, environment, 1);
 
     // get OOBI info
-    const {GAR, LAR, SALLY, DIRECT_SALLY} = parseOobiInfoSingleSig(oobiInfo);
+    const {GAR} = parseOobiInfoSingleSig(oobiInfo);
     await resolveOobi(QVIClient, GAR.oobi, GAR.position)
 
     // create delegate

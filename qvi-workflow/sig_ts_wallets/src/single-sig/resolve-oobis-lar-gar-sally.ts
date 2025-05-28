@@ -20,16 +20,14 @@ async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: 
     const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
     
     // resolve OOBIs for all participants
-    const {GAR, LAR, SALLY, DIRECT_SALLY} = parseOobiInfoSingleSig(oobiStrArg);
+    const {GAR, LAR, SALLY} = parseOobiInfoSingleSig(oobiStrArg);
     await Promise.all([
         getOrCreateContact(QARClient, GAR.position, GAR.oobi),
         getOrCreateContact(QARClient, LAR.position, LAR.oobi),
         getOrCreateContact(QARClient, SALLY.position, SALLY.oobi),
-        getOrCreateContact(QARClient, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
 
         getOrCreateContact(PersonClient, LAR.position, LAR.oobi),
-        getOrCreateContact(PersonClient, SALLY.position, SALLY.oobi),
-        getOrCreateContact(PersonClient, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
+        getOrCreateContact(PersonClient, SALLY.position, SALLY.oobi)
     ])
 }
 await resolveOobis(aidInfoArg, oobiArg, env);

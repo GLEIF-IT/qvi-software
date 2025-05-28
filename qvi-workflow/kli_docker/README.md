@@ -1,8 +1,15 @@
-# KLI in Docker QVI Workflow Script
+# KLI in Docker vLEI Workflow
 
-### Overview
+This vlei-workflow.sh uses Docker containers for all KLI (KERIpy) setup of the GARs, QARs, LARs, and the Person.
 
-This script runs the KERIpy `kli` in Docker containers to simulate the QVI workflow end to end 
-including creating delegated identifiers, key rotation, issuing credentials, and presenting 
-credentials to the vLEI Reporting API.
+## Usage
 
+```bash
+cd qvi-workflow/keria_docker
+./vlei-workflow.sh
+```
+
+## Requirements
+
+- Docker installed and running
+- Docker Compose

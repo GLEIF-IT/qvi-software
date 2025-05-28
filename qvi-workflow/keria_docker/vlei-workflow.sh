@@ -399,7 +399,7 @@ function resolve_oobis() {
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
     LAR1_OOBI="${WIT_HOST_QAR}/oobi/${LAR1_PRE}/witness/${WIL_PRE}"
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
-    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,sallyIndirect|$SALLY_OOBI,directSally|$DIRECT_SALLY_OOBI"
+    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,directSally|$DIRECT_SALLY_OOBI"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/qars/resolve-oobi-gars-lars-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
@@ -957,14 +957,14 @@ function present_qvi_cred_to_sally_kli() {
         --schema "${QVI_SCHEMA}" | tr -d '[:space:]')
 
     echo
-    print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto Sally'" ${SALLY_PRE}"
+    print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto Sally'" ${DIRECT_SALLY_PRE}"
     KLI_TIME=$(kli time | tr -d '[:space:]')
     klid gar1 ipex grant \
         --name "${GAR1}" \
         --passcode "${GAR1_PASSCODE}" \
         --alias "${GEDA_NAME}" \
         --said "${SAID}" \
-        --recipient "${SALLY_PRE}" \
+        --recipient "${DIRECT_SALLY_PRE}" \
         --time "${KLI_TIME}"
 
     klid gar2 ipex grant \
@@ -972,7 +972,7 @@ function present_qvi_cred_to_sally_kli() {
         --passcode "${GAR2_PASSCODE}" \
         --alias "${GEDA_NAME}" \
         --said "${SAID}" \
-        --recipient "${SALLY_PRE}" \
+        --recipient "${DIRECT_SALLY_PRE}" \
         --time "${KLI_TIME}"
 
     echo
@@ -999,7 +999,7 @@ function present_qvi_cred_to_sally_signify() {
     "${QVI_SCHEMA}" \
     "${GEDA_PRE}" \
     "${QVI_PRE}"\
-    "${SALLY_PRE}"
+    "${DIRECT_SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0
@@ -1178,7 +1178,7 @@ function present_le_cred_to_sally() {
     "${LE_SCHEMA}" \
     "${QVI_PRE}" \
     "${LE_PRE}"\
-    "${SALLY_PRE}"
+    "${DIRECT_SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0
@@ -1550,7 +1550,7 @@ function qars_present_oor_cred_to_sally() {
     "${OOR_SCHEMA}" \
     "${QVI_PRE}" \
     "${PERSON_PRE}"\
-    "${SALLY_PRE}"
+    "${DIRECT_SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0
@@ -1578,7 +1578,7 @@ function qars_present_oor_auth_cred_to_sally () {
     "${OOR_AUTH_SCHEMA}" \
     "${LE_PRE}" \
     "${QVI_PRE}"\
-    "${SALLY_PRE}"
+    "${DIRECT_SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0
@@ -1605,7 +1605,7 @@ function person_present_oor_cred_to_sally() {
       "${SIGTS_AIDS}" \
       "${OOR_SCHEMA}" \
       "${QVI_PRE}" \
-      "${SALLY_PRE}"
+      "${DIRECT_SALLY_PRE}"
 
     start=$(date +%s)
     present_result=0
@@ -1921,7 +1921,7 @@ function present_ecr_cred_to_sally() {
       "${SIGTS_AIDS}" \
       "${ECR_SCHEMA}" \
       "${QVI_PRE}" \
-      "${SALLY_PRE}"
+      "${DIRECT_SALLY_PRE}"
 
     start=$(date +%s)
     present_result=0
@@ -2049,11 +2049,7 @@ function qvi_credential() {
   create_qvi_credential
   grant_qvi_credential
   admit_qvi_credential
-  pause "Press [ENTER] to present QVI credential to Sally"
   present_qvi_cred_to_sally_signify
-  pause "Press [ENTER] to present QVI credential to Sally again"
-  present_qvi_cred_to_sally_signify
-  present_qvi_cred_to_sally_kli
 }
 
 # Creates the LE multisig, resolves the LE OOBI, creates the QVI registry, and prepares and grants the LE credential
@@ -2131,8 +2127,11 @@ function main_flow() {
   le_sally_presentation
 
   oor_auth_and_oor_cred
+#  pause "Press [ENTER] to present OOR to Sally"
   person_present_oor_cred_to_sally
-  person_present_oor_cred_to_sally # second presentation for now since there is a bug where the first presentation does not succeed
+  qars_present_oor_cred_to_sally
+#  pause "Press [ENTER] to present OOR to Sally again"
+#  person_present_oor_cred_to_sally # second presentation for now since there is a bug where the first presentation does not succeed
 
   ecr_auth_and_ecr_cred
   pause "Press [ENTER] to present ECR to Sally"
@@ -2204,6 +2203,7 @@ function debug_workflow() {
   setup
   geda_delegation_to_qvi
   qvi_credential
+
   le_creation_and_granting
   le_sally_presentation
 
