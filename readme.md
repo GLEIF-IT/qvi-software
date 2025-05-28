@@ -3,10 +3,10 @@
 ## GLEIF tested versions for technical dry runs
 
 * GLEIF (KERIpy 1.1.30) (https://github.com/WebOfTrust/keripy/releases/tag/1.1.30)
-* GLEIF witnesses (KERIpy 1.2.6) (https://github.com/WebOfTrust/keripy/releases/tag/1.2.6)
-* QVI (KERIA 0.2.0-rc2) (https://github.com/GLEIF-IT/keria/releases/tag/0.2.0-rc1)
+* GLEIF witnesses (KERIpy 1.2.8-rc2) (https://github.com/GLEIF-IT/keripy/releases/tag/1.2.8-rc2)
+* QVI (KERIA 0.3.0) (https://github.com/GLEIF-IT/keria/releases/tag/0.3.0)
 * QVI (SignifyTS 0.3.0-rc1) (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc1)
-* QVI witnesses (KERIpy 1.2.6) (https://github.com/WebOfTrust/keripy/releases/tag/1.2.6)
+* QVI witnesses (KERIpy 1.2.8-rc2) (https://github.com/GLEIF-IT/keripy/releases/tag/1.2.8-rc2)
 
 #### Table of functionality
 

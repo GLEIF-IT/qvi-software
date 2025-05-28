@@ -51,9 +51,9 @@ WARNING: If you are using this repository as a template for your own deployment 
 
 # References
 ## Docker Hub Images
-- [weboftrust/keria][HUB_KERIA] 
+- [gleif/keria][HUB_KERIA] 
   - The KERIA Agent server compatible with the signing-at-the-edge library SignifyTS.
-- [weboftrust/keri][HUB_KERI] 
+- [gleif/keri][HUB_KERI] 
   - The KERIpy core library including the KLI command line interface and witnesses.
 - [gleif/vlei][HUB_VLEI]
   - The ACDC schema caching server. Could be replaced with an NGINX server or something similar that can host static JSON files. 
@@ -61,7 +61,7 @@ WARNING: If you are using this repository as a template for your own deployment 
   -  The signing-at-the-edge library compatible with the KERIA agent server.
 
 [DOCKER_HOST_NET]: https://docs.docker.com/engine/network/drivers/host/
-[HUB_KERIA]: https://hub.docker.com/r/weboftrust/keria
-[HUB_KERI]: https://hub.docker.com/r/weboftrust/keri
+[HUB_KERIA]: https://hub.docker.com/r/gleif/keria
+[HUB_KERI]: https://hub.docker.com/r/gleif/keri
 [HUB_VLEI]: https://hub.docker.com/r/gleif/vlei
 [LIB_SIGNIFY]: https://github.com/WebOfTrust/signify-ts

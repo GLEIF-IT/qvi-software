@@ -320,9 +320,8 @@ function resolve_oobis() {
     export DIRECT_SALLY_OOBI="${DIRECT_SALLY_HOST}/oobi"
     export GAR_OOBI="${WIT_HOST_GAR}/oobi/${GAR_PRE}/witness/${WAN_PRE}"
     export LAR_OOBI="${WIT_HOST_QAR}/oobi/${LAR_PRE}/witness/${WIL_PRE}"
-    export OOBIS_FOR_KERIA="gar|$GAR_OOBI,lar|$LAR_OOBI,sallyIndirect|$SALLY_OOBI,directSally|$DIRECT_SALLY_OOBI"
+    export OOBIS_FOR_KERIA="gar|$GAR_OOBI,lar|$LAR_OOBI,directSally|$DIRECT_SALLY_OOBI"
 
-    print_green "SALLY OOBI: ${SALLY_OOBI}"
     print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/resolve-oobis-lar-gar-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"

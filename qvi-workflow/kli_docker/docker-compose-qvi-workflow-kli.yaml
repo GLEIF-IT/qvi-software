@@ -12,7 +12,7 @@ x-keri_1_1-image: &keri_1_1-image
 x-witness-demo-image: &witness-demo-image
     image: weboftrust/keri:1.2.6
 x-keria-image: &keria-image
-    image: weboftrust/keria:0.2.0-rc2
+    image: gleif/keria:0.3.0
 x-vlei-image: &vlei-image
     image: gleif/vlei:1.0.0
 x-sally-image: &sally-image

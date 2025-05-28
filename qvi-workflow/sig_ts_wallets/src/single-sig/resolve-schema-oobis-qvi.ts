@@ -33,7 +33,7 @@ async function resolveSchemaOobis(aidInfo: string, oobiStrArg: string, environme
     const QVIClient = await getOrCreateClient(QVI.salt, environment, 1);
 
     // resolve OOBIs for all participants
-    const {GAR, LAR, SALLY, DIRECT_SALLY} = parseOobiInfoSingleSig(oobiStrArg);
+    const {GAR, LAR, SALLY} = parseOobiInfoSingleSig(oobiStrArg);
 
     // set up OOBIs now that the delegation is complete
     await Promise.all([
@@ -46,8 +46,7 @@ async function resolveSchemaOobis(aidInfo: string, oobiStrArg: string, environme
 
         getOrCreateContact(QVIClient, GAR.position, GAR.oobi),
         getOrCreateContact(QVIClient, LAR.position, LAR.oobi),
-        getOrCreateContact(QVIClient, SALLY.position, SALLY.oobi),
-        getOrCreateContact(QVIClient, DIRECT_SALLY.position, DIRECT_SALLY.oobi),
+        getOrCreateContact(QVIClient, SALLY.position, SALLY.oobi)
     ])
 }
 await resolveSchemaOobis(aidInfoArg, oobiArg, env);

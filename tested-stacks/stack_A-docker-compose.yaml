@@ -4,7 +4,7 @@
 x-keri-image: &keri-image
     image: weboftrust/keri:1.1.30
 x-keria-image: &keria-image
-    image: weboftrust/keria:0.2.0-rc2
+    image: gleif/keria:0.3.0
 x-vlei-image: &vlei-image
     image: gleif/vlei:1.0.0
 

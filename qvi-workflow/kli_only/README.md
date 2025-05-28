@@ -18,7 +18,7 @@ You also need the Sally CLI installed and available on your path.
 
 This command runs the six demonstration witnesses.
 
-WARNING: This script REQUIRES KERIpy 1.2.6 witnesses. Due to the delegation ceremony change of 2024 this script will not work with 1.1.x KERIpy witnesses.
+WARNING: This script REQUIRES KERIpy 1.2.6 or later witnesses. Due to the delegation ceremony change of 2024 this script will not work with 1.1.x KERIpy witnesses.
 
 ```bash
 # From within a dedicated Python virtual environment (virtualenv)
@@ -39,7 +39,7 @@ This script runs the "sally" program so it must be installed and available on th
 
 ## Workflow Steps
 
-In the `qvi-workflow-kli.sh` file, using the KERIpy KLI, the Sally CLI, and the vLEI-Server binary the following steps are performed:
+In the `vlei-workflow.sh` file, using the KERIpy KLI, the Sally CLI, and the vLEI-Server binary the following steps are performed:
 1. Script initializes with keystore names, passcodes, and salts, identifier aliases, credential registry names, and ACDC Schema SAIDs. 
 2. Preconfigures each keystore during identifier creation with the OOBI URLs for the following
    witnesses and ACDC schemas:
@@ -63,4 +63,4 @@ In the `qvi-workflow-kli.sh` file, using the KERIpy KLI, the Sally CLI, and the 
 4. Connects all keystores to each other by resolving witness mailbox OOBI URLs.
 5. Performs challenge and response between GARs, QARs, and LARs to simulate out of band identifier control verification.
 6. Creates the multisignature identity for the GLEIF External Delegated AID (GEDA).
-7. 
+7. TODO finish writing steps - in the meantime, just read the script.

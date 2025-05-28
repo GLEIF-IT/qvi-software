@@ -21,6 +21,7 @@ source color-printing.sh
 
 SALLY_PID=""
 WEBHOOK_PID=""
+INDIRECT_MODE_SALLY=false
 
 function sally_teardown() {
   if [ -n "$SALLY_PID" ]; then
@@ -184,20 +185,20 @@ function create_aids() {
 
 function sally_setup() {
     export SALLY_OOBI="http://127.0.0.1:9723/oobi"
-    print_yellow "Setting up webhook"
+    print_yellow "Setting up webhook on ${WEBHOOK_HOST}"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
 
     # defaults to direct mode
-    if $INDIRECT_MODE_SALLY; then
+    if [ $INDIRECT_MODE_SALLY = true ] ; then
       print_yellow "Starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
       sally server start \
-        --name $SALLY \
-        --alias $SALLY \
-        --salt $SALLY_SALT \
+        --name "${SALLY}" \
+        --alias "${SALLY}" \
+        --salt "${SALLY_SALT}" \
         --config-dir sally \
         --config-file sally.json \
-        --passcode $SALLY_PASSCODE \
+        --passcode "${SALLY_PASSCODE}" \
         --web-hook http://127.0.0.1:9923 \
         --auth "${GEDA_PRE}" & # who will be presenting the credential
       SALLY_PID=$!
@@ -205,13 +206,13 @@ function sally_setup() {
     else
       print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
       sally server start \
-        --name $SALLY \
-        --alias $SALLY \
-        --salt $SALLY_SALT \
+        --name "${SALLY}" \
+        --alias "${SALLY}" \
+        --salt "${SALLY_SALT}" \
         --config-dir sally \
         --config-file sally.json \
         --incept-file sally-incept.json \
-        --passcode $SALLY_PASSCODE \
+        --passcode "${SALLY_PASSCODE}" \
         --web-hook http://127.0.0.1:9923 \
         --auth "${GEDA_PRE}" & # who will be presenting the credential
       SALLY_PID=$!
@@ -234,7 +235,7 @@ function resolve_oobis() {
     LAR1_OOBI="${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     LAR2_OOBI="${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
 
-    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,directSally|$SALLY_OOBI,sallyIndirect|$SALLY_OOBI"
+    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,directSally|$SALLY_OOBI"
 
     tsx "${SIG_TS_WALLETS_DIR}/qars/resolve-oobi-gars-lars-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
@@ -829,7 +830,7 @@ function present_qvi_cred_to_sally() {
   present_result=0
   print_dark_gray "[QVI] Waiting for Sally to receive the QVI Credential"
   while [ $present_result -ne 200 ]; do
-    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${SALLY_HOST}/?holder=${QVI_PRE}")
+    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST}/?holder=${QVI_PRE}")
     print_dark_gray "[QVI] received ${present_result} from Sally"
     sleep 1
     if (( $(date +%s)-start > 25 )); then
@@ -1087,7 +1088,7 @@ function present_le_cred_to_sally() {
   present_result=0
   print_dark_gray "[QVI] Waiting for Sally to receive the LE Credential"
   while [ $present_result -ne 200 ]; do
-    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${SALLY_HOST}/?holder=${LE_PRE}")
+    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST}/?holder=${LE_PRE}")
     print_dark_gray "[QVI] received ${present_result} from Sally"
     sleep 1
     if (( $(date +%s)-start > 25 )); then
@@ -1471,7 +1472,7 @@ function present_oor_cred_to_sally() {
     present_result=0
     print_dark_gray "[PERSON] Waiting for Sally to receive the OOR Credential"
     while [ $present_result -ne 200 ]; do
-      present_result=$(curl -s -o /dev/null -w "%{http_code}" "${SALLY_HOST}/?holder=${PERSON_PRE}")
+      present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST}/?holder=${PERSON_PRE}")
       print_dark_gray "[PERSON] received ${present_result} from Sally"
       sleep 1
       if (( $(date +%s)-start > 25 )); then
@@ -1866,14 +1867,12 @@ function main_flow() {
   resolve_qvi_oobi
 
   qvi_credential
-  pause "Press [enter] to present QVI credential to Sally"
   present_qvi_cred_to_sally
 
   create_le_multisig
   resolve_le_oobi
 
   le_credential
-  pause "Press [enter] to present LE credential to Sally"
   present_le_cred_to_sally
 
   create_le_reg
