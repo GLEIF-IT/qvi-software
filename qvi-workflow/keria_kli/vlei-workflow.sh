@@ -1000,7 +1000,7 @@ function create_and_grant_le_credential() {
       "./acdc-info/" \
       "${SIGTS_AIDS}" \
       "${LE_PRE}" \
-      "${QVI_SAID}"
+      "${QVI_DATA_DIR}"
 
     echo
     print_lcyan "[QVI] LE Credential created"
@@ -1042,7 +1042,7 @@ function admit_le_credential() {
         --said | uniq
 
     echo
-    print_yellow "[LE] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR1}"
+    print_yellow "[LE] LAR1 Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR1}"
 
     KLI_TIME=$(kli time)
     kli ipex admit \
@@ -1054,7 +1054,7 @@ function admit_le_credential() {
     pid=$!
     PID_LIST+=" $pid"
 
-    print_green "[LE] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR2}"
+    print_green "[LE] LAR2 Joining Admit LE Credential ${SAID} to ${LE_NAME} as ${LAR2}"
     kli ipex join \
         --name "${LAR2}" \
         --passcode "${LAR2_PASSCODE}" \
@@ -1407,7 +1407,7 @@ function create_and_grant_oor_credential() {
       "./acdc-info" \
       "${SIGTS_AIDS}" \
       "${PERSON_PRE}" \
-      "${QVI_SAID}"
+      "${QVI_DATA_DIR}"
 
     print_yellow "[QVI] Waiting for OOR IPEX messages to be witnessed"
     sleep 5
@@ -1729,7 +1729,7 @@ function create_and_grant_ecr_credential() {
       "./acdc-info" \
       "${SIGTS_AIDS}" \
       "${PERSON_PRE}" \
-      "${QVI_SAID}"
+      "${QVI_DATA_DIR}"
 
     print_yellow "[QVI] Waiting for ECR IPEX messages to be witnessed"
     sleep 8
