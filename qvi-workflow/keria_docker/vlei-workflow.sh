@@ -2127,9 +2127,9 @@ function main_flow() {
   le_sally_presentation
 
   oor_auth_and_oor_cred
-#  pause "Press [ENTER] to present OOR to Sally"
-  person_present_oor_cred_to_sally
   qars_present_oor_cred_to_sally
+  pause "Press [ENTER] to present OOR to Sally"
+  person_present_oor_cred_to_sally
 #  pause "Press [ENTER] to present OOR to Sally again"
 #  person_present_oor_cred_to_sally # second presentation for now since there is a bug where the first presentation does not succeed
 
