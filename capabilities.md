@@ -22,7 +22,11 @@ The following capabilities are required for the QVI workflow:
   - Perform key state refresh for single signature identity
   - Perform key state refresh for multi signature identity
 #### Delegation
-  - Perform delegation request from multi signature delegate identity to multi signature delegator identity.
+  - Initiate a **delegated inception** request from multi signature delegate to multi signature delegator identity.
+  - Approve a **delegated inception** as a delegator identity.
+  - Initiate a **delegated rotation** from a multi-signature delegate to the multi-signature delegator identity.
+  - Approve a **delegated rotation** as a delegator identity.
+  - Be able to perform an OOBI resolution after delegated inception and rotation in order confirm that inception and rotation were successful.
 #### ACDC Registries and Credentials
   - Create a credential registry for a single signature identity
   - Create credential registry for a multi signature identity
