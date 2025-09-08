@@ -1,28 +1,28 @@
 # vLEI full chain Docker Compose file with all needed services
 
 x-keri_1_2-image: &keri_1_2-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 x-keri_1_1-image: &keri_1_1-image
   image: weboftrust/keri:1.1.32
 
 # Witness Images
 x-gar-witness-image: &gar-witness-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 x-qar-witness-image: &qar-witness-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 x-person-witness-image: &person-witness-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 x-sally-witness-image: &sally-witness-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 
 x-keria-image: &keria-image
   image: gleif/keria:0.3.0
 x-vlei-image: &vlei-image
   image: gleif/vlei:1.0.0
 x-sally-image: &sally-image
-  image: gleif/sally:1.0.0-rc1
+  image: gleif/sally:1.0.2
 x-direct-sally-image: &direct-sally-image
-  image: gleif/sally:1.0.0-rc1
+  image: gleif/sally:1.0.2
 
 x-healthcheck: &healthcheck
   interval: 3s

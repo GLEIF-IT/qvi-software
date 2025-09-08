@@ -6,7 +6,7 @@
 x-keri_1_2-image: &keri_1_2-image
   image: weboftrust/keri:1.2.6
 x-keri_1_1-image: &keri_1_1-image
-  image: gleif/keri:1.2.6
+  image: gleif/keri:1.2.8
 #  image: weboftrust/keri:1.1.32
 
 x-witness-demo-image: &witness-demo-image
@@ -16,7 +16,7 @@ x-keria-image: &keria-image
 x-vlei-image: &vlei-image
     image: gleif/vlei:1.0.0
 x-sally-image: &sally-image
-  image: gleif/sally:0.10.1
+  image: gleif/sally:1.0.2
 
 x-healthcheck: &healthcheck
     interval: 15s

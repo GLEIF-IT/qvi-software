@@ -23,9 +23,9 @@ x-keria-image: &keria-image
 x-vlei-image: &vlei-image
   image: gleif/vlei:1.0.0
 x-sally-image: &sally-image
-  image: gleif/sally:1.0.0-rc1
+  image: gleif/sally:1.0.2
 x-direct-sally-image: &direct-sally-image
-  image: gleif/sally:1.0.0-rc1
+  image: gleif/sally:1.0.2
 
 x-healthcheck: &healthcheck
   interval: 3s
