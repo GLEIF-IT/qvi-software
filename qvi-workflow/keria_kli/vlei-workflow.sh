@@ -10,11 +10,14 @@
 # and NodeJS scripts for the SignifyTS creation of both QVI QAR AIDs and the Person AID.
 #
 # To run this script you need to run the following command in a separate terminals:
+# from the KERIpy repo within a Python virtual environment run:
 #   > kli witness demo
-# and from the vLEI repo run:
+# and from the vLEI repo within a Python virtual environment run:
 #   > vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/
-# and from the keria repo run:
+# and from the keria repo within a Python virtual environment run:
 #   > keria start --config-dir scripts --config-file keria --loglevel INFO
+# and from the sally repo within a Python virtual environment run:
+#   > sally server start --direct --http 9723 --salt 0AD45YWdzWSwNREuAoitH_CC --name sally --alias sally --config-dir scripts --config-file sally.json --incept-file sally-incept.json --passcode VVmRdBTe5YCyLMmYRqTAi --web-hook http://127.0.0.1:9923 --auth EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv --loglevel INFO
 # and make sure to perform "npm install" in this directory to be able to run the NodeJS scripts.
 
 source color-printing.sh
@@ -1792,7 +1795,7 @@ function setup() {
   create_aids
   sally_setup
   resolve_oobis
-  challenge_response
+#  challenge_response
 }
 
 function geda_delegation_to_qvi(){
@@ -1862,11 +1865,17 @@ function main_flow() {
   print_lcyan "--------------------------------------------------------------------------------"
 
   setup
+  pause "Press [enter] to continue with challenge and response section"
+  challenge_response
+  pause "Press [enter] to continue with GEDA delegation to QVI"
   geda_delegation_to_qvi
-#  qvi_rotate
+  pause "Press [enter] to continue with QVI identifier rotation"
+  qvi_rotate
   resolve_qvi_oobi
 
+  pause "Press [enter] to continue with QVI credential creation"
   qvi_credential
+  pause "Press [enter] to continue with QVI credential presentation to Sally"
   present_qvi_cred_to_sally
 
   create_le_multisig

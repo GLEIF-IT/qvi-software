@@ -13,9 +13,12 @@
 # It does not use KERIA or SignifyTS for the QVI and Person AIDs, rather it uses KERIpy.
 #
 # To run this script you need to run the following command in a separate terminals:
+# from the KERIpy repo within a Python virtual environment run:
 #   > kli witness demo
-# and from the vLEI repo run:
+# and from the vLEI repo within a Python virtual environment run:
 #   > vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/
+# and from the sally repo within a Python virtual environment run:
+#   > sally server start --direct --http 9723 --salt 0AD45YWdzWSwNREuAoitH_CC --name sally --alias sally --config-dir scripts --config-file sally.json --incept-file sally-incept.json --passcode VVmRdBTe5YCyLMmYRqTAi --web-hook http://127.0.0.1:9923 --auth EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv --loglevel INFO
 # This script runs the "sally" program so it must be installed and available on the path
 #
 # WARNING: This currently depends on v0.10.1+ of Sally being available on the PATH which uses a different
@@ -67,13 +70,13 @@ function pause() {
 
 #### Prepare environment ####
 source vlei-env.sh
+REVOKE_QVI=false
 
 function test_dependencies() {
   # check that sally is installed and available on the PATH
   command -v kli >/dev/null 2>&1 || { print_red "kli is not installed or not available on the PATH. Aborting."; exit 1; }
   command -v tsx >/dev/null 2>&1 || { print_red "tsx is not installed or not available on the PATH. Aborting."; exit 1; }
   command -v jq >/dev/null 2>&1 || { print_red "jq is not installed or not available on the PATH. Aborting."; exit 1; }
-  command -v sally >/dev/null 2>&1 || { print_red "sally is not installed or not available on the PATH. Aborting."; exit 1; }
 
   # check that witnesses are up
   curl ${WIT_HOST}/oobi/${WAN_PRE} >/dev/null 2>&1
@@ -89,6 +92,15 @@ function test_dependencies() {
   status=$?
   if [ $status -ne 0 ]; then
       print_red "vLEI-server not running at ${SCHEMA_SERVER}"
+      cleanup
+      exit 0
+  fi
+
+  # check that sally is up
+  curl ${SALLY_HOST}/oobi >/dev/null 2>&1
+  status=$?
+  if [ $status -ne 0 ]; then
+      print_red "Sally server not running at ${SALLY_HOST}"
       cleanup
       exit 0
   fi
@@ -166,7 +178,6 @@ function create_aids() {
     create_keystore_and_aid "${QAR1}"   "${QAR1_SALT}"   "${QAR1_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     create_keystore_and_aid "${QAR2}"   "${QAR2_SALT}"   "${QAR2_PASSCODE}"   "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     create_keystore_and_aid "${PERSON}" "${PERSON_SALT}" "${PERSON_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_keystore_and_aid "${SALLY}"  "${SALLY_SALT}"  "${SALLY_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     rm "$temp_icp_config"
 }
 
@@ -180,26 +191,13 @@ function add_mailboxes() {
 }
 
 export SALLY_OOBI="http://127.0.0.1:9723/oobi"
+INDIRECT_MODE_SALLY=false  # default
 function sally_setup() {
     print_yellow "Setting up webhook"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
 
-    if $DIRECT_MODE_SALLY; then
-      print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
-      sally server start \
-        --name $SALLY \
-        --alias $SALLY \
-        --salt $SALLY_SALT \
-        --config-dir sally \
-        --config-file sally.json \
-        --incept-file sally-incept.json \
-        --passcode $SALLY_PASSCODE \
-        --web-hook http://127.0.0.1:9923 \
-        --auth "${GEDA_PRE}" & # who will be presenting the credential
-      SALLY_PID=$!
-      export SALLY_OOBI="http://127.0.0.1:9723/oobi"
-    else
+    if [[ $INDIRECT_MODE_SALLY = true ]] ; then
       print_yellow "Starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
       sally server start \
         --name $SALLY \
@@ -212,6 +210,22 @@ function sally_setup() {
         --auth "${GEDA_PRE}" & # who will be presenting the credential
       SALLY_PID=$!
       export SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
+    else
+      print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
+      sally server start \
+        -d \
+        --name "$SALLY" \
+        --alias "$SALLY" \
+        --salt "$SALLY_SALT" \
+        --config-dir sally \
+        --config-file sally.json \
+        --incept-file sally-incept.json \
+        --passcode "$SALLY_PASSCODE" \
+        --web-hook http://127.0.0.1:9923 \
+        --auth "${GEDA_PRE}" & # who will be presenting the credential
+      SALLY_PID=$!
+      export SALLY_OOBI="http://127.0.0.1:9723/oobi"
+
     fi
     print_yellow "Waiting 3 seconds for Sally to start..."
     sleep 3
@@ -790,16 +804,18 @@ function create_qvi_credential() {
 
 # GEDA: IPEX Grant QVI credential to QVI
 function grant_qvi_credential() {
+    QVI_GRANT_SAID=""
     QVI_GRANT_SAID=$(kli ipex list \
-        --name "${QAR1}" \
-        --alias "${QVI_NAME}" \
-        --passcode "${QAR1_PASSCODE}" \
-        --poll \
-        --said)
-    if [ -n "${QVI_GRANT_SAID}" ]; then
-        print_dark_gray "[External] GEDA QVI credential already granted"
-        return
-    fi
+          --name "${QAR1}" \
+          --alias "${QVI_NAME}" \
+          --passcode "${QAR1_PASSCODE}" \
+          --poll \
+          --said | tail -n 1 | tr -d '[:space:]')
+      if [ -n "${QVI_GRANT_SAID}" ]; then
+          print_dark_gray "[External] GEDA QVI credential already granted"
+          return
+      fi
+
     SAID=$(kli vc list \
         --name "${GAR1}" \
         --passcode "${GAR1_PASSCODE}" \
@@ -812,18 +828,18 @@ function grant_qvi_credential() {
     print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto QVI'" ${QVI_PRE}"
     KLI_TIME=$(kli time)
     kli ipex grant \
-        --name ${GAR1} \
-        --passcode ${GAR1_PASSCODE} \
-        --alias ${GEDA_NAME} \
-        --said ${SAID} \
-        --recipient ${QVI_PRE} \
-        --time ${KLI_TIME} &
+        --name "${GAR1}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --alias "${GEDA_NAME}" \
+        --said "${SAID}" \
+        --recipient "${QVI_PRE}" \
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
     kli ipex join \
-        --name ${GAR2} \
-        --passcode ${GAR2_PASSCODE} \
+        --name "${GAR2}" \
+        --passcode "${GAR2_PASSCODE}" \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -841,7 +857,7 @@ function grant_qvi_credential() {
             --alias "${QVI_NAME}" \
             --passcode "${QAR1_PASSCODE}" \
             --poll \
-            --said
+            --said | tail -n 1 | tr -d '[:space:]'
     QVI_GRANT_SAID=$?
     if [ -z "${QVI_GRANT_SAID}" ]; then
         print_red "[QVI] QVI Credential not granted - exiting"
@@ -854,7 +870,7 @@ function grant_qvi_credential() {
             --alias "${QVI_NAME}" \
             --passcode "${QAR2_PASSCODE}" \
             --poll \
-            --said
+            --said | tail -n 1 | tr -d '[:space:]'
     QVI_GRANT_SAID=$?
     if [ -z "${QVI_GRANT_SAID}" ]; then 
         print_red "[QVI] QVI Credential not granted - exiting"
@@ -883,25 +899,25 @@ function admit_qvi_credential() {
         --alias "${QVI_NAME}" \
         --passcode "${QAR1_PASSCODE}" \
         --poll \
-        --said)
+        --said | tail -n 1 | tr -d '[:space:]')
 
     echo
     print_yellow "[QVI] Admitting QVI Credential ${SAID} from GEDA"
 
     KLI_TIME=$(kli time)
     kli ipex admit \
-        --name ${QAR1} \
-        --passcode ${QAR1_PASSCODE} \
-        --alias ${QVI_NAME} \
-        --said ${SAID} \
+        --name "${QAR1}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --alias "${QVI_NAME}" \
+        --said "${SAID}" \
         --time "${KLI_TIME}" & 
     pid=$!
     PID_LIST+=" $pid"
 
     print_green "[QVI] Admitting QVI Credential as ${QVI_NAME} from GEDA"
     kli ipex join \
-        --name ${QAR2} \
-        --passcode ${QAR2_PASSCODE} \
+        --name "${QAR2}" \
+        --passcode "${QAR2_PASSCODE}" \
         --auto &
     pid=$!
     PID_LIST+=" $pid"
@@ -911,6 +927,57 @@ function admit_qvi_credential() {
     echo
     print_green "[QVI] Admitted QVI credential"
     echo
+}
+
+function revoke_qvi_credential() {
+    # Check if QVI credential already exists
+    SAID=$(kli vc list \
+        --name "${GAR1}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --issued \
+        --said \
+        --schema "${QVI_SCHEMA}")
+    if [ -z "${SAID}" ]; then
+        print_dark_gray "[External] GEDA QVI credential not found"
+        return
+    fi
+
+    echo
+    print_yellow "[External] Revoking QVI Credential ${SAID} from GEDA"
+
+    KLI_TIME=$(kli time)
+    kli vc revoke \
+        --name "${GAR1}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --registry-name "${GEDA_REGISTRY}" \
+        --said "${SAID}" \
+        --time "${KLI_TIME}" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    kli vc revoke \
+        --name "${GAR2}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR2_PASSCODE}" \
+        --registry-name "${GEDA_REGISTRY}" \
+        --said "${SAID}" \
+        --time "${KLI_TIME}" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+    wait $PID_LIST
+
+    echo
+    print_green "[External] QVI Credential revoked"
+
+    kli vc list \
+        --name "${GAR1}" \
+        --alias "${GEDA_NAME}" \
+        --passcode "${GAR1_PASSCODE}" \
+        --issued \
+        --schema "${QVI_SCHEMA}"
 }
 
 # QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
@@ -1172,31 +1239,31 @@ function create_le_credential() {
     KLI_TIME=$(kli time)
     PID_LIST=""
     kli vc create \
-        --name ${QAR1} \
-        --alias ${QVI_NAME} \
-        --passcode ${QAR1_PASSCODE} \
-        --registry-name ${QVI_REGISTRY} \
+        --name "${QAR1}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --registry-name "${QVI_REGISTRY}" \
         --schema "${LE_SCHEMA}" \
-        --recipient ${LE_MS_PRE} \
+        --recipient "${LE_MS_PRE}" \
         --data @./acdc-info/temp-data/legal-entity-data.json \
         --edges @./acdc-info/temp-data/qvi-edge.json \
         --rules @./acdc-info/rules/qvi-cred-rules.json \
-        --time ${KLI_TIME} &
+        --time "${KLI_TIME}" &
 
     pid=$!
     PID_LIST+=" $pid"
 
     kli vc create \
-        --name ${QAR2} \
-        --alias ${QVI_NAME} \
-        --passcode ${QAR2_PASSCODE} \
-        --registry-name ${QVI_REGISTRY} \
+        --name "${QAR2}" \
+        --alias "${QVI_NAME}" \
+        --passcode "${QAR2_PASSCODE}" \
+        --registry-name "${QVI_REGISTRY}" \
         --schema "${LE_SCHEMA}" \
-        --recipient ${LE_MS_PRE} \
+        --recipient "${LE_MS_PRE}" \
         --data @./acdc-info/temp-data/legal-entity-data.json \
         --edges @./acdc-info/temp-data/qvi-edge.json \
         --rules @./acdc-info/rules/qvi-cred-rules.json \
-        --time ${KLI_TIME} &
+        --time "${KLI_TIME}" &
     pid=$!
     PID_LIST+=" $pid"
 
@@ -2202,7 +2269,7 @@ function setup() {
   test_dependencies
   create_aids
 #  add_mailboxes
-  sally_setup
+#  sally_setup
   resolve_oobis
   challenge_response
 }
@@ -2228,6 +2295,18 @@ function qvi_credential() {
   create_qvi_credential
   grant_qvi_credential
   admit_qvi_credential
+}
+
+function revoke_qvi(){
+  if [[ "${REVOKE_QVI}" == "true" ]]; then
+    print_lcyan "Revoke QVI Credential"
+    revoke_qvi_credential
+    grant_qvi_credential
+    admit_qvi_credential
+  else
+    print_lcyan "Skipping QVI Credential Revocation"
+  fi
+
 }
 
 function le_credential() {
@@ -2361,6 +2440,12 @@ function debug_workflow() {
   create_geda_reg
 
   qvi_credential
+
+  pause "Press [enter] to present qvi credential to Sally"
+  present_qvi_cred_to_sally
+  pause "Press [enter] to revoke qvi credential"
+  revoke_qvi
+  pause "Press [enter] to present revoked qvi credential to Sally"
   present_qvi_cred_to_sally
 
   create_le_multisig
@@ -2408,8 +2493,8 @@ while [[ $# -gt 0 ]]; do
             CHALLENGE_ENABLED=true
             shift
             ;;
-        --direct)
-            DIRECT_MODE_SALLY=true
+        --indirect)
+            INDIRECT_MODE_SALLY=true
             shift
             ;;
         --pause)
@@ -2437,6 +2522,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--debug)
             debug_workflow
+            ;;
+        --revoke-qvi)
+            REVOKE_QVI=true
+            shift
             ;;
         *)
             echo "Unknown option: $1"
