@@ -11,7 +11,7 @@ This is designed to work with a local installation of the necessary components.
 This script uses only KERIpy keystores for all participants.
 It does not use KERIA or SignifyTS for the QVI and Person AIDs, rather it uses KERIpy.
 
-To run this script you need to run local witnesses and a local vLEI-Server as shown below.
+To run this script you need to run local witnesses, a local vLEI-Server, and a Sally verifier server as shown below.
 You also need the Sally CLI installed and available on your path.
 
 #### Witnesses
@@ -35,7 +35,23 @@ To provide a local vLEI ACDC Schema host so that ACDC Schema OOBIs resolve then 
 vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/
 ```
 
-This script runs the "sally" program so it must be installed and available on the path
+### Sally Verifier
+
+To run a local Sally verifier server to accept the QVI credential presentations, run:
+```bash
+sally server start \
+  --direct \
+  --salt 0AD45YWdzWSwNREuAoitH_CC \
+  --name sally \
+  --alias sally \
+  --config-dir scripts \
+  --config-file sally.json \
+  --incept-file sally-incept.json \
+  --passcode VVmRdBTe5YCyLMmYRqTAi \
+  --web-hook http://127.0.0.1:9923 \
+  --auth EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv \
+  --loglevel INFO
+```
 
 ## Workflow Steps
 

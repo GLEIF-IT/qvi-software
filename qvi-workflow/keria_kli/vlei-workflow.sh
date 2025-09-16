@@ -10,11 +10,14 @@
 # and NodeJS scripts for the SignifyTS creation of both QVI QAR AIDs and the Person AID.
 #
 # To run this script you need to run the following command in a separate terminals:
+# from the KERIpy repo within a Python virtual environment run:
 #   > kli witness demo
-# and from the vLEI repo run:
+# and from the vLEI repo within a Python virtual environment run:
 #   > vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/
-# and from the keria repo run:
+# and from the keria repo within a Python virtual environment run:
 #   > keria start --config-dir scripts --config-file keria --loglevel INFO
+# and from the sally repo within a Python virtual environment run:
+#   > sally server start --direct --http 9723 --salt 0AD45YWdzWSwNREuAoitH_CC --name sally --alias sally --config-dir scripts --config-file sally.json --incept-file sally-incept.json --passcode VVmRdBTe5YCyLMmYRqTAi --web-hook http://127.0.0.1:9923 --auth EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv --loglevel INFO
 # and make sure to perform "npm install" in this directory to be able to run the NodeJS scripts.
 
 source color-printing.sh
@@ -183,14 +186,45 @@ function create_aids() {
     rm "$temp_icp_config"
 }
 
+function check_sally_up() {
+  curl ${SALLY_HOST}/oobi >/dev/null 2>&1
+  status=$?
+  if [ $status -ne 0 ]; then
+    echo "1"
+  else
+    echo "0"
+  fi
+}
+
+function check_webhook_up() {
+  curl ${WEBHOOK_HOST}/health >/dev/null 2>&1
+  status=$?
+  if [ $status -ne 0 ]; then
+    echo "1"
+  else
+    echo "0"
+  fi
+}
+
+INDIRECT_MODE_SALLY=false
 function sally_setup() {
     export SALLY_OOBI="http://127.0.0.1:9723/oobi"
+
+    # skip setup if already running
+    if [[ $(check_sally_up) -eq 0 ]]; then
+      print_yellow "Sally already running on ${SALLY_HOST}"
+      if [[ $(check_webhook_up) -eq 0 ]]; then
+        print_yellow "Webhook already running on ${WEBHOOK_HOST}"
+        return
+      fi
+    fi
+
     print_yellow "Setting up webhook on ${WEBHOOK_HOST}"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
 
     # defaults to direct mode
-    if [ $INDIRECT_MODE_SALLY = true ] ; then
+    if [[ $INDIRECT_MODE_SALLY = true ]] ; then
       print_yellow "Starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
       sally server start \
         --name "${SALLY}" \
@@ -206,6 +240,7 @@ function sally_setup() {
     else
       print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
       sally server start \
+        --direct \
         --name "${SALLY}" \
         --alias "${SALLY}" \
         --salt "${SALLY_SALT}" \
@@ -235,7 +270,7 @@ function resolve_oobis() {
     LAR1_OOBI="${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     LAR2_OOBI="${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
 
-    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,directSally|$SALLY_OOBI"
+    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,direct-sally|$SALLY_OOBI"
 
     tsx "${SIG_TS_WALLETS_DIR}/qars/resolve-oobi-gars-lars-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
@@ -1792,7 +1827,7 @@ function setup() {
   create_aids
   sally_setup
   resolve_oobis
-  challenge_response
+#  challenge_response
 }
 
 function geda_delegation_to_qvi(){
@@ -1862,11 +1897,17 @@ function main_flow() {
   print_lcyan "--------------------------------------------------------------------------------"
 
   setup
+  pause "Press [enter] to continue with challenge and response section"
+  challenge_response
+  pause "Press [enter] to continue with GEDA delegation to QVI"
   geda_delegation_to_qvi
-#  qvi_rotate
+  pause "Press [enter] to continue with QVI identifier rotation"
+  qvi_rotate
   resolve_qvi_oobi
 
+  pause "Press [enter] to continue with QVI credential creation"
   qvi_credential
+  pause "Press [enter] to continue with QVI credential presentation to Sally"
   present_qvi_cred_to_sally
 
   create_le_multisig

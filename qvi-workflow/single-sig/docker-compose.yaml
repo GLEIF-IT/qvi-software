@@ -1,28 +1,28 @@
 # vLEI full chain Docker Compose file with all needed services
 
 x-keri_1_2-image: &keri_1_2-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 x-keri_1_1-image: &keri_1_1-image
   image: weboftrust/keri:1.1.32
 
 # Witness Images
 x-gar-witness-image: &gar-witness-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 x-qar-witness-image: &qar-witness-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 x-person-witness-image: &person-witness-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 x-sally-witness-image: &sally-witness-image
-  image: gleif/keri:1.2.8-rc1
+  image: gleif/keri:1.2.9
 
 x-keria-image: &keria-image
   image: gleif/keria:0.3.0
 x-vlei-image: &vlei-image
   image: gleif/vlei:1.0.0
 x-sally-image: &sally-image
-  image: gleif/sally:1.0.0-rc1
+  image: gleif/sally:1.0.2
 x-direct-sally-image: &direct-sally-image
-  image: gleif/sally:1.0.0-rc1
+  image: gleif/sally:1.0.2
 
 x-healthcheck: &healthcheck
   interval: 3s
@@ -63,35 +63,6 @@ services:
       <<: *healthcheck
     ports:
       - "7723:7723"
-
-  # Direct mode Sally (runs own mailbox, no witnesses or witness mailbox)
-  direct-sally:
-    stop_grace_period: 1s
-    <<: *direct-sally-image
-    environment:
-      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
-      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - DIRECT_SALLY=${DIRECT_SALLY}
-      - DIRECT_SALLY_SALT=${DIRECT_SALLY_SALT}
-      - DIRECT_SALLY_PASSCODE=${DIRECT_SALLY_PASSCODE}
-      - WEBHOOK_HOST=${WEBHOOK_HOST}
-      - GEDA_PRE=${GAR_PRE}
-      - PYTHONWARNINGS=ignore::SyntaxWarning
-      - DIRECT_PORT=9823
-    volumes:
-      - ./direct-sally/keri/cf/direct-sally.json:/sally/conf/keri/cf/direct-sally.json
-      - ./direct-sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json
-      - ./direct-sally/entry-point.sh:/sally/entry-point.sh
-      - direct-sally-vol:/usr/local/var/keri
-    healthcheck:
-      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9823/health" ]
-      <<: *healthcheck
-    ports:
-      - 9823:9823
-    entrypoint: "/sally/entry-point.sh"
-    depends_on:
-      vlei-server:
-        condition: service_healthy
 
   # GARs use one of the six demo witnesses, wan
   gar-witnesses:
@@ -216,6 +187,35 @@ services:
       - "9923:9923"
     entrypoint: [ 'sally', 'hook', 'demo' ]
 
+  # Direct mode Sally (runs own mailbox, no witnesses or witness mailbox)
+  direct-sally:
+    stop_grace_period: 1s
+    <<: *direct-sally-image
+    environment:
+      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
+      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
+      - SALLY_KS_NAME=${DIRECT_SALLY_KS_NAME}
+      - SALLY_SALT=${DIRECT_SALLY_SALT}
+      - SALLY_PASSCODE=${DIRECT_SALLY_PASSCODE}
+      - WEBHOOK_HOST=${WEBHOOK_HOST}
+      - GEDA_PRE=${GAR_PRE}
+      - PYTHONWARNINGS=ignore::SyntaxWarning
+      - SALLY_PORT=9823
+    volumes:
+      - ./direct-sally/keri/cf/direct-sally.json:/sally/conf/keri/cf/direct-sally.json
+      - ./direct-sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json
+      - ./direct-sally/entry-point.sh:/sally/entry-point.sh
+      - direct-sally-vol:/usr/local/var/keri
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9823/health" ]
+      <<: *healthcheck
+    ports:
+      - 9823:9823
+    entrypoint: "/sally/entry-point.sh"
+    depends_on:
+      vlei-server:
+        condition: service_healthy
+
   # The reporting endpoint service receiving IPEX credential presentations
   sally:
     stop_grace_period: 1s
@@ -223,12 +223,13 @@ services:
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - SALLY=${SALLY}
-      - SALLY_SALT=${SALLY_SALT}
-      - SALLY_PASSCODE=${SALLY_PASSCODE}
+      - SALLY_KS_NAME=${INDIRECT_SALLY_KS_NAME}
+      - SALLY_SALT=${INDIRECT_SALLY_SALT}
+      - SALLY_PASSCODE=${INDIRECT_SALLY_PASSCODE}
       - WEBHOOK_HOST=${WEBHOOK_HOST}
       - GEDA_PRE=${GAR_PRE}
       - PYTHONWARNINGS=ignore::SyntaxWarning
+      - SALLY_PORT=9723
     volumes:
       - ./sally/keri/cf/sally.json:/sally/conf/keri/cf/sally.json
       - ./sally/sally-incept.json:/sally/conf/sally-incept.json
@@ -240,20 +241,6 @@ services:
     ports:
       - "9723:9723"
     entrypoint: "/sally/entry-point.sh"
-    # The below entrypoint is for testing the migration from indirect to direct mode
-#    entrypoint: [
-#      "sally", "server", "start",
-#      "--name", "sally",
-#      "--alias", "sally",
-#      "--passcode", "VVmRdBTe5YCyLMmYRqTAi",
-#      "--config-dir", "/sally/conf",
-#      "--config-file", "sally.json",
-#      "--web-hook", "https://hook:9923",
-#      "--auth", "ELgGpX0qEu1zvualkjb0FX2Nu48mCV1ExOVw_TrJ_6l-",
-#      "--loglevel", "INFO",
-#      "--http", "9723",
-#      "--direct"
-#    ]
     depends_on:
       hook:
         condition: service_healthy

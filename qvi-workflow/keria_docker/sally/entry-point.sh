@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-SALLY="${SALLY:-sally}"
+SALLY_KS_NAME="${SALLY_KS_NAME:-sally}"
 SALLY_SALT="${SALLY_SALT:-0AD45YWdzWSwNREuAoitH_CC}"
 SALLY_PASSCODE="${SALLY_PASSCODE:-VVmRdBTe5YCyLMmYRqTAi}"
 WEBHOOK_HOST="${WEBHOOK_HOST:-http://hook:9923}"
@@ -15,7 +15,7 @@ fi
 
 # Create Habery / keystore
 kli init \
-    --name "${SALLY}" \
+    --name "${SALLY_KS_NAME}" \
     --salt "${SALLY_SALT}" \
     --passcode "${SALLY_PASSCODE}" \
     --config-dir /sally/conf \
@@ -23,13 +23,16 @@ kli init \
 
 # Create sally identifier
 kli incept \
-    --name "${SALLY}" \
-    --alias "${SALLY}" \
+    --name "${SALLY_KS_NAME}" \
+    --alias "${SALLY_ALIAS}" \
     --passcode "${SALLY_PASSCODE}" \
     --config /sally/conf \
     --file "/sally/conf/sally-incept.json"
 
-sally server start --name "${SALLY}" --alias "${SALLY}" \
+sally server start \
+  --http "${SALLY_PORT:-9723}" \
+  --name "${SALLY_KS_NAME}" \
+  --alias "${SALLY_ALIAS}" \
   --passcode "${SALLY_PASSCODE}" \
   --config-dir /sally/conf \
   --config-file sally.json \

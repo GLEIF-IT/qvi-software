@@ -19,7 +19,7 @@ fi
 
 # Set current working directory for all scripts that must access files
 KLI1IMAGE="weboftrust/keri:1.1.32"
-KLI2IMAGE="gleif/keri:1.2.8-rc1"
+KLI2IMAGE="gleif/keri:1.2.9"
 
 TSX_SIGNIFY_IMG="gleif/vlei-workflow-signify:1.0.0"
 

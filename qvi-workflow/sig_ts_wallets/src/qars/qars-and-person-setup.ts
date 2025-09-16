@@ -18,7 +18,7 @@ const env = args[0] as 'local' | 'docker';
 const dataDir = args[1];
 const aidInfoArg = args[2];
 
-const {witnessIds, vleiServerUrl} = resolveEnvironment(env);
+const {witnessIds, vleiServerUrl, witnessUrls} = resolveEnvironment(env);
 
 // Credential schema IDs and URLs to resolve from the credential schema caching server (vLEI server)
 const QVI_SCHEMA="EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao"
@@ -48,6 +48,33 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
     const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
     const personClient = await getOrCreateClient(PERSON.salt, environment, 1);
 
+    // resolve witness OOBIs
+    console.log("Witness OOBIs are...", witnessUrls);
+    console.log("Witness IDs are...", witnessIds);
+    const wanOobi = `${witnessUrls[0]}/oobi/${WAN}/controller?name=Wan&tag=witness`;
+    const wilOobi = `${witnessUrls[1]}/oobi/${WIL}/controller?name=Wil&tag=witness`;
+    const wesOobi = `${witnessUrls[2]}/oobi/${WES}/controller?name=Wes&tag=witness`;
+    console.log("Wan OOBI:", wanOobi);
+    console.log("Wil OOBI:", wilOobi);
+    console.log("Wes OOBI:", wesOobi);
+
+    console.log("Resolving witness OOBIs for QARs and Person...");
+    await Promise.all([
+        resolveOobi(QAR1Client, wanOobi),
+        resolveOobi(QAR1Client, wilOobi),
+        resolveOobi(QAR1Client, wesOobi),
+        resolveOobi(QAR2Client, wanOobi),
+        resolveOobi(QAR2Client, wilOobi),
+        resolveOobi(QAR2Client, wesOobi),
+        resolveOobi(QAR3Client, wanOobi),
+        resolveOobi(QAR3Client, wilOobi),
+        resolveOobi(QAR3Client, wesOobi),
+        resolveOobi(personClient, wanOobi),
+        resolveOobi(personClient, wilOobi),
+        resolveOobi(personClient, wesOobi),
+    ]);
+
+    console.log("Creating AIDs for QARs");
     // Create QAR AIDs
     const aidConfigQARs = {
         toad: 1,
@@ -63,6 +90,7 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
         getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
     ]);
 
+    console.log("Creating AID for Person");
     // Create Person AID
     const aidConfigPerson = {
         toad: 1,
