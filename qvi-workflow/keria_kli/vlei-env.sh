@@ -70,7 +70,7 @@ export SALLY_HOST=http://127.0.0.1:9723
 export SALLY=sally
 export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-export SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm
+export SALLY_PRE=ECu-Lt62sUHkdZPnhIBoSuQrJWbi4Rqf_xUBOOJqAR7K
 
 # Registries
 export GEDA_REGISTRY=vLEI-external

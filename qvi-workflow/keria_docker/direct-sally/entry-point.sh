@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-SALLY="${DIRECT_SALLY:-direct-sally}"
-SALLY_SALT="${DIRECT_SALLY_SALT:-0ABVqAtad0CBkhDhCEPd514T}"
-SALLY_PASSCODE="${DIRECT_SALLY_PASSCODE:-4TBjjhmKu9oeDp49J7Xdy}"
-WEBHOOK_HOST="${DIRECT_WEBHOOK_HOST:-http://hook:9923}"
+SALLY_KS_NAME="${SALLY_KS_NAME:-direct-sally}"
+SALLY_SALT="${SALLY_SALT:-0ABVqAtad0CBkhDhCEPd514T}"
+SALLY_PASSCODE="${SALLY_PASSCODE:-4TBjjhmKu9oeDp49J7Xdy}"
+WEBHOOK_HOST="${WEBHOOK_HOST:-http://hook:9923}"
 GEDA_PRE="${GEDA_PRE}"
 
 if [ -z "${GEDA_PRE}" ]; then
@@ -15,7 +15,7 @@ fi
 
 # Create Habery / keystore
 kli init \
-    --name "${SALLY}" \
+    --name "${SALLY_KS_NAME}" \
     --salt "${SALLY_SALT}" \
     --passcode "${SALLY_PASSCODE}" \
     --config-dir /sally/conf \
@@ -23,18 +23,20 @@ kli init \
 
 # Create sally identifier
 kli incept \
-    --name "${SALLY}" \
-    --alias "${SALLY}" \
+    --name "${SALLY_KS_NAME}" \
+    --alias "${SALLY_ALIAS}" \
     --passcode "${SALLY_PASSCODE}" \
     --config /sally/conf \
     --file "/sally/conf/sally-incept-no-wits.json"
 
-DEBUG_KLI=true sally server start --name "${SALLY}" --alias "${SALLY}" \
+DEBUG_KLI=true sally server start \
+  --direct \
+  --http ${SALLY_PORT:-9823} \
+  --name "${SALLY_KS_NAME}" \
+  --alias "${SALLY_ALIAS}" \
   --passcode "${SALLY_PASSCODE}" \
   --config-dir /sally/conf \
   --config-file direct-sally.json \
   --web-hook "${WEBHOOK_HOST}" \
   --auth "${GEDA_PRE}" \
-  --loglevel INFO \
-  --http ${DIRECT_PORT:-9823} \
-  --direct
+  --loglevel DEBUG

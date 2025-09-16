@@ -161,17 +161,17 @@ PERSON_OOR="Advisor"
 WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
 # exporting so available for child docker compose processes
 export WEBHOOK_HOST=http://hook:9923
-export SALLY_HOST=http://sally:9723
-export SALLY=sally
-export SALLY_ALIAS=sallyIndirect
-export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
-export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-export SALLY_PRE=EA69Z5sR2kr-05QmZ7v3VuMq8MdhVupve3caHXbhom0D # Different here because Sally uses witness Wit instead of Wan
+export INDIRECT_SALLY_HOST=http://sally:9723
+export INDIRECT_SALLY_KS_NAME=sally-indirect
+export INDIRECT_SALLY_ALIAS=sally-indirect
+export INDIRECT_SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
+export INDIRECT_SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
+export INDIRECT_SALLY_PRE=EJeORQY7Qbo_iJyE9OrM-Py0m-qjMQCLSmz2ztJDtifZ # Different here because Sally uses witness Wit instead of Wan
 
 # Direct mode Sally
 export DIRECT_SALLY_HOST=http://direct-sally:9823
-export DIRECT_SALLY=direct-sally
-export DIRECT_SALLY_ALIAS=directSally
+export DIRECT_SALLY_KS_NAME=direct-sally
+export DIRECT_SALLY_ALIAS=direct-sally
 export DIRECT_SALLY_PASSCODE=4TBjjhmKu9oeDp49J7Xdy
 export DIRECT_SALLY_SALT=0ABVqAtad0CBkhDhCEPd514T
 export DIRECT_SALLY_PRE=ECLwKe5b33BaV20x7HZWYi_KUXgY91S41fRL2uCaf4WQ # Different here because of direct mode sally with no witnesses and a new passcode and salt
@@ -220,14 +220,14 @@ LAR2_PASSCODE=$LAR2_PASSCODE
 LE_NAME=gareth
 
 # Sally AID
-SALLY=$SALLY
-SALLY_ALIAS=$SALLY_ALIAS
-SALLY_PRE=$SALLY_PRE
-SALLY_SALT=$SALLY_SALT
-SALLY_PASSCODE=$SALLY_PASSCODE
+INDIRECT_SALLY_KS_NAME=$INDIRECT_SALLY_KS_NAME
+INDIRECT_SALLY_ALIAS=$INDIRECT_SALLY_ALIAS
+INDIRECT_SALLY_PRE=$INDIRECT_SALLY_PRE
+INDIRECT_SALLY_SALT=$INDIRECT_SALLY_SALT
+INDIRECT_SALLY_PASSCODE=$INDIRECT_SALLY_PASSCODE
 
 # Direct Sally AID
-DIRECT_SALLY=$DIRECT_SALLY
+DIRECT_SALLY_KS_NAME=$DIRECT_SALLY_KS_NAME
 DIRECT_SALLY_ALIAS=$DIRECT_SALLY_ALIAS
 DIRECT_SALLY_PRE=$DIRECT_SALLY_PRE
 DIRECT_SALLY_SALT=$DIRECT_SALLY_SALT
@@ -241,6 +241,13 @@ ECR_AUTH_SCHEMA=$ECR_AUTH_SCHEMA
 OOR_AUTH_SCHEMA=$OOR_AUTH_SCHEMA
 ECR_SCHEMA=$ECR_SCHEMA
 OOR_SCHEMA=$OOR_SCHEMA
+
+# KERIA + Signify vars
+QVI_SIGNIFY_DIR=$QVI_SIGNIFY_DIR
+QVI_DATA_DIR=$QVI_DATA_DIR
+SIGTS_AIDS=$SIGTS_AIDS
+ENVIRONMENT=$ENVIRONMENT
+QVI_NAME=$QVI_NAME
 EOM
 
   print_dark_gray "Writing keystore and identifier information to docker.env"
@@ -389,17 +396,16 @@ function resolve_oobis() {
         return
     fi
 
-    # SALLY_OOBI="${SALLY_HOST}/oobi/${SALLY_PRE}/controller" # controller OOBI - for direct-mode
-    SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${SALLY_PRE}/witness/${WIT_PRE}" # indirect-mode sally
+    INDIRECT_SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${INDIRECT_SALLY_PRE}/witness/${WIT_PRE}" # indirect-mode sally
     DIRECT_SALLY_OOBI="${DIRECT_SALLY_HOST}/oobi"
-    print_green "SALLY OOBI: ${SALLY_OOBI}"
+    print_green "INDIRECT SALLY OOBI: ${INDIRECT_SALLY_OOBI}"
     print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
 
     GAR1_OOBI="${WIT_HOST_GAR}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
     LAR1_OOBI="${WIT_HOST_QAR}/oobi/${LAR1_PRE}/witness/${WIL_PRE}"
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
-    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,directSally|$DIRECT_SALLY_OOBI"
+    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,direct-sally|$DIRECT_SALLY_OOBI"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/qars/resolve-oobi-gars-lars-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 
@@ -413,8 +419,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR2_OOBI}" 
     kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR3}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${GAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${GAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${INDIRECT_SALLY_ALIAS}" --passcode "${GAR1_PASSCODE}" --oobi "${INDIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${DIRECT_SALLY_ALIAS}"   --passcode "${GAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for GAR 2"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${GAR1_OOBI}"
@@ -424,8 +430,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR3}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${GAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${GAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${INDIRECT_SALLY_ALIAS}" --passcode "${GAR2_PASSCODE}" --oobi "${INDIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${DIRECT_SALLY_ALIAS}"   --passcode "${GAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 1"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${LAR2_OOBI}"
@@ -435,8 +441,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR3}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${LAR1}" --oobi-alias "${PERSON}" --passcode "${LAR1_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${LAR1_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${LAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${INDIRECT_SALLY_ALIAS}" --passcode "${LAR1_PASSCODE}" --oobi "${INDIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${DIRECT_SALLY_ALIAS}"   --passcode "${LAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 2"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${LAR1_OOBI}"
@@ -446,8 +452,8 @@ function resolve_oobis() {
     kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR3}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR3_OOBI}"
     kli oobi resolve --name "${LAR2}" --oobi-alias "${PERSON}" --passcode "${LAR2_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${LAR2_PASSCODE}" --oobi "${SALLY_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${LAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${INDIRECT_SALLY_ALIAS}" --passcode "${LAR2_PASSCODE}" --oobi "${INDIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${DIRECT_SALLY_ALIAS}"   --passcode "${LAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
     
     echo
 }
@@ -2027,6 +2033,7 @@ function setup() {
   setup_keria_identifiers
   create_aids
   read_prefixes
+
   resolve_oobis
   # challenge_response() including SignifyTS Integration
 }
@@ -2049,6 +2056,7 @@ function qvi_credential() {
   create_qvi_credential
   grant_qvi_credential
   admit_qvi_credential
+  pause "Press [ENTER] to present QVI credential to Sally"
   present_qvi_cred_to_sally_signify
 }
 
@@ -2124,6 +2132,7 @@ function main_flow() {
   qvi_credential
 
   le_creation_and_granting
+  pause "Press [ENTER] to present LE credential to Sally"
   le_sally_presentation
 
   oor_auth_and_oor_cred

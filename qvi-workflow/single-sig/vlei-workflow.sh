@@ -128,17 +128,17 @@ PERSON_OOR="Advisor"
 WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
 # exporting so available for child docker compose processes
 export WEBHOOK_HOST=http://hook:9923
-export SALLY_HOST=http://sally:9723
-export SALLY=sally
-export SALLY_ALIAS=sallyIndirect
-export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
-export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-export SALLY_PRE=EA69Z5sR2kr-05QmZ7v3VuMq8MdhVupve3caHXbhom0D # Different here because Sally uses witness Wit instead of Wan
+export INDIRECT_SALLY_HOST=http://sally:9723
+export INDIRECT_SALLY_KS_NAME=sally-indirect
+export INDIRECT_SALLY_ALIAS=sally-indirect
+export INDIRECT_SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
+export INDIRECT_SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
+export INDIRECT_SALLY_PRE=EPxtqtYDHmhrCPLjYHQo4CF9ccHal1VgonSrVgmy6xYT # Different here because Sally uses witness Wit instead of Wan
 
 # Direct mode Sally
 export DIRECT_SALLY_HOST=http://direct-sally:9823
 export DIRECT_SALLY=direct-sally
-export DIRECT_SALLY_ALIAS=directSally
+export DIRECT_SALLY_ALIAS=direct-sally
 export DIRECT_SALLY_PASSCODE=4TBjjhmKu9oeDp49J7Xdy
 export DIRECT_SALLY_SALT=0ABVqAtad0CBkhDhCEPd514T
 export DIRECT_SALLY_PRE=ECLwKe5b33BaV20x7HZWYi_KUXgY91S41fRL2uCaf4WQ # Different here because of direct mode sally with no witnesses and a new passcode and salt
@@ -172,8 +172,8 @@ LAR_SALT=$LAR_SALT
 LAR_PASSCODE=$LAR_PASSCODE
 
 # Sally AID
-SALLY_ALIAS=$SALLY_ALIAS
-SALLY_PRE=$SALLY_PRE
+INDIRECT_SALLY_ALIAS=$INDIRECT_SALLY_ALIAS
+INDIRECT_SALLY_PRE=$INDIRECT_SALLY_PRE
 
 # Direct Sally AID
 DIRECT_SALLY_ALIAS=$DIRECT_SALLY_ALIAS
@@ -316,11 +316,11 @@ function resolve_oobis() {
         return
     fi
 
-    export SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${SALLY_PRE}/witness/${WIT_PRE}" # indirect-mode sally
+    export INDIRECT_SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${INDIRECT_SALLY_PRE}/witness/${WIT_PRE}" # indirect-mode sally
     export DIRECT_SALLY_OOBI="${DIRECT_SALLY_HOST}/oobi"
     export GAR_OOBI="${WIT_HOST_GAR}/oobi/${GAR_PRE}/witness/${WAN_PRE}"
     export LAR_OOBI="${WIT_HOST_QAR}/oobi/${LAR_PRE}/witness/${WIL_PRE}"
-    export OOBIS_FOR_KERIA="gar|$GAR_OOBI,lar|$LAR_OOBI,directSally|$DIRECT_SALLY_OOBI"
+    export OOBIS_FOR_KERIA="gar|$GAR_OOBI,lar|$LAR_OOBI,direct-sally|$DIRECT_SALLY_OOBI"
 
     print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
 
@@ -333,14 +333,14 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR}" --oobi-alias "${LAR}"    --passcode "${GAR_PASSCODE}" --oobi "${LAR_OOBI}"
     kli oobi resolve --name "${GAR}" --oobi-alias "${QAR}"    --passcode "${GAR_PASSCODE}" --oobi "${QAR_OOBI}"
     kli oobi resolve --name "${GAR}" --oobi-alias "${PERSON}" --passcode "${GAR_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${GAR_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${GAR}" --oobi-alias "${INDIRECT_SALLY_ALIAS}"        --passcode "${GAR_PASSCODE}" --oobi "${INDIRECT_SALLY_OOBI}"
     kli oobi resolve --name "${GAR}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${GAR_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 1"
     kli oobi resolve --name "${LAR}" --oobi-alias "${GAR}"    --passcode "${LAR_PASSCODE}" --oobi "${GAR_OOBI}"
     kli oobi resolve --name "${LAR}" --oobi-alias "${QAR}"    --passcode "${LAR_PASSCODE}" --oobi "${QAR_OOBI}"
     kli oobi resolve --name "${LAR}" --oobi-alias "${PERSON}" --passcode "${LAR_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR}" --oobi-alias "${SALLY_ALIAS}"        --passcode "${LAR_PASSCODE}" --oobi "${SALLY_OOBI}"
+    kli oobi resolve --name "${LAR}" --oobi-alias "${INDIRECT_SALLY_ALIAS}"        --passcode "${LAR_PASSCODE}" --oobi "${INDIRECT_SALLY_OOBI}"
     kli oobi resolve --name "${LAR}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${LAR_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     echo
@@ -572,13 +572,13 @@ function present_qvi_cred_to_sally_kli() {
         --schema "${QVI_SCHEMA}" | tr -d '[:space:]')
 
     echo
-    print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto Sally'" ${SALLY_PRE}"
+    print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto Sally'" ${INDIRECT_SALLY_PRE}"
     kli ipex grant \
         --name "${GAR}" \
         --passcode "${GAR_PASSCODE}" \
         --alias "${GAR}" \
         --said "${SAID}" \
-        --recipient "${SALLY_PRE}"
+        --recipient "${INDIRECT_SALLY_PRE}"
 
     echo
     print_green "[External] QVI Credential presented to Sally Indirect"
@@ -595,7 +595,7 @@ function present_qvi_cred_to_sally_signify() {
 #  print_lcyan "QVI_SCHEMA: ${QVI_SCHEMA}"
 #  print_lcyan "GAR_PRE: ${GAR_PRE}"
 #  print_lcyan "QVI_PRE: ${QVI_PRE}"
-#  print_lcyan "SALLY_PRE: ${SALLY_PRE}"
+#  print_lcyan "INDIRECT_SALLY_PRE: ${INDIRECT_SALLY_PRE}"
 
   sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/qvi-present-credential.ts" \
     "${ENVIRONMENT}" \
@@ -603,7 +603,7 @@ function present_qvi_cred_to_sally_signify() {
     "${QVI_SCHEMA}" \
     "${GAR_PRE}" \
     "${QVI_PRE}"\
-    "${SALLY_PRE}"
+    "${INDIRECT_SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0

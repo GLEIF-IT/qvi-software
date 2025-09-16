@@ -186,14 +186,45 @@ function create_aids() {
     rm "$temp_icp_config"
 }
 
+function check_sally_up() {
+  curl ${SALLY_HOST}/oobi >/dev/null 2>&1
+  status=$?
+  if [ $status -ne 0 ]; then
+    echo "1"
+  else
+    echo "0"
+  fi
+}
+
+function check_webhook_up() {
+  curl ${WEBHOOK_HOST}/health >/dev/null 2>&1
+  status=$?
+  if [ $status -ne 0 ]; then
+    echo "1"
+  else
+    echo "0"
+  fi
+}
+
+INDIRECT_MODE_SALLY=false
 function sally_setup() {
     export SALLY_OOBI="http://127.0.0.1:9723/oobi"
+
+    # skip setup if already running
+    if [[ $(check_sally_up) -eq 0 ]]; then
+      print_yellow "Sally already running on ${SALLY_HOST}"
+      if [[ $(check_webhook_up) -eq 0 ]]; then
+        print_yellow "Webhook already running on ${WEBHOOK_HOST}"
+        return
+      fi
+    fi
+
     print_yellow "Setting up webhook on ${WEBHOOK_HOST}"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
 
     # defaults to direct mode
-    if [ $INDIRECT_MODE_SALLY = true ] ; then
+    if [[ $INDIRECT_MODE_SALLY = true ]] ; then
       print_yellow "Starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
       sally server start \
         --name "${SALLY}" \
@@ -209,6 +240,7 @@ function sally_setup() {
     else
       print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
       sally server start \
+        --direct \
         --name "${SALLY}" \
         --alias "${SALLY}" \
         --salt "${SALLY_SALT}" \
@@ -238,7 +270,7 @@ function resolve_oobis() {
     LAR1_OOBI="${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     LAR2_OOBI="${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
 
-    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,directSally|$SALLY_OOBI"
+    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,direct-sally|$SALLY_OOBI"
 
     tsx "${SIG_TS_WALLETS_DIR}/qars/resolve-oobi-gars-lars-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
 

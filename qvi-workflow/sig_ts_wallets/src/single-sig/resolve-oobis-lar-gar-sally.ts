@@ -12,7 +12,7 @@ const oobiArg = args[2];
 
 // Resolve OOBIs between the QARs and the person and the GEDA, GIDA, and Sally based on script arguments
 // aidInfoArg format: "qar|Alice|salt,person|David|salt"
-// oobiStrArg format: "gar|OOBI,lar|OOBI,sally|OOBI"
+// oobiStrArg format: "gar|OOBI,lar|OOBI,sally-indirect|OOBI"
 async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: TestEnvironmentPreset) {
     // create SignifyTS Clients
     const {QAR, PERSON} = parseAidInfoSingleSig(aidStrArg);

@@ -72,6 +72,26 @@ function pause() {
 source vlei-env.sh
 REVOKE_QVI=false
 
+function check_sally_up() {
+  curl ${SALLY_HOST}/oobi >/dev/null 2>&1
+  status=$?
+  if [ $status -ne 0 ]; then
+    echo "1"
+  else
+    echo "0"
+  fi
+}
+
+function check_webhook_up() {
+  curl ${WEBHOOK_HOST}/health >/dev/null 2>&1
+  status=$?
+  if [ $status -ne 0 ]; then
+    echo "1"
+  else
+    echo "0"
+  fi
+}
+
 function test_dependencies() {
   # check that sally is installed and available on the PATH
   command -v kli >/dev/null 2>&1 || { print_red "kli is not installed or not available on the PATH. Aborting."; exit 1; }
@@ -97,12 +117,10 @@ function test_dependencies() {
   fi
 
   # check that sally is up
-  curl ${SALLY_HOST}/oobi >/dev/null 2>&1
-  status=$?
-  if [ $status -ne 0 ]; then
+  if [[ $(check_sally_up) -ne 0 ]]; then
       print_red "Sally server not running at ${SALLY_HOST}"
       cleanup
-      exit 0
+      exit 1
   fi
 }
 
@@ -193,6 +211,15 @@ function add_mailboxes() {
 export SALLY_OOBI="http://127.0.0.1:9723/oobi"
 INDIRECT_MODE_SALLY=false  # default
 function sally_setup() {
+    # skip setup if already running
+    if [[ $(check_sally_up) -eq 0 ]]; then
+      print_yellow "Sally already running on ${SALLY_HOST}"
+      if [[ $(check_webhook_up) -eq 0 ]]; then
+        print_yellow "Webhook already running on ${WEBHOOK_HOST}"
+        return
+      fi
+    fi
+
     print_yellow "Setting up webhook"
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
@@ -204,7 +231,7 @@ function sally_setup() {
         --alias $SALLY \
         --salt $SALLY_SALT \
         --config-dir sally \
-        --config-file sally.json \
+        --config-file sally-indirect.json \
         --passcode $SALLY_PASSCODE \
         --web-hook http://127.0.0.1:9923 \
         --auth "${GEDA_PRE}" & # who will be presenting the credential
@@ -218,7 +245,7 @@ function sally_setup() {
         --alias "$SALLY" \
         --salt "$SALLY_SALT" \
         --config-dir sally \
-        --config-file sally.json \
+        --config-file sally-indirect.json \
         --incept-file sally-incept.json \
         --passcode "$SALLY_PASSCODE" \
         --web-hook http://127.0.0.1:9923 \
@@ -2269,7 +2296,7 @@ function setup() {
   test_dependencies
   create_aids
 #  add_mailboxes
-#  sally_setup
+  sally_setup
   resolve_oobis
   challenge_response
 }

@@ -4,13 +4,12 @@
 # - vLEI server for credential schema caching
 
 x-keri_1_2-image: &keri_1_2-image
-  image: weboftrust/keri:1.2.6
+  image: gleif/keri:1.2.9
 x-keri_1_1-image: &keri_1_1-image
-  image: gleif/keri:1.2.8
-#  image: weboftrust/keri:1.1.32
+  image: weboftrust/keri:1.1.32
 
 x-witness-demo-image: &witness-demo-image
-    image: weboftrust/keri:1.2.6
+    image: gleif/keri:1.2.9
 x-keria-image: &keria-image
     image: gleif/keria:0.3.0
 x-vlei-image: &vlei-image
@@ -120,12 +119,13 @@ services:
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - SALLY=${SALLY}
-      - SALLY_SALT=${SALLY_SALT}
-      - SALLY_PASSCODE=${SALLY_PASSCODE}
+      - SALLY_KS_NAME=${INDIRECT_SALLY_KS_NAME}
+      - SALLY_SALT=${INDIRECT_SALLY_SALT}
+      - SALLY_PASSCODE=${INDIRECT_SALLY_PASSCODE}
       - WEBHOOK_HOST=${WEBHOOK_HOST}
       - GEDA_PRE=${GEDA_PRE}
       - PYTHONWARNINGS=ignore::SyntaxWarning
+      - SALLY_PORT=9723
     volumes:
       - ./sally/keri/cf/sally.json:/sally/conf/keri/cf/sally.json
       - ./sally/sally-incept.json:/sally/conf/sally-incept.json

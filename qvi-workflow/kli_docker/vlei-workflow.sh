@@ -147,7 +147,7 @@ PERSON_ECR="Consultant"
 PERSON_OOR="Advisor"
 
 # Sally - vLEI Reporting API
-SALLY=sally
+SALLY=sally-indirect
 SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
 SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm
