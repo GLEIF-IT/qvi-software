@@ -202,10 +202,10 @@ function create_aids() {
 function add_mailboxes() {
     # Not needed yet - testing something
     print_yellow "[QVI] QARs adding mailbox endpoints"
-    kli ends add --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --role mailbox --eid "${WAN_PRE}" --loglevel INFO
-    kli ends add --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --role mailbox --eid "${WAN_PRE}" --loglevel INFO
-    kli ends add --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --role mailbox --eid "${WAN_PRE}" --loglevel INFO
-    kli ends add --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --role mailbox --eid "${WAN_PRE}" --loglevel INFO
+    kli ends add --name "${GAR1}" --alias "${GAR1}" --passcode "${GAR1_PASSCODE}" --role mailbox --eid "${WAN_PRE}"
+    kli ends add --name "${GAR2}" --alias "${GAR2}" --passcode "${GAR2_PASSCODE}" --role mailbox --eid "${WAN_PRE}"
+    kli ends add --name "${QAR1}" --alias "${QAR1}" --passcode "${QAR1_PASSCODE}" --role mailbox --eid "${WAN_PRE}"
+    kli ends add --name "${QAR2}" --alias "${QAR2}" --passcode "${QAR2_PASSCODE}" --role mailbox --eid "${WAN_PRE}"
 }
 
 export SALLY_OOBI="http://127.0.0.1:9723/oobi"
@@ -258,6 +258,15 @@ function sally_setup() {
     sleep 3
 }
 
+# Witness mailbox OOBIs
+GAR1_OOBI="${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
+GAR2_OOBI="${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
+QAR1_OOBI="${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
+QAR2_OOBI="${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
+LAR1_OOBI="${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
+LAR2_OOBI="${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
+PERSON_OOBI="${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
+
 # GAR: OOBI resolutions between single sig AIDs
 function resolve_oobis() {
     exists=$(kli contacts list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GAR2}")
@@ -265,14 +274,6 @@ function resolve_oobis() {
         print_yellow "OOBIs already resolved"
         return
     fi
-    # Witness mailbox OOBIs
-    GAR1_OOBI="${WIT_HOST}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
-    GAR2_OOBI="${WIT_HOST}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
-    QAR1_OOBI="${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
-    QAR2_OOBI="${WIT_HOST}/oobi/${QAR2_PRE}/witness/${WAN_PRE}"
-    LAR1_OOBI="${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
-    LAR2_OOBI="${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
-    PERSON_OOBI="${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
 
     echo
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
@@ -285,16 +286,6 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${GAR1_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
     kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR1_OOBI}"
-
-    print_yellow "Resolving OOBIs for LE 1"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${LAR2_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR1_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR2_OOBI}"
-
-    print_yellow "Resolving OOBIs for LE 2"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${LAR1_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR1_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
 
     print_yellow "Resolving OOBIs for QAR 1"
     kli oobi resolve --name "${QAR1}" --oobi-alias "${QAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${QAR2_OOBI}"
@@ -313,6 +304,16 @@ function resolve_oobis() {
     kli oobi resolve --name "${QAR2}" --oobi-alias "${LAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${LAR2_OOBI}"
     kli oobi resolve --name "${QAR2}" --oobi-alias "${PERSON}" --passcode "${QAR2_PASSCODE}"  --oobi "${PERSON_OOBI}"
     kli oobi resolve --name "${QAR2}" --oobi-alias "$SALLY"    --passcode "${QAR2_PASSCODE}"  --oobi "${SALLY_OOBI}"
+
+    print_yellow "Resolving OOBIs for LE 1"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${LAR2_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR1_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR2_OOBI}"
+
+    print_yellow "Resolving OOBIs for LE 2"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${LAR1_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR1_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
 
     print_yellow "Resolving OOBIs for Person"
     kli oobi resolve --name "${PERSON}"  --oobi-alias "${QAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${QAR1_OOBI}"
@@ -488,15 +489,69 @@ EOM
     rm "$temp_multisig_config"
 }
 
+# GAR: Create singlesig AID (GEDA)
+function create_geda_singlesig() {
+    exists=$(kli list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | grep "${GEDA_NAME}")
+    if [[ "$exists" =~ "${GEDA_NAME}" ]]; then
+        print_dark_gray "[External] GEDA singlesig AID ${GEDA_NAME} already exists"
+        return
+    fi
+
+    echo
+    print_yellow "[External] singlesig Inception for GEDA"
+
+    echo
+    read -r -d '' SINGLESIG_ICP_CONFIG_JSON << EOM
+{
+  "transferable": true,
+  "wits": ["${WAN_PRE}"],
+  "toad": 1,
+  "icount": 1,
+  "ncount": 1,
+  "isith": "1",
+  "nsith": "1"
+}
+EOM
+
+    print_lcyan "[External] inception config:"
+    print_lcyan "${SINGLESIG_ICP_CONFIG_JSON}"
+
+    # create temporary file to store json
+    temp_qvi_singlesig_config=$(mktemp)
+
+    # write JSON content to the temp file
+    echo "$SINGLESIG_ICP_CONFIG_JSON" > "$temp_qvi_singlesig_config"
+
+    # The following multisig commands run in parallel
+    print_yellow "[External] Inception from ${GAR1}: ${GAR1_PRE}"
+    kli incept --name ${GAR1} --alias ${GEDA_NAME} \
+        --passcode ${GAR1_PASSCODE} \
+        --file "${temp_qvi_singlesig_config}"
+
+
+    exists=$(kli list --name "${GAR1}" --passcode "${GAR1_PASSCODE}" | grep "${GEDA_NAME}")
+    if [[ ! "$exists" =~ "${GEDA_NAME}" ]]; then
+        print_red "[External] GEDA single sig inception failed"
+        exit 1
+    fi
+
+    ms_prefix=$(kli status --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_green "[External] GEDA singlesig AID ${GEDA_NAME} with prefix: ${ms_prefix}"
+
+    rm "$temp_qvi_singlesig_config"
+}
+
 # QARs: Resolve GEDA OOBI
+
 function resolve_geda_oobi() {
+    GEDA_OOBI=$(kli oobi generate --name ${GAR1} --passcode ${GAR1_PASSCODE} --alias ${GEDA_NAME} --role witness)
+    print_yellow "GEDA OOBI: ${GEDA_OOBI}"
     exists=$(kli contacts list --name "${QAR1}" --passcode "${QAR1_PASSCODE}" | jq .alias | tr -d '"' | grep "${GEDA_NAME}")
     if [[ "$exists" =~ "${GEDA_NAME}" ]]; then
         print_yellow "GEDA OOBIs already resolved"
         return
     fi
 
-    GEDA_OOBI=$(kli oobi generate --name ${GAR1} --passcode ${GAR1_PASSCODE} --alias ${GEDA_NAME} --role witness)
     echo "GEDA OOBI: ${GEDA_OOBI}"
     kli oobi resolve --name "${QAR1}" --oobi-alias "${GEDA_NAME}" --passcode "${QAR1_PASSCODE}" --oobi "${GEDA_OOBI}"
     kli oobi resolve --name "${QAR2}" --oobi-alias "${GEDA_NAME}" --passcode "${QAR2_PASSCODE}" --oobi "${GEDA_OOBI}"
@@ -587,6 +642,10 @@ EOM
     pid=$!
     PID_LIST+=" $pid"
 
+    wait $PID_LIST
+    sleep 2  # give time for the delegation processes to exit cleanly so the delegables escrow is properly cleared of the last event
+
+    PID_LIST=""
     print_yellow "[QVI] Query GEDA multisig participants to discover anchor and complete delegation for KERIpy 1.2.x+"
     print_yellow "[QVI] QAR1 querying GEDA multisig for delegation anchor"
     kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${GEDA_PRE}" &
@@ -612,14 +671,127 @@ EOM
     ms_prefix=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
     print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${ms_prefix}"
 
+    pause "press enter for GAR to resolve QVI OOBI"
+    print_yellow "[GEDA] Resolving QVI multisig OOBI to discover QVI keystate"
     QVI_OOBI=$(kli oobi generate --name ${QAR1} --passcode ${QAR1_PASSCODE} --alias ${QVI_NAME} --role witness)
     kli oobi resolve --name "${GAR1}" --passcode "${GAR1_PASSCODE}" --oobi-alias "${QVI_NAME}" --oobi "${QVI_OOBI}"
     kli oobi resolve --name "${GAR2}" --passcode "${GAR2_PASSCODE}" --oobi-alias "${QVI_NAME}" --oobi "${QVI_OOBI}"
+    pause "press enter to continue"
+}
+
+# QARs: Create delegated singlesig QVI AID with singlesig GEDA as delegator
+function create_qvi_singlesig() {
+    exists=$(kli list --name "${QAR1}" --passcode "${QAR1_PASSCODE}" | grep "${QVI_NAME}")
+    if [[ "$exists" =~ "${QVI_NAME}" ]]; then
+        print_dark_gray "[QVI] singlesig AID ${QVI_NAME} already exists"
+        return
+    fi
+
+    echo
+    print_green "------------------------------GEDA Delegating to QVI identifier------------------------------"
+    echo
+
+    print_yellow "create delegation proxy AID for QVI"
+    echo
+    read -r -d '' PROXY_ICP_CONFIG_JSON << EOM
+{
+  "transferable": true,
+  "wits": ["${WAN_PRE}"],
+  "toad": 1,
+  "icount": 1,
+  "ncount": 1,
+  "isith": "1",
+  "nsith": "1"
+}
+EOM
+
+    print_lcyan "[External] proxy inception config:"
+    print_lcyan "${PROXY_ICP_CONFIG_JSON}"
+
+    # create temporary file to store json
+    temp_proxy_config=$(mktemp)
+
+    # write JSON content to the temp file
+    echo "$PROXY_ICP_CONFIG_JSON" > "$temp_proxy_config"
+    kli incept --name ${QAR1} --alias proxy --passcode ${QAR1_PASSCODE} --file "${temp_proxy_config}"
+
+    PROXY_AID=$(kli aid --name ${QAR1} --alias proxy --passcode ${QAR1_PASSCODE})
+    print_lcyan "Proxy AID: ${PROXY_AID}"
+
+    GEDA_PRE=$(kli status --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_green "GEDA prefix: ${GEDA_PRE}"
+
+    echo
+    read -r -d '' SINGLESIG_ICP_CONFIG_JSON << EOM
+{
+  "delpre": "${GEDA_PRE}",
+  "icount": 1,
+  "ncount": 1,
+  "transferable": true,
+  "wits": ["${WAN_PRE}"],
+  "toad": 1,
+  "isith": "1",
+  "nsith": "1"
+}
+EOM
+
+    print_lcyan "[QVI] delegated singlesig inception config"
+    print_lcyan "${SINGLESIG_ICP_CONFIG_JSON}"
+
+    # create temporary file to store json
+    temp_qvi_singlesig_config=$(mktemp)
+    print_yellow "Temp file for QVI singlesig config: ${temp_qvi_singlesig_config}"
+
+    # write JSON content to the temp file
+    echo "$SINGLESIG_ICP_CONFIG_JSON" > "$temp_qvi_singlesig_config"
+
+    # Follow commands run in parallel
+    echo
+    print_yellow "[QVI] delegated singlesig inception started by ${QAR1}: ${QAR1_PRE}"
+
+    kli incept --name "${QAR1}" --alias "${QVI_NAME}" \
+        --proxy "${PROXY_AID}" \
+        --passcode "${QAR1_PASSCODE}" \
+        --file "${temp_qvi_singlesig_config}"
+
+    exists=$(kli list --name "${QAR1} --passcode ${QAR1_PASSCODE}" | grep "${QVI_NAME}")
+    if [ ! $exists == "*${QVI_NAME}*" ]; then
+        print_red "[QVI] singlesig inception failed"
+        exit 1
+    fi
+
+    print_lcyan "[External] GEDA members approve delegated inception with 'kli delegate confirm'"
+    echo
+
+
+    print_yellow "[QVI] Query GEDA multisig participants to discover anchor and complete delegation for KERIpy 1.2.x+"
+    print_yellow "[QVI] QAR1 querying GEDA multisig for delegation anchor"
+    kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${GAR1_PRE}" &
+    pid=$!
+    PID_LIST+=" $pid"
+
+
+    wait $PID_LIST
+
+    rm "$temp_qvi_singlesig_config"
+
+    # QVI multisig participants query GEDA multisig participants to discover anchor and complete delegation
+    # only needed for KERIpy 1.2.x+ though won't hurt for 1.1.x and lower
+
+    echo
+    print_lcyan "[QVI] Show multisig status for ${QAR1}"
+    kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE}
+    echo
+
+    ms_prefix=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
+    print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${ms_prefix}"
+
+    QVI_OOBI=$(kli oobi generate --name ${QAR1} --passcode ${QAR1_PASSCODE} --alias ${QVI_NAME} --role witness)
+    kli oobi resolve --name "${GAR1}" --passcode "${GAR1_PASSCODE}" --oobi-alias "${QVI_NAME}" --oobi "${QVI_OOBI}"
 }
 
 # QVI & GEDA: perform multisig delegated rotation
 function qvi_rotate() {
-#    pause "Press enter to rotate QVI multisig"
     QVI_MULTISIG_SEQ_NO=$(kli status --name ${QAR1} --alias ${QVI_NAME} --passcode ${QAR1_PASSCODE} | awk '/Seq No:/ {print $3}')
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt 0 ]]; then
         print_yellow "[QVI] Multisig AID ${QVI_NAME} already rotated, at SN ${QVI_MULTISIG_SEQ_NO}"
@@ -639,6 +811,7 @@ function qvi_rotate() {
 
     # QARs begin rotation
     print_yellow "[QVI] Rotating delegated multisig AID"
+    print_dark_gray "[QAR1] multisig rotate from ${QAR1_PRE}"
     kli multisig rotate \
       --name "${QAR1}" \
       --alias "${QVI_NAME}" \
@@ -646,10 +819,11 @@ function qvi_rotate() {
       --isith "2" \
       --smids "${QAR1_PRE}" --smids "${QAR2_PRE}" \
       --nsith "2" \
-      --rmids "${QAR1_PRE}" --rmids "${QAR2_PRE}" --loglevel INFO &
+      --rmids "${QAR1_PRE}" --rmids "${QAR2_PRE}" &
     pid=$!
     PID_LIST+=" $pid"
 
+    print_dark_gray "[QAR2] multisig rotate from ${QAR2_PRE}"
     kli multisig rotate \
       --name "${QAR2}" \
       --alias "${QVI_NAME}" \
@@ -657,30 +831,31 @@ function qvi_rotate() {
       --isith '2' \
       --smids "${QAR1_PRE}" --smids "${QAR2_PRE}" \
       --nsith '2' \
-      --rmids "${QAR1_PRE}" --rmids "${QAR2_PRE}" --loglevel INFO &
+      --rmids "${QAR1_PRE}" --rmids "${QAR2_PRE}" &
     pid=$!
     PID_LIST+=" $pid"
 
-    kli query --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --prefix "${QVI_PRE}" >/dev/null 2>&1
-    kli query --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --prefix "${QVI_PRE}" >/dev/null 2>&1
-
-#    print_lcyan "GEDA queries QARs latest keystate"
+    print_lcyan "[GEDA] GARs queries QARs latest keystate"
     kli query --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --prefix "${QAR1_PRE}" >/dev/null 2>&1
     kli query --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --prefix "${QAR2_PRE}" >/dev/null 2>&1
     kli query --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --prefix "${QAR1_PRE}" >/dev/null 2>&1
     kli query --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --prefix "${QAR2_PRE}" >/dev/null 2>&1
 
     print_yellow "[GEDA] GARs confirm delegated multisig rotation"
-    kli delegate confirm --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --interact --auto --loglevel INFO &
+    kli delegate confirm --name "${GAR1}" --alias "${GEDA_NAME}" --passcode "${GAR1_PASSCODE}" --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
-    kli delegate confirm --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --interact --auto --loglevel INFO &
+    kli delegate confirm --name "${GAR2}" --alias "${GEDA_NAME}" --passcode "${GAR2_PASSCODE}" --interact --auto &
     pid=$!
     PID_LIST+=" $pid"
 
+    wait $PID_LIST
+    PID_LIST=""
+
     # QARs refresh GEDA delegator keystate
-    kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${GEDA_PRE}"
-    kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${GEDA_PRE}"
+    print_dark_gray "[QARs] refresh GEDA delegator keystate"
+    kli query --name ${QAR1} --alias ${QAR1} --passcode ${QAR1_PASSCODE} --prefix "${GEDA_PRE}" &
+    kli query --name ${QAR2} --alias ${QAR2} --passcode ${QAR2_PASSCODE} --prefix "${GEDA_PRE}" &
 
     wait $PID_LIST
     PID_LIST=""
@@ -2296,7 +2471,7 @@ function setup() {
   test_dependencies
   create_aids
 #  add_mailboxes
-  sally_setup
+#  sally_setup
   resolve_oobis
   challenge_response
 }
@@ -2312,9 +2487,11 @@ function end_workflow() {
 
 function geda_delegation_to_qvi() {
   create_geda_multisig
+#  create_geda_singlesig
   resolve_geda_oobi
   create_qvi_multisig
-#  qvi_rotate
+#  create_qvi_singlesig
+  qvi_rotate
 }
 
 function qvi_credential() {
@@ -2437,7 +2614,6 @@ function main_flow() {
   qars_resolve_le_oobi
   create_qvi_reg
   le_credential
-  pause "Press [enter] to present le credential to Sally"
   present_le_cred_to_sally
 
   create_le_reg
