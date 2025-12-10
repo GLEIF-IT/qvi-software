@@ -2,11 +2,15 @@
 
 ## GLEIF tested versions for technical dry runs
 
-* GLEIF (KERIpy 1.1.30) (https://github.com/WebOfTrust/keripy/releases/tag/1.1.30)
-* GLEIF witnesses (KERIpy 1.2.8-rc2) (https://github.com/GLEIF-IT/keripy/releases/tag/1.2.8-rc2)
+* GLEIF (KERIpy 1.1.37) (https://github.com/WebOfTrust/keripy/releases/tag/1.1.37)
+  * Container Image: [gleif/keri:1.1.37](https://hub.docker.com/repository/docker/gleif/keri/tags/1.1.37/sha256-3fde403149e2f57419e79cfc7c64796f26f45f81d826742b23a1617e18618a3b)
+* GLEIF witnesses (KERIpy 1.2.9) (https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9)
+  * Container Image: [gleif/keri:1.2.9](https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5) 
 * QVI (KERIA 0.3.0) (https://github.com/GLEIF-IT/keria/releases/tag/0.3.0)
-* QVI (SignifyTS 0.3.0-rc1) (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc1)
-* QVI witnesses (KERIpy 1.2.8-rc2) (https://github.com/GLEIF-IT/keripy/releases/tag/1.2.8-rc2)
+* QVI (SignifyTS 0.3.0-rc2) (https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc2)
+  * NPM Package: [signify-ts@0.3.0-rc2](https://www.npmjs.com/package/signify-ts/v/0.3.0-rc2) 
+* QVI witnesses (KERIpy 1.2.9) (https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9)
+  * Container Image: [gleif/keri:1.2.9](https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5)
 
 #### Table of functionality
 
