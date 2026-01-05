@@ -18,7 +18,7 @@ You also need the Sally CLI installed and available on your path.
 
 This command runs the six demonstration witnesses.
 
-WARNING: This script REQUIRES KERIpy 1.2.6 or later witnesses. Due to the delegation ceremony change of 2024 this script will not work with 1.1.x KERIpy witnesses.
+WARNING: This script REQUIRES KERIpy 1.2.7 or later witnesses. Due to the delegation ceremony change of 2024 this script will not work with 1.1.x KERIpy witnesses.
 
 ```bash
 # From within a dedicated Python virtual environment (virtualenv)
@@ -37,14 +37,20 @@ vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/
 
 ### Sally Verifier
 
-To run a local Sally verifier server to accept the QVI credential presentations, run:
+To run a local Sally verifier server to accept the QVI credential presentations,
+
+Change directory to the `qvi-software/qvi-workflow/kli_only` directory 
+
+Then make sure the Python virtual environment with Sally installed is activated (`source venv/bin/activate` or equivalent)
+
+and then run:
 ```bash
 sally server start \
   --direct \
   --salt 0AD45YWdzWSwNREuAoitH_CC \
   --name sally \
   --alias sally \
-  --config-dir scripts \
+  --config-dir sally \
   --config-file sally.json \
   --incept-file sally-incept.json \
   --passcode VVmRdBTe5YCyLMmYRqTAi \
