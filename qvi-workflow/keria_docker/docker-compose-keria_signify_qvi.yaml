@@ -76,7 +76,7 @@ services:
     environment:
       <<: *witness-env
     healthcheck:
-      # healthcheck needs to be different in 1.2.6+ because it uses the Alpine base image and curl is not present
+      # healthcheck needs to be different in 1.2.7+ because it uses the Alpine base image and curl is not present
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5642/oobi" ]
       <<: *healthcheck
     command: witness demo --loglevel INFO
@@ -134,7 +134,7 @@ services:
     environment:
       <<: *witness-env
     healthcheck:
-      # healthcheck needs to be different in 1.2.6+ because it uses the Alpine base image and curl is not present
+      # healthcheck needs to be different in 1.2.7+ because it uses the Alpine base image and curl is not present
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5645/oobi" ]
       <<: *healthcheck
     command: witness demo --loglevel INFO

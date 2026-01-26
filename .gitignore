@@ -1,4 +1,6 @@
-.idea
+.idea/
+venv/
+__pycache__/
 
 qvi-workflow/node_modules
 qvi-workflow/ecr-auth-data.json

@@ -22,7 +22,7 @@
 # This script runs the "sally" program so it must be installed and available on the path
 #
 # WARNING: This currently depends on v0.10.1+ of Sally being available on the PATH which uses a different
-#          version of KERI (1.2.6) than the KLI (1.1.32) here uses. Be sure to install the KLI first and
+#          version of KERI (1.2.7) than the KLI (1.1.32) here uses. Be sure to install the KLI first and
 #          then install sally globally on your machine prior to running this script.
 #
 # in order to complete successfully. This script also runs the webhook with "sally hook demo" that
@@ -225,6 +225,7 @@ function sally_setup() {
     WEBHOOK_PID=$!
 
     if [[ $INDIRECT_MODE_SALLY = true ]] ; then
+      print_yellow "Assuming Sally has already been incepted with a witness for indirect mode..."
       print_yellow "Starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
       sally server start \
         --name $SALLY \
@@ -240,12 +241,12 @@ function sally_setup() {
     else
       print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
       sally server start \
-        -d \
+        --direct \
         --name "$SALLY" \
         --alias "$SALLY" \
         --salt "$SALLY_SALT" \
         --config-dir sally \
-        --config-file sally-indirect.json \
+        --config-file sally.json \
         --incept-file sally-incept.json \
         --passcode "$SALLY_PASSCODE" \
         --web-hook http://127.0.0.1:9923 \
@@ -611,10 +612,11 @@ EOM
 
     echo
 
-    kli multisig incept --name ${QAR2} --alias ${QAR2} \
+    # multisig join from QAR2
+    kli multisig join --name ${QAR2} \
         --passcode ${QAR2_PASSCODE} \
         --group ${QVI_NAME} \
-        --file "${temp_multisig_config}" &
+        --auto &
     pid=$!
     PID_LIST+=" $pid"
 
