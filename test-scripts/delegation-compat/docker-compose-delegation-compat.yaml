@@ -1,0 +1,33 @@
+name: delegation-compat
+
+x-witness-image: &witness-image
+  image: gleif/keri:1.2.11
+
+x-healthcheck: &healthcheck
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 3s
+
+networks:
+  default:
+    external: true
+    name: vlei-delegation-test
+
+volumes:
+  wit-vol:
+
+services:
+  witness-demo:
+    <<: *witness-image
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=UTF-8
+      - PYTHONWARNINGS=ignore::SyntaxWarning
+    command: witness demo
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5642/oobi"]
+      <<: *healthcheck
+    volumes:
+      - ./config/demo-witnesses:/keripy/scripts/keri/cf/main
+      - wit-vol:/usr/local/var/keri
