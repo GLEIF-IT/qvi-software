@@ -1,50 +1,62 @@
 {
   "description": "GLEIF tested versions for technical dry runs",
-  "components": {
-    "gleif": {
-      "name": "GLEIF",
-      "package": "KERIpy",
-      "version": "1.1.42",
-      "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.1.42",
-      "container": {
-        "image": "gleif/keri:1.1.42",
-        "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.1.42/sha256-3fde403149e2f57419e79cfc7c64796f26f45f81d826742b23a1617e18618a3b"
+  "gleif": {
+    "title": "GLEIF will use",
+    "components": {
+      "gar-software": {
+        "name": "GAR software",
+        "package": "KERIpy",
+        "version": "1.1.42",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.1.42",
+        "container": {
+          "image": "gleif/keri:1.1.42",
+          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.1.42/sha256-3fde403149e2f57419e79cfc7c64796f26f45f81d826742b23a1617e18618a3b"
+        }
+      },
+      "gleif-witnesses": {
+        "name": "Witness version",
+        "package": "KERIpy",
+        "version": "1.2.9",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9",
+        "container": {
+          "image": "gleif/keri:1.2.9",
+          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5"
+        }
       }
-    },
-    "gleif-witnesses": {
-      "name": "GLEIF witnesses",
-      "package": "KERIpy",
-      "version": "1.2.9",
-      "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9",
-      "container": {
-        "image": "gleif/keri:1.2.9",
-        "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5"
-      }
-    },
-    "qvi-keria": {
-      "name": "QVI",
-      "package": "KERIA",
-      "version": "0.3.0",
-      "release": "https://github.com/GLEIF-IT/keria/releases/tag/0.3.0"
-    },
-    "qvi-signify-ts": {
-      "name": "QVI",
-      "package": "SignifyTS",
-      "version": "0.3.0-rc2",
-      "release": "https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc2",
-      "npm": {
-        "package": "signify-ts@0.3.0-rc2",
-        "url": "https://www.npmjs.com/package/signify-ts/v/0.3.0-rc2"
-      }
-    },
-    "qvi-witnesses": {
-      "name": "QVI witnesses",
-      "package": "KERIpy",
-      "version": "1.2.9",
-      "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9",
-      "container": {
-        "image": "gleif/keri:1.2.9",
-        "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5"
+    }
+  },
+  "qvi": {
+    "title": "QVIs should use",
+    "components": {
+      "qvi-keria": {
+        "name": "KERIA",
+        "package": "KERIA",
+        "version": "0.3.0",
+        "release": "https://github.com/GLEIF-IT/keria/releases/tag/0.3.0",
+        "container": {
+          "image": "gleif/keria:0.3.0",
+          "url": "https://hub.docker.com/repository/docker/gleif/keria/tags/0.3.0/sha256:d20a25561db41c6820e6dcb2173291805aabfe92d92cec808f678901144320c4"
+        }
+      },
+      "qvi-signify-ts": {
+        "name": "Signify-TS",
+        "package": "SignifyTS",
+        "version": "0.3.0-rc2",
+        "release": "https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc2",
+        "npm": {
+          "package": "signify-ts@0.3.0-rc2",
+          "url": "https://www.npmjs.com/package/signify-ts/v/0.3.0-rc2"
+        }
+      },
+      "qvi-witnesses": {
+        "name": "Witness version",
+        "package": "KERIpy",
+        "version": "1.2.9",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9",
+        "container": {
+          "image": "gleif/keri:1.2.9",
+          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5"
+        }
       }
     }
   }

@@ -5,147 +5,75 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QVI Software - Recommended Versions</title>
   <style>
-    :root {
-      --bg: #ffffff;
-      --text: #1a1a2e;
-      --muted: #6b7280;
-      --border: #e5e7eb;
-      --card-bg: #f9fafb;
-      --accent: #2563eb;
-      --badge-bg: #dbeafe;
-      --badge-text: #1e40af;
-      --container-bg: #f0fdf4;
-      --container-text: #166534;
-      --npm-bg: #fef3c7;
-      --npm-text: #92400e;
-    }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      color: #1a1a2e;
       line-height: 1.6;
-      padding: 2rem 1rem;
-      max-width: 880px;
+      padding: 3rem 1.5rem;
+      max-width: 640px;
       margin: 0 auto;
     }
 
-    header {
-      margin-bottom: 2rem;
-      padding-bottom: 1rem;
-      border-bottom: 2px solid var(--border);
-    }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 2.5rem; }
 
-    h1 {
-      font-size: 1.75rem;
-      font-weight: 700;
-      margin-bottom: 0.25rem;
-    }
-
-    .subtitle {
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .grid {
-      display: grid;
-      gap: 1rem;
-    }
-
-    .card {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1.25rem;
-      background: var(--card-bg);
-    }
-
-    .card-header {
-      display: flex;
-      align-items: baseline;
-      gap: 0.5rem;
-      margin-bottom: 0.75rem;
-    }
-
-    .card-name {
-      font-size: 1.1rem;
+    h2 {
+      font-size: 1rem;
       font-weight: 600;
-    }
-
-    .badge {
-      display: inline-block;
-      font-size: 0.8rem;
-      font-weight: 500;
-      padding: 0.15rem 0.5rem;
-      border-radius: 9999px;
-      background: var(--badge-bg);
-      color: var(--badge-text);
-    }
-
-    .details {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-      font-size: 0.9rem;
-    }
-
-    .detail-row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .detail-label {
-      color: var(--muted);
-      min-width: 5rem;
-      font-size: 0.8rem;
+      color: #6b7280;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
     }
 
-    .tag {
-      display: inline-block;
-      font-size: 0.8rem;
+    section { margin-bottom: 2rem; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    td {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid #f0f0f0;
+      vertical-align: baseline;
+    }
+
+    td:first-child {
       font-weight: 500;
-      padding: 0.15rem 0.5rem;
-      border-radius: 4px;
+      width: 40%;
     }
 
-    .tag-container {
-      background: var(--container-bg);
-      color: var(--container-text);
+    td:nth-child(2) { text-align: right; }
+
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .artifacts {
+      display: inline-flex;
+      gap: 0.75rem;
+      margin-left: 0.75rem;
     }
 
-    .tag-npm {
-      background: var(--npm-bg);
-      color: var(--npm-text);
+    .artifacts a {
+      font-size: 0.75rem;
+      color: #6b7280;
     }
 
-    a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
+    .artifacts a:hover { color: #2563eb; }
 
     footer {
-      margin-top: 2.5rem;
+      margin-top: 2rem;
       padding-top: 1rem;
-      border-top: 1px solid var(--border);
-      font-size: 0.8rem;
-      color: var(--muted);
+      border-top: 1px solid #e5e7eb;
+      font-size: 0.75rem;
+      color: #9ca3af;
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>QVI Software</h1>
-    <p class="subtitle">GLEIF tested versions for technical dry runs</p>
-  </header>
-  <div class="grid" id="components"></div>
+  <h1>QVI Software</h1>
+  <p class="subtitle">Recommended versions for technical dry runs</p>
+  <div id="sections"></div>
   <footer>
     Source: <a href="recommended_versions.json">recommended_versions.json</a>
   </footer>
@@ -154,41 +82,33 @@
     fetch('recommended_versions.json')
       .then(r => r.json())
       .then(data => {
-        const grid = document.getElementById('components');
-        for (const [key, c] of Object.entries(data.components)) {
-          const card = document.createElement('div');
-          card.className = 'card';
+        const container = document.getElementById('sections');
 
-          let details = `
-            <div class="detail-row">
-              <span class="detail-label">Release</span>
-              <a href="${c.release}">${c.package} ${c.version}</a>
-            </div>`;
+        for (const sectionKey of ['gleif', 'qvi']) {
+          const section = data[sectionKey];
+          if (!section) continue;
 
-          if (c.container) {
-            details += `
-            <div class="detail-row">
-              <span class="detail-label">Image</span>
-              <a href="${c.container.url}"><span class="tag tag-container">${c.container.image}</span></a>
-            </div>`;
+          const el = document.createElement('section');
+          let rows = '';
+
+          for (const [, c] of Object.entries(section.components)) {
+            let artifacts = '';
+            if (c.container) {
+              artifacts += `<a href="${c.container.url}">docker</a>`;
+            }
+            if (c.npm) {
+              artifacts += `<a href="${c.npm.url}">npm</a>`;
+            }
+            const artifactHtml = artifacts ? `<span class="artifacts">${artifacts}</span>` : '';
+
+            rows += `<tr>
+              <td>${c.name}</td>
+              <td><a href="${c.release}">${c.package} ${c.version}</a>${artifactHtml}</td>
+            </tr>`;
           }
 
-          if (c.npm) {
-            details += `
-            <div class="detail-row">
-              <span class="detail-label">NPM</span>
-              <a href="${c.npm.url}"><span class="tag tag-npm">${c.npm.package}</span></a>
-            </div>`;
-          }
-
-          card.innerHTML = `
-            <div class="card-header">
-              <span class="card-name">${c.name}</span>
-              <span class="badge">${c.version}</span>
-            </div>
-            <div class="details">${details}</div>`;
-
-          grid.appendChild(card);
+          el.innerHTML = `<h2>${section.title}</h2><table>${rows}</table>`;
+          container.appendChild(el);
         }
       });
   </script>
