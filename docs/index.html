@@ -4,49 +4,81 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QVI Software - Recommended Versions</title>
+  <link rel="icon" type="image/png" href="logo.png">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: #1a1a2e;
+      color: #003336;
       line-height: 1.6;
-      padding: 3rem 1.5rem;
+      padding: 0;
+      margin: 0;
+      background: #f8fafa;
+    }
+
+    .banner {
+      background: #003336;
+      padding: 2rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .banner img {
+      height: 40px;
+      width: auto;
+    }
+
+    .banner h1 {
+      color: #ffffff;
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .banner .subtitle {
+      color: #51DAC5;
+      font-size: 0.85rem;
+      font-weight: 400;
+    }
+
+    main {
       max-width: 640px;
       margin: 0 auto;
+      padding: 2.5rem 1.5rem;
     }
-
-    h1 { font-size: 1.5rem; font-weight: 700; }
-    .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 2.5rem; }
 
     h2 {
-      font-size: 1rem;
+      font-size: 0.85rem;
       font-weight: 600;
-      color: #6b7280;
+      color: #0A4D4F;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
       margin-bottom: 0.5rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 2px solid #51DAC5;
     }
 
-    section { margin-bottom: 2rem; }
+    section { margin-bottom: 2.5rem; }
 
     table { width: 100%; border-collapse: collapse; }
 
     td {
       padding: 0.6rem 0;
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid #e8eded;
       vertical-align: baseline;
     }
 
     td:first-child {
       font-weight: 500;
       width: 40%;
+      color: #003336;
     }
 
     td:nth-child(2) { text-align: right; }
 
-    a { color: #2563eb; text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    a { color: #0A4D4F; text-decoration: none; font-weight: 500; }
+    a:hover { color: #51DAC5; }
 
     .artifacts {
       display: inline-flex;
@@ -56,24 +88,35 @@
 
     .artifacts a {
       font-size: 0.75rem;
-      color: #6b7280;
+      color: #51DAC5;
+      font-weight: 400;
     }
 
-    .artifacts a:hover { color: #2563eb; }
+    .artifacts a:hover { color: #003336; }
 
     footer {
-      margin-top: 2rem;
-      padding-top: 1rem;
-      border-top: 1px solid #e5e7eb;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem 2rem;
+      border-top: 1px solid #e8eded;
       font-size: 0.75rem;
       color: #9ca3af;
     }
+
+    footer a { color: #51DAC5; font-weight: 400; }
   </style>
 </head>
 <body>
-  <h1>QVI Software</h1>
-  <p class="subtitle">Recommended versions for technical dry runs</p>
-  <div id="sections"></div>
+  <div class="banner">
+    <img src="logo.png" alt="GLEIF">
+    <div>
+      <h1>QVI Software</h1>
+      <span class="subtitle">Recommended versions for technical dry runs</span>
+    </div>
+  </div>
+  <main>
+    <div id="sections"></div>
+  </main>
   <footer>
     Source: <a href="recommended_versions.json">recommended_versions.json</a>
   </footer>
