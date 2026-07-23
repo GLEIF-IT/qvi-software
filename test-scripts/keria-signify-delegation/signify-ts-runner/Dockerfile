@@ -2,9 +2,8 @@ FROM node:24-alpine
 
 WORKDIR /runner
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --omit=dev
 
-COPY tsconfig.json ./
 COPY src ./src
 
-CMD ["npm", "run", "setup"]
+ENTRYPOINT ["node", "/runner/src/delegation.mjs"]

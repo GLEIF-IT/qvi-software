@@ -9,11 +9,6 @@ x-healthcheck: &healthcheck
   retries: 30
   start_period: 2s
 
-networks:
-  default:
-    external: true
-    name: ${NETWORK_NAME:-qvi-keria-signify-delegation}
-
 volumes:
   wit-vol:
   keria-vol:
@@ -49,6 +44,18 @@ services:
       witness-demo:
         condition: service_healthy
 
+  kli:
+    image: ${KERI_IMAGE:-weboftrust/keri}:${KERI_IMAGE_TAG:-1.2.13}
+    environment:
+      <<: *python-env
+    volumes:
+      - ./docker-keystores:/usr/local/var/keri
+      - ./config:/config:ro
+      - ./events:/events
+    depends_on:
+      witness-demo:
+        condition: service_healthy
+
   signifypy-runner:
     build:
       context: ./signifypy-runner
@@ -58,7 +65,6 @@ services:
       KERIA_ADMIN_URL: http://keria:3901
       KERIA_BOOT_URL: http://keria:3903
       QVI_DATA_DIR: /qvi-data
-      SCENARIO: signifypy
     volumes:
       - ./qvi-data:/qvi-data
     depends_on:
@@ -73,7 +79,6 @@ services:
       KERIA_ADMIN_URL: http://keria:3901
       KERIA_BOOT_URL: http://keria:3903
       QVI_DATA_DIR: /qvi-data
-      SCENARIO: signify-ts
     volumes:
       - ./qvi-data:/qvi-data
     depends_on:

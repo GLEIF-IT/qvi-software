@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
-# version-compat.sh
-# Checks that version 1.2.13 KERIpy works with version 0.4.0 KERIA that also uses KERIpy 1.2.13
-
 set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yaml"
-NETWORK_NAME="${NETWORK_NAME:-qvi-keria-signify-delegation}"
-
 KEEP_ARTIFACTS=false
-CLEAR=false
-DEBUG=false
 WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-180}"
 
 KEYSTORE_DIR="${SCRIPT_DIR}/docker-keystores"
@@ -21,9 +14,6 @@ export KERI_IMAGE="${KERI_IMAGE:-weboftrust/keri}"
 export KERI_IMAGE_TAG="${KERI_IMAGE_TAG:-1.2.13}"
 export KERIA_IMAGE="${KERIA_IMAGE:-weboftrust/keria}"
 export KERIA_IMAGE_TAG="${KERIA_IMAGE_TAG:-0.4.0}"
-export NETWORK_NAME
-
-KLI_IMAGE="${KERI_IMAGE}:${KERI_IMAGE_TAG}"
 
 WAN_PRE="BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha"
 WAN_CONTROLLER_OOBI="http://witness-demo:5642/oobi/${WAN_PRE}/controller?name=Wan&tag=witness"
@@ -42,43 +32,21 @@ GEDA_OOBI=""
 
 usage() {
   cat <<USAGE
-Usage: ./version-compat.sh [--clear] [--keep-artifacts] [--debug]
+Usage: ./version-compat.sh [--keep-artifacts]
 
-Runs two delegation regressions against the same KLI/KERIA stack:
-- SignifyPy multisig delegate approved by KERIpy KLI multisig delegator
-- SignifyTS multisig delegate approved by KERIpy KLI multisig delegator
-
-Environment overrides:
-  KERI_IMAGE, KERI_IMAGE_TAG
-  KERIA_IMAGE, KERIA_IMAGE_TAG
+Runs SignifyPy and SignifyTS 2-of-3 delegation regressions from clean state.
+Overrides: KERI_IMAGE, KERI_IMAGE_TAG, KERIA_IMAGE, KERIA_IMAGE_TAG,
+           WAIT_TIMEOUT_SECONDS
 USAGE
 }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --clear)
-      CLEAR=true
-      shift
-      ;;
-    --keep-artifacts)
-      KEEP_ARTIFACTS=true
-      shift
-      ;;
-    --debug)
-      DEBUG=true
-      shift
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "Unknown argument: $1" >&2
-      usage >&2
-      exit 1
-      ;;
-  esac
-done
+case "${1:-}" in
+  "") ;;
+  --keep-artifacts) KEEP_ARTIFACTS=true ;;
+  -h|--help) usage; exit 0 ;;
+  *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
+esac
+[[ $# -le 1 ]] || { usage >&2; exit 1; }
 
 log() {
   echo "[$(date -u +%H:%M:%S)] $*"
@@ -93,82 +61,46 @@ compose() {
   docker compose -f "${COMPOSE_FILE}" --project-directory "${SCRIPT_DIR}" "$@"
 }
 
+remove_helper_containers() {
+  docker rm -f gar1-geda gar1-confirm gar2-confirm >/dev/null 2>&1 || true
+}
+
 clean_runtime_dirs() {
-  mkdir -p "${KEYSTORE_DIR}" "${EVENTS_DIR}" "${QVI_DATA_DIR}"
-  find "${KEYSTORE_DIR}" -mindepth 1 ! -name '.gitkeep' -exec rm -rf {} + >/dev/null 2>&1 || true
-  find "${EVENTS_DIR}" -mindepth 1 ! -name '.gitkeep' -exec rm -rf {} + >/dev/null 2>&1 || true
-  find "${QVI_DATA_DIR}" -mindepth 1 ! -name '.gitkeep' -exec rm -rf {} + >/dev/null 2>&1 || true
+  local dir
+  for dir in "${KEYSTORE_DIR}" "${EVENTS_DIR}" "${QVI_DATA_DIR}"; do
+    mkdir -p "${dir}"
+    find "${dir}" -mindepth 1 ! -name '.gitkeep' -exec rm -rf -- {} + >/dev/null 2>&1 || true
+  done
 }
 
 cleanup() {
-  docker rm -f \
-    gar1-geda \
-    gar1-confirm \
-    gar2-confirm >/dev/null 2>&1 || true
-
+  remove_helper_containers
   if ${KEEP_ARTIFACTS}; then
     log "Keeping compose stack and artifacts (--keep-artifacts set)."
     return
   fi
-
   compose down -v >/dev/null 2>&1 || true
   clean_runtime_dirs
 }
 trap cleanup EXIT
 
-require_command() {
-  command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
-}
-
 validate_host_tools() {
-  require_command docker
-  require_command jq
+  local command
+  for command in docker jq timeout; do
+    command -v "${command}" >/dev/null 2>&1 || fail "${command} is required"
+  done
   docker info >/dev/null 2>&1 || fail "Docker is not running"
   docker compose version >/dev/null 2>&1 || fail "docker compose is required"
 }
 
-validate_versions() {
-  local kli_version
-  local keria_keri_version
-
-  kli_version=$(docker run --rm "${KLI_IMAGE}" version | awk -F': ' '/Library version:/ {print $2; exit}')
-  [[ "${kli_version}" == 1.2.* ]] || fail "KLI container ${KLI_IMAGE} must run KERIpy 1.2.x, got ${kli_version:-unknown}"
-  log "KLI image ${KLI_IMAGE} reports KERIpy ${kli_version}"
-
-  keria_keri_version=$(compose exec -T keria sh -c \
-    'python -c "import keri; print(keri.__version__)" 2>/dev/null || python3 -c "import keri; print(keri.__version__)"')
-  [[ "${keria_keri_version}" == 1.2.* ]] || fail "KERIA image must import KERI 1.2.x, got ${keria_keri_version:-unknown}"
-  log "KERIA image ${KERIA_IMAGE}:${KERIA_IMAGE_TAG} imports KERI ${keria_keri_version}"
-}
-
 kli() {
-  docker run --rm -i \
-    --network "${NETWORK_NAME}" \
-    -v "${KEYSTORE_DIR}:/usr/local/var/keri" \
-    -v "${SCRIPT_DIR}/config:/config:ro" \
-    -v "${EVENTS_DIR}:/events" \
-    -e PYTHONWARNINGS=ignore::SyntaxWarning \
-    "${KLI_IMAGE}" "$@"
+  compose run --rm -T kli "$@"
 }
 
 kli_detached() {
   local cname=$1
   shift
-  docker rm -f "${cname}" >/dev/null 2>&1 || true
-  docker run -d \
-    --name "${cname}" \
-    --network "${NETWORK_NAME}" \
-    -v "${KEYSTORE_DIR}:/usr/local/var/keri" \
-    -v "${SCRIPT_DIR}/config:/config:ro" \
-    -v "${EVENTS_DIR}:/events" \
-    -e PYTHONWARNINGS=ignore::SyntaxWarning \
-    "${KLI_IMAGE}" "$@" >/dev/null
-}
-
-dump_container_logs() {
-  local cname=$1
-  echo "----- logs: ${cname} -----" >&2
-  docker logs "${cname}" >&2 || true
+  compose run -d --name "${cname}" kli "$@" >/dev/null
 }
 
 wait_container() {
@@ -177,45 +109,42 @@ wait_container() {
 
   exit_code=$(timeout "${WAIT_TIMEOUT_SECONDS}s" docker wait "${cname}" 2>/dev/null || echo 124)
   if [[ "${exit_code}" != "0" ]]; then
-    dump_container_logs "${cname}"
+    echo "----- logs: ${cname} -----" >&2
+    docker logs "${cname}" >&2 || true
     docker rm -f "${cname}" >/dev/null 2>&1 || true
     fail "container ${cname} failed or timed out with exit code ${exit_code}"
   fi
-
-  if ${DEBUG}; then
-    dump_container_logs "${cname}"
-  fi
   docker rm -f "${cname}" >/dev/null 2>&1 || true
+}
+
+validate_versions() {
+  local kli_version
+  local keria_keri_version
+
+  kli_version=$(kli version | awk -F': ' '/Library version:/ {print $2; exit}')
+  [[ "${kli_version}" == 1.2.* ]] \
+    || fail "KLI image must run KERIpy 1.2.x, got ${kli_version:-unknown}"
+  log "KLI image ${KERI_IMAGE}:${KERI_IMAGE_TAG} reports KERIpy ${kli_version}"
+
+  keria_keri_version=$(compose exec -T keria sh -c \
+    'python -c "import keri; print(keri.__version__)" 2>/dev/null || python3 -c "import keri; print(keri.__version__)"')
+  [[ "${keria_keri_version}" == 1.2.* ]] \
+    || fail "KERIA image must import KERI 1.2.x, got ${keria_keri_version:-unknown}"
+  log "KERIA image ${KERIA_IMAGE}:${KERIA_IMAGE_TAG} imports KERI ${keria_keri_version}"
 }
 
 aid_prefix() {
   local name=$1
   local alias=$2
   local passcode=$3
-
-  kli aid --name "${name}" --alias "${alias}" --passcode "${passcode}" \
-    | tr -d '[:space:]'
-}
-
-create_single_sig_config() {
-  jq --arg wan "${WAN_PRE}" '.wits = [$wan]' \
-    "${SCRIPT_DIR}/config/template-single-sig-incept-config.jq" \
-    > "${EVENTS_DIR}/single-sig-incept-config.json"
+  kli aid --name "${name}" --alias "${alias}" --passcode "${passcode}" | tr -d '[:space:]'
 }
 
 create_aid() {
   local name=$1
   local salt=$2
   local passcode=$3
-  local list_out
   local pre
-
-  list_out=$(kli list --name "${name}" --passcode "${passcode}" 2>&1 || true)
-  if [[ "${list_out}" != *"Keystore must already exist"* ]]; then
-    pre=$(aid_prefix "${name}" "${name}" "${passcode}")
-    log "AID ${name} already exists: ${pre}"
-    return
-  fi
 
   log "Creating KLI member AID ${name}"
   kli init --name "${name}" --salt "${salt}" --passcode "${passcode}" \
@@ -234,7 +163,6 @@ resolve_oobi() {
   local passcode=$2
   local alias=$3
   local prefix=$4
-
   kli oobi resolve --name "${name}" --oobi-alias "${alias}" --passcode "${passcode}" \
     --oobi "http://witness-demo:5642/oobi/${prefix}/witness/${WAN_PRE}" >/dev/null
 }
@@ -246,7 +174,8 @@ join_group_auto() {
   local log_file="${EVENTS_DIR}/join-${name}-${group}.log"
 
   set +o pipefail
-  yes Y | kli multisig join --name "${name}" --group "${group}" --passcode "${passcode}" --auto >"${log_file}" 2>&1
+  yes Y | kli multisig join --name "${name}" --group "${group}" \
+    --passcode "${passcode}" --auto >"${log_file}" 2>&1
   local rc=$?
   set -o pipefail
   if [[ ${rc} -ne 0 ]]; then
@@ -258,7 +187,6 @@ join_group_auto() {
 create_geda_multisig() {
   local gar1_pre
   local gar2_pre
-
   gar1_pre=$(aid_prefix "${GAR1}" "${GAR1}" "${GAR1_PASSCODE}")
   gar2_pre=$(aid_prefix "${GAR2}" "${GAR2}" "${GAR2_PASSCODE}")
   [[ -n "${gar1_pre}" && -n "${gar2_pre}" ]] || fail "GAR member prefixes are required"
@@ -273,7 +201,7 @@ create_geda_multisig() {
     --passcode "${GAR1_PASSCODE}" --group "${GEDA_NAME}" --file /events/geda-incept-config.json
   sleep 2
   if [[ "$(docker inspect --format '{{.State.Status}}' gar1-geda 2>/dev/null || echo missing)" != "running" ]]; then
-    dump_container_logs gar1-geda
+    docker logs gar1-geda >&2 || true
     fail "GEDA proposer exited before GAR2 joined"
   fi
   join_group_auto "${GAR2}" "${GEDA_NAME}" "${GAR2_PASSCODE}"
@@ -281,17 +209,17 @@ create_geda_multisig() {
 
   GEDA_PRE=$(aid_prefix "${GAR1}" "${GEDA_NAME}" "${GAR1_PASSCODE}")
   [[ -n "${GEDA_PRE}" ]] || fail "unable to determine GEDA prefix"
-  GEDA_OOBI=$(kli oobi generate --name "${GAR1}" --passcode "${GAR1_PASSCODE}" --alias "${GEDA_NAME}" --role witness \
-    | awk 'NF {print; exit}')
-  [[ -n "${GEDA_OOBI}" ]] || GEDA_OOBI="http://witness-demo:5642/oobi/${GEDA_PRE}/witness/${WAN_PRE}"
-
-  printf '%s\n' "${GEDA_PRE}" > "${EVENTS_DIR}/geda-prefix.txt"
-  printf '%s\n' "${GEDA_OOBI}" > "${EVENTS_DIR}/geda-oobi.txt"
+  GEDA_OOBI=$(kli oobi generate --name "${GAR1}" --passcode "${GAR1_PASSCODE}" \
+    --alias "${GEDA_NAME}" --role witness | awk 'NF {print; exit}')
+  [[ -n "${GEDA_OOBI}" ]] \
+    || GEDA_OOBI="http://witness-demo:5642/oobi/${GEDA_PRE}/witness/${WAN_PRE}"
   log "Created GEDA ${GEDA_PRE}"
 }
 
 build_kli_delegator() {
-  create_single_sig_config
+  jq --arg wan "${WAN_PRE}" '.wits = [$wan]' \
+    "${SCRIPT_DIR}/config/template-single-sig-incept-config.jq" \
+    > "${EVENTS_DIR}/single-sig-incept-config.json"
   create_aid "${GAR1}" "${GAR1_SALT}" "${GAR1_PASSCODE}"
   create_aid "${GAR2}" "${GAR2_SALT}" "${GAR2_PASSCODE}"
 
@@ -306,7 +234,6 @@ build_kli_delegator() {
 
 approve_pending_delegation() {
   local label=$1
-
   log "Approving ${label} delegated inception from both GEDA members"
   kli_detached gar1-confirm delegate confirm --name "${GAR1}" --alias "${GEDA_NAME}" \
     --passcode "${GAR1_PASSCODE}" --interact --auto
@@ -316,46 +243,31 @@ approve_pending_delegation() {
   wait_container gar2-confirm
 }
 
-run_signifypy_scenario() {
-  log "Running SignifyPy delegate setup"
-  compose run --rm -e GEDA_PRE="${GEDA_PRE}" -e GEDA_OOBI="${GEDA_OOBI}" signifypy-runner setup
-  approve_pending_delegation "SignifyPy"
-  log "Running SignifyPy delegate completion"
-  compose run --rm -e GEDA_PRE="${GEDA_PRE}" -e GEDA_OOBI="${GEDA_OOBI}" signifypy-runner complete
-}
-
-run_signify_ts_scenario() {
-  log "Running SignifyTS delegate setup"
-  compose run --rm -e GEDA_PRE="${GEDA_PRE}" -e GEDA_OOBI="${GEDA_OOBI}" signify-ts-runner npm run setup
-  approve_pending_delegation "SignifyTS"
-  log "Running SignifyTS delegate completion"
-  compose run --rm -e GEDA_PRE="${GEDA_PRE}" -e GEDA_OOBI="${GEDA_OOBI}" signify-ts-runner npm run complete
-}
-
-start_stack() {
-  docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || docker network create "${NETWORK_NAME}" >/dev/null
-  log "Building runner images"
-  compose build signifypy-runner signify-ts-runner
-  log "Starting witness-demo and KERIA"
-  compose up -d --wait witness-demo keria
+run_scenario() {
+  local label=$1
+  local service=$2
+  log "Running ${label} delegate setup"
+  compose run --rm -T -e GEDA_PRE="${GEDA_PRE}" -e GEDA_OOBI="${GEDA_OOBI}" "${service}" setup
+  approve_pending_delegation "${label}"
+  log "Running ${label} delegate completion"
+  compose run --rm -T "${service}" complete
 }
 
 main() {
   validate_host_tools
-  mkdir -p "${KEYSTORE_DIR}" "${EVENTS_DIR}" "${QVI_DATA_DIR}"
-
-  if ${CLEAR}; then
-    log "Clearing prior containers, volumes, and runtime artifacts"
-    compose down -v >/dev/null 2>&1 || true
-    clean_runtime_dirs
-  fi
-
-  start_stack
+  log "Clearing prior containers, volumes, and runtime artifacts"
+  remove_helper_containers
+  compose down -v >/dev/null 2>&1 || true
+  clean_runtime_dirs
+  log "Building runner images"
+  compose build signifypy-runner signify-ts-runner
+  log "Starting witness-demo and KERIA"
+  compose up -d --wait witness-demo keria
   validate_versions
   build_kli_delegator
-  run_signifypy_scenario
-  run_signify_ts_scenario
-  echo "PASS: multisig KLI delegator approved multisig KERIA SignifyPy and SignifyTS delegated inceptions"
+  run_scenario "SignifyPy" signifypy-runner
+  run_scenario "SignifyTS" signify-ts-runner
+  echo "PASS: multisig KLI delegator approved SignifyPy and SignifyTS 2-of-3 delegated inceptions"
 }
 
 main "$@"
