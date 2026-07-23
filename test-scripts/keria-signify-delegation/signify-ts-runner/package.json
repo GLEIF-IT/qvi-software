@@ -1,0 +1,19 @@
+{
+  "name": "qvi-kli-keria-signify-delegation-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "setup": "tsx src/delegation.ts setup",
+    "complete": "tsx src/delegation.ts complete"
+  },
+  "dependencies": {
+    "signify-ts": "0.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}
