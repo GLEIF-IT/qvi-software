@@ -2,7 +2,6 @@ import {createTimestamp, parseAidInfo} from "../create-aid";
 import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {admitMultisig, getReceivedCredential, waitForCredential} from "../credentials";
-import {waitAndMarkNotification} from "../notifications";
 
 // process arguments
 const args = process.argv.slice(2);
@@ -57,7 +56,9 @@ async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerP
     let credByQAR1 = await getReceivedCredential(QAR1Client, credSAID);
     let credByQAR2 = await getReceivedCredential(QAR2Client, credSAID);
     let credByQAR3 = await getReceivedCredential(QAR3Client, credSAID);
-    if (!(credByQAR1 && credByQAR2 && credByQAR3)) {
+    const credentialIsMissing =
+        !credByQAR1 || !credByQAR2 || !credByQAR3;
+    if (credentialIsMissing) {
         const admitTime = createTimestamp();
         await admitMultisig(
             QAR1Client,
@@ -83,53 +84,11 @@ async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerP
             issuerPrefix,
             admitTime
         );
-        try {
-            await waitAndMarkNotification(QAR1Client, '/multisig/exn');
-            console.log(`/multisig/exn notification marked for QAR1`);
-        } catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR1: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR2Client, '/multisig/exn');
-            console.log(`/multisig/exn notification marked for QAR2`);
-        }
-        catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR2: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR3Client, '/multisig/exn');
-            console.log(`/multisig/exn notification marked for QAR3`);
-        } catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR3: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR1Client, '/exn/ipex/admit');
-            console.log(`/exn/ipex/admit notification marked for QAR1`);
-        } catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR1: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR2Client, '/exn/ipex/admit');
-            console.log(`/exn/ipex/admit notification marked for QAR2`);
-        } catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR2: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR3Client, '/exn/ipex/admit');
-            console.log(`/exn/ipex/admit notification marked for QAR3`);
-        } catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR3: ${e}`);
-        }
-
-        credByQAR1 = await waitForCredential(QAR1Client, credSAID);
-        credByQAR2 = await waitForCredential(QAR2Client, credSAID);
-        credByQAR3 = await waitForCredential(QAR3Client, credSAID);
+        [credByQAR1, credByQAR2, credByQAR3] = await Promise.all([
+            waitForCredential(QAR1Client, credSAID, 30),
+            waitForCredential(QAR2Client, credSAID, 30),
+            waitForCredential(QAR3Client, credSAID, 30),
+        ]);
     }
     
 }

@@ -5,7 +5,7 @@ import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {createRegistryMultisig} from "../credentials";
 import {waitOperation} from "../operations";
-import {waitAndMarkNotification} from "../notifications";
+import {waitAndRemoveNotification} from "../notifications";
 
 // process arguments
 const args = process.argv.slice(2);
@@ -102,7 +102,7 @@ async function createQviRegistry(multisigName: string, registryName: string, aid
             waitOperation(QAR3Client, registryOp3),
         ]);
 
-        await waitAndMarkNotification(QAR1Client, '/multisig/vcp');
+        await waitAndRemoveNotification(QAR1Client, '/multisig/vcp');
         await new Promise(r => setTimeout(r, 5000)); // wait five seconds for the registry to be witnessed;
 
         [qviRegistrybyQAR1, qviRegistrybyQAR2, qviRegistrybyQAR3] =

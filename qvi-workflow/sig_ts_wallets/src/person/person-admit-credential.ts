@@ -1,4 +1,4 @@
-import {createTimestamp, parseAidInfo} from "../create-aid";
+import {parseAidInfo} from "../create-aid";
 import {getOrCreateClient} from "../keystore-creation";
 import {TestEnvironmentPreset} from "../resolve-env";
 import {
@@ -6,7 +6,7 @@ import {
     getReceivedCredential,
     waitForCredential
 } from "../credentials";
-import {waitAndMarkNotification} from "../notifications";
+import {waitAndRemoveNotification} from "../notifications";
 
 // process arguments
 const args = process.argv.slice(2);
@@ -36,42 +36,34 @@ async function admitCredential(aidInfo: string, issuerPrefix: string, credSAID: 
     const PersonId = await PersonClient.identifiers().get(PERSON.name);
 
     let cred = await getReceivedCredential(PersonClient, credSAID);
-    if (!(cred)) {
+    const credentialIsMissing = cred === undefined;
+    if (credentialIsMissing) {
         console.log(`Credential ${credSAID} not found for ${PersonId.name}, admitting...`);
-        const admitTime = createTimestamp();
-        try {
-            await admitSinglesig(
-                PersonClient,
-                PersonId.name,
-                issuerPrefix,
-            );
-        } catch (e) {
-            console.log(`Person had error admitting credential: ${e}`);
-        }
+        await admitSinglesig(
+            PersonClient,
+            PersonId.name,
+            issuerPrefix,
+        );
 
-        try {
-            await waitAndMarkNotification(QAR1Client, '/exn/ipex/admit');
-        } catch (e) {
-            console.log(`QAR1 did not have a notification to mark: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR2Client, '/exn/ipex/admit');
-        } catch (e) {
-            console.log(`QAR2 did not have a notification to mark: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR3Client, '/exn/ipex/admit');
-        } catch (e) {
-            console.log(`QAR3 did not have a notification to mark: ${e}`);
-        }
+        await Promise.all([
+            waitAndRemoveNotification(
+                QAR1Client,
+                '/exn/ipex/admit',
+                {timeout: 30000}
+            ),
+            waitAndRemoveNotification(
+                QAR2Client,
+                '/exn/ipex/admit',
+                {timeout: 30000}
+            ),
+            waitAndRemoveNotification(
+                QAR3Client,
+                '/exn/ipex/admit',
+                {timeout: 30000}
+            ),
+        ]);
 
-        try {
-            const credByPerson = await waitForCredential(PersonClient, credSAID);
-            cred = credByPerson;
-        } catch (e) {
-            console.log(`Error waiting for credential: ${e}`);
-            cred = await getReceivedCredential(PersonClient, credSAID);
-        }
+        cred = await waitForCredential(PersonClient, credSAID, 30);
     } else{
         console.log(`Credential ${credSAID} already admitted`);
     }

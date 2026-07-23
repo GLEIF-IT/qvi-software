@@ -2,7 +2,7 @@ import { SignifyClient } from "signify-ts";
 import { createTimestamp, parseAidInfo } from "../create-aid";
 import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import { addEndRoleMultisig } from "../multisig-creation";
-import { waitAndMarkNotification } from "../notifications";
+import { waitAndRemoveNotification } from "../notifications";
 import { waitOperation } from "../operations";
 import { resolveEnvironment, TestEnvironmentPreset } from "../resolve-env";
 import fs from 'fs';
@@ -92,9 +92,9 @@ async function authorizeAgentEndRoleForQVI(multisigName: string, aidInfo: string
         await Promise.all(opList2.map((op) => waitOperation(QAR2Client, op)));
         await Promise.all(opList3.map((op) => waitOperation(QAR3Client, op)));
 
-        await waitAndMarkNotification(QAR1Client, '/multisig/rpy');
-        // await waitAndMarkNotification(QAR2Client, '/multisig/rpy');
-        // await waitAndMarkNotification(QAR3Client, '/multisig/rpy');
+        await waitAndRemoveNotification(QAR1Client, '/multisig/rpy');
+        // await waitAndRemoveNotification(QAR2Client, '/multisig/rpy');
+        // await waitAndRemoveNotification(QAR3Client, '/multisig/rpy');
         // need it for client 3?
 
         [oobiQVIbyQAR1, oobiQVIbyQAR2, oobiQVIbyQAR3] = await Promise.all([
@@ -129,5 +129,4 @@ async function getQVIMultisigOobi(QAR1Client: SignifyClient) {
     return {oobi: oobi}
 }
 await authorizeAgentEndRoleForQVI(multisigName, aidInfoArg, witnessIds, env);
-
 

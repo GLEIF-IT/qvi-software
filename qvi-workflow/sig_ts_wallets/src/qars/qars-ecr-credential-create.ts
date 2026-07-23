@@ -4,7 +4,6 @@ import {createTimestamp, parseAidInfo} from "../create-aid";
 import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {getIssuedCredential, grantMultisig, issueCredentialMultisig} from "../credentials";
-import {waitAndMarkNotification} from "../notifications";
 import {waitOperation} from "../operations";
 
 // process arguments
@@ -123,7 +122,7 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
             [QAR2Id, QAR3Id],
             qviAID.name,
             kargsIss,
-            true
+            {isInitiator: true}
         );
         const IssOp2 = await issueCredentialMultisig(
             QAR2Client,
@@ -146,8 +145,6 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
             waitOperation(QAR3Client, IssOp3),
         ]);
 
-        await waitAndMarkNotification(QAR1Client, '/multisig/iss');
-
         ecrCredByQAR1 = await getIssuedCredential(
             QAR1Client,
             qviAID.prefix,
@@ -166,6 +163,34 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
             personPrefix,
             ECR_SCHEMA_SAID
         );
+
+        const credentialIsMissing =
+            !ecrCredByQAR1 || !ecrCredbyQAR2 || !ecrCredbyQAR3;
+        if (credentialIsMissing) {
+            throw new Error(
+                'ECR issuance completed without a credential on every QAR'
+            );
+        }
+        const credentialSaidsAgree =
+            ecrCredByQAR1.sad.d === ecrCredbyQAR2.sad.d &&
+            ecrCredByQAR1.sad.d === ecrCredbyQAR3.sad.d;
+        if (credentialSaidsAgree === false) {
+            throw new Error(
+                `QARs disagree on ECR SAID: ${[
+                    ecrCredByQAR1.sad.d,
+                    ecrCredbyQAR2.sad.d,
+                    ecrCredbyQAR3.sad.d,
+                ].join(',')}`
+            );
+        }
+        const credentialIsIssuedOnEveryQar = [
+            ecrCredByQAR1,
+            ecrCredbyQAR2,
+            ecrCredbyQAR3,
+        ].every((credential) => credential.status?.s === '0');
+        if (credentialIsIssuedOnEveryQar === false) {
+            throw new Error('ECR did not reach issued status on every QAR');
+        }
 
         const grantTime = createTimestamp();
         console.log("IPEX Granting ECR credential to Person...");
@@ -198,24 +223,6 @@ async function createECRCredential(multisigName: string, aidInfo: string, person
             grantTime
         );
 
-        try {
-            await waitAndMarkNotification(QAR1Client, '/multisig/exn');
-        } catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR1: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR2Client, '/multisig/exn');
-        } catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR2: ${e}`);
-        }
-        try {
-            await waitAndMarkNotification(QAR3Client, '/multisig/exn');
-        } catch (e) {
-            // Handle the case where the notification was not received
-            console.error(`Failed to mark notification for QAR3: ${e}`);
-        }
         return {
             ecrCredSAID: ecrCredByQAR1.sad.d,
             ecrCredIssuer: ecrCredByQAR1.sad.i,

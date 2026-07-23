@@ -4,7 +4,7 @@ import {createTimestamp, parseAidInfo} from "../create-aid";
 import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {getIssuedCredential, grantMultisig, issueCredentialMultisig} from "../credentials";
-import {waitAndMarkNotification} from "../notifications";
+import {waitAndRemoveNotification} from "../notifications";
 import {waitOperation} from "../operations";
 
 // process arguments
@@ -121,7 +121,7 @@ async function createOORCredential(multisigName: string, aidInfo: string, person
             [QAR2Id, QAR3Id],
             qviAID.name,
             kargsIss,
-            true
+            {isInitiator: true}
         );
         const IssOp2 = await issueCredentialMultisig(
             QAR2Client,
@@ -144,7 +144,11 @@ async function createOORCredential(multisigName: string, aidInfo: string, person
             waitOperation(QAR3Client, IssOp3),
         ]);
 
-        await waitAndMarkNotification(QAR1Client, '/multisig/iss');
+        await waitAndRemoveNotification(
+            QAR1Client,
+            '/multisig/iss',
+            {timeout: 30000}
+        );
 
         oorCredByQAR1 = await getIssuedCredential(
             QAR1Client,
@@ -196,7 +200,11 @@ async function createOORCredential(multisigName: string, aidInfo: string, person
             grantTime
         );
 
-        await waitAndMarkNotification(QAR1Client, '/multisig/exn');
+        await waitAndRemoveNotification(
+            QAR1Client,
+            '/multisig/exn',
+            {timeout: 30000}
+        );
         return {
             oorCredSAID: oorCredByQAR1.sad.d,
             oorCredIssuer: oorCredByQAR1.sad.i,

@@ -4,7 +4,7 @@ import {createTimestamp, parseAidInfo} from "../create-aid";
 import {getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {getIssuedCredential, grantMultisig, issueCredentialMultisig} from "../credentials";
-import {waitAndMarkNotification} from "../notifications";
+import {waitAndRemoveNotification} from "../notifications";
 import {waitOperation} from "../operations";
 
 // process arguments
@@ -109,7 +109,7 @@ async function createLeCredential(multisigName: string, aidInfo: string, lePrefi
             [QAR2Id, QAR3Id],
             qviAID.name,
             kargsIss,
-            true
+            {isInitiator: true}
         );
         const IssOp2 = await issueCredentialMultisig(
             QAR2Client,
@@ -132,7 +132,7 @@ async function createLeCredential(multisigName: string, aidInfo: string, lePrefi
             waitOperation(QAR3Client, IssOp3),
         ]);
 
-        await waitAndMarkNotification(QAR1Client, '/multisig/iss');
+        await waitAndRemoveNotification(QAR1Client, '/multisig/iss');
 
         leCredbyQAR1 = await getIssuedCredential(
             QAR1Client,
@@ -184,7 +184,7 @@ async function createLeCredential(multisigName: string, aidInfo: string, lePrefi
             grantTime
         );
 
-        await waitAndMarkNotification(QAR1Client, '/multisig/exn');
+        await waitAndRemoveNotification(QAR1Client, '/multisig/exn');
         return {
             leCredSAID: leCredbyQAR1.sad.d,
             leCredIssuer: leCredbyQAR1.sad.i,

@@ -1,9 +1,11 @@
-import signify, {HabState, Serder, Siger, SignifyClient, KeyState} from "signify-ts";
+import signify, {HabState, Serder, Siger, SignifyClient} from "signify-ts";
 import {parseAidInfo} from "../create-aid";
 import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
-import {waitAndMarkNotification} from "../notifications.ts";
+import {waitAndRemoveNotification} from "../notifications.ts";
 import {waitOperation} from "../operations.ts";
+
+type KeyState = {i: string};
 
 // process arguments
 const args = process.argv.slice(2);
@@ -113,10 +115,10 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
     // await new Promise(resolve => setTimeout(resolve, 3000));// wait for the operation to be processed
 
 
-    console.log("Waiting to mark notifications for multisig rotation...");
+    console.log("Waiting to consume notifications for multisig rotation...");
     // join operation with other QARs
     // join with QAR2
-    const qar2RotExnSAID = await waitAndMarkNotification(
+    const qar2RotExnSAID = await waitAndRemoveNotification(
             QAR2Client, '/multisig/rot');
 
     const qar2ExnReplayList = await QAR2Client
@@ -153,7 +155,7 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
     console.log("QAR2 joined multisig rotation, waiting for QAR3 to join...");
 
     const qar2MSAID = await QAR2Client.identifiers().get(multisigName);
-    const qar3RotExnSAID = await waitAndMarkNotification(
+    const qar3RotExnSAID = await waitAndRemoveNotification(
             QAR3Client, '/multisig/rot');
 
     const qar3ExnReplayList = await QAR3Client
