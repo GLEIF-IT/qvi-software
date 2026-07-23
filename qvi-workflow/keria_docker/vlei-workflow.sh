@@ -47,27 +47,49 @@ function pause() {
 }
 
 # Check system dependencies
-required_sys_commands=(docker jq tsx)
+required_sys_commands=(docker jq)
 for cmd in "${required_sys_commands[@]}"; do
-    if ! command -v $cmd &>/dev/null; then 
+    command_is_missing=false
+    command -v "${cmd}" &>/dev/null || command_is_missing=true
+    if [[ "${command_is_missing}" == true ]]; then
         print_red "$cmd is not installed. Please install it."
         exit 1
     fi
 done
 
 # Cleanup functions
-trap cleanup INT
-trap cleanup ERR
+WORKFLOW_CLEANING_UP=false
+trap 'cleanup 130' INT
+trap 'cleanup $?' ERR
 function cleanup() {
+    local status=${1:-0}
+    local cleanup_is_already_running="${WORKFLOW_CLEANING_UP}"
+    if [[ "${cleanup_is_already_running}" == true ]]; then
+        exit "${status}"
+    fi
+    WORKFLOW_CLEANING_UP=true
+    trap - INT ERR
+
     echo
-    docker compose -f $DOCKER_COMPOSE_FILE kill
-    docker compose -f $DOCKER_COMPOSE_FILE down -v
-    rm -rfv "${KEYSTORE_DIR:?}"/*
+    docker compose -f "$DOCKER_COMPOSE_FILE" kill || true
+    docker compose -f "$DOCKER_COMPOSE_FILE" down -v || true
+    rm -rfv "${KEYSTORE_DIR:?}"/* || true
     END_TIME=$(date +%s)
     SCRIPT_TIME=$(($END_TIME - $START_TIME))
     print_lcyan "Script took ${SCRIPT_TIME} seconds to run"
-    print_lcyan "KERIA Docker vLEI workflow completed"
-    exit 0
+    local workflow_succeeded=false
+    [[ "${status}" -eq 0 ]] && workflow_succeeded=true
+    if [[ "${workflow_succeeded}" == true ]]; then
+        print_lcyan "KERIA Docker vLEI workflow completed"
+    else
+        print_red "KERIA Docker vLEI workflow failed with status ${status}"
+    fi
+    exit "${status}"
+}
+
+function fail_workflow() {
+    print_red "$*"
+    cleanup 1
 }
 
 function clear_containers() {
@@ -150,6 +172,8 @@ QVI_PRE=
 # Person AID
 PERSON=mordred
 PERSON_PRE=
+OOR_CRED_SAID=
+ECR_CRED_SAID=
 
 #### Credential data ####
 LE_LEI=254900OPPU84GM83MG36 # GLEIF Americas
@@ -257,11 +281,11 @@ EOM
 
 function start_docker_containers() {
   # Containers
-  docker compose -f $DOCKER_COMPOSE_FILE up --wait
-  if [ $? -ne 0 ]; then
+  local containers_started=true
+  docker compose -f "$DOCKER_COMPOSE_FILE" up --wait || containers_started=false
+  if [[ "${containers_started}" == false ]]; then
       print_red "Docker services failed to start properly. Exiting."
-      cleanup
-      exit 1
+      cleanup 1
   fi
 }
 
@@ -458,9 +482,171 @@ function resolve_oobis() {
     echo
 }
 
-# TODO write Challenge Response between GARs, LARs, QARs, and Person
+CHALLENGE_RESPONSE_COUNT=0
+CHALLENGE_WORDS=""
+
+function generate_challenge_words() {
+    local challenge_generation_failed=false
+    CHALLENGE_WORDS=$(kli challenge generate --out string | tr -d '\r\n') ||
+        challenge_generation_failed=true
+    if [[ "${challenge_generation_failed}" == true ]]; then
+        fail_workflow "Failed to generate a 128-bit challenge"
+    fi
+
+    local word_count
+    local challenge_word_count_is_invalid=false
+    word_count=$(wc -w <<< "${CHALLENGE_WORDS}" | tr -d '[:space:]')
+    [[ "${word_count}" -ne 12 ]] && challenge_word_count_is_invalid=true
+    if [[ "${challenge_word_count_is_invalid}" == true ]]; then
+        fail_workflow "Expected a 12-word challenge, received ${word_count} words"
+    fi
+}
+
+function verify_kli_challenge() {
+    local verifier_name=$1
+    local verifier_passcode=$2
+    local responder_name=$3
+    local output=""
+    local verification_failed=false
+    local success_message_found=false
+
+    output=$(kli challenge verify \
+        --name "${verifier_name}" \
+        --alias "${verifier_name}" \
+        --passcode "${verifier_passcode}" \
+        --signer "${responder_name}" \
+        --words "${CHALLENGE_WORDS}" 2>&1) || verification_failed=true
+    if [[ "${verification_failed}" == true ]]; then
+        print_red "${output}"
+        fail_workflow "KLI challenge verification failed for ${verifier_name} and ${responder_name}"
+    fi
+
+    [[ "${output}" == *"successfully responded to challenge words"* ]] &&
+        success_message_found=true
+    if [[ "${success_message_found}" == false ]]; then
+        print_red "${output}"
+        fail_workflow "KLI did not confirm a challenge response from ${responder_name} to ${verifier_name}"
+    fi
+
+    CHALLENGE_RESPONSE_COUNT=$((CHALLENGE_RESPONSE_COUNT + 1))
+    print_green "[challenge] ${verifier_name} verified ${responder_name}"
+}
+
+function keria_challenge_action() {
+    local participant=$1
+    local action=$2
+    local peer_prefix=$3
+    local challenge_action_failed=false
+
+    sig_tsx "${QVI_SIGNIFY_DIR}/keria-challenge.ts" \
+        "${ENVIRONMENT}" \
+        "${SIGTS_AIDS}" \
+        "${participant}" \
+        "${action}" \
+        "${peer_prefix}" \
+        "${CHALLENGE_WORDS}" || challenge_action_failed=true
+    if [[ "${challenge_action_failed}" == true ]]; then
+        fail_workflow "KERIA challenge ${action} failed for ${participant} and ${peer_prefix}"
+    fi
+}
+
+function challenge_kli_pair() {
+    local left_name=$1
+    local left_passcode=$2
+    local right_name=$3
+    local right_passcode=$4
+    local response_failed=false
+
+    generate_challenge_words
+    kli challenge respond \
+        --name "${right_name}" \
+        --alias "${right_name}" \
+        --passcode "${right_passcode}" \
+        --recipient "${left_name}" \
+        --words "${CHALLENGE_WORDS}" || response_failed=true
+    if [[ "${response_failed}" == true ]]; then
+        fail_workflow "KLI challenge response failed from ${right_name} to ${left_name}"
+    fi
+    verify_kli_challenge "${left_name}" "${left_passcode}" "${right_name}"
+
+    response_failed=false
+    generate_challenge_words
+    kli challenge respond \
+        --name "${left_name}" \
+        --alias "${left_name}" \
+        --passcode "${left_passcode}" \
+        --recipient "${right_name}" \
+        --words "${CHALLENGE_WORDS}" || response_failed=true
+    if [[ "${response_failed}" == true ]]; then
+        fail_workflow "KLI challenge response failed from ${left_name} to ${right_name}"
+    fi
+    verify_kli_challenge "${right_name}" "${right_passcode}" "${left_name}"
+}
+
+function challenge_keria_pair() {
+    local left_position=$1
+    local left_prefix=$2
+    local right_position=$3
+    local right_prefix=$4
+
+    generate_challenge_words
+    keria_challenge_action "${right_position}" respond "${left_prefix}"
+    keria_challenge_action "${left_position}" verify "${right_prefix}"
+    CHALLENGE_RESPONSE_COUNT=$((CHALLENGE_RESPONSE_COUNT + 1))
+
+    generate_challenge_words
+    keria_challenge_action "${left_position}" respond "${right_prefix}"
+    keria_challenge_action "${right_position}" verify "${left_prefix}"
+    CHALLENGE_RESPONSE_COUNT=$((CHALLENGE_RESPONSE_COUNT + 1))
+}
+
+function challenge_kli_keria_pair() {
+    local kli_name=$1
+    local kli_passcode=$2
+    local kli_prefix=$3
+    local keria_position=$4
+    local keria_name=$5
+    local keria_prefix=$6
+    local response_failed=false
+
+    generate_challenge_words
+    keria_challenge_action "${keria_position}" respond "${kli_prefix}"
+    verify_kli_challenge "${kli_name}" "${kli_passcode}" "${keria_name}"
+
+    generate_challenge_words
+    kli challenge respond \
+        --name "${kli_name}" \
+        --alias "${kli_name}" \
+        --passcode "${kli_passcode}" \
+        --recipient "${keria_name}" \
+        --words "${CHALLENGE_WORDS}" || response_failed=true
+    if [[ "${response_failed}" == true ]]; then
+        fail_workflow "KLI challenge response failed from ${kli_name} to ${keria_name}"
+    fi
+    keria_challenge_action "${keria_position}" verify "${kli_prefix}"
+    CHALLENGE_RESPONSE_COUNT=$((CHALLENGE_RESPONSE_COUNT + 1))
+}
+
 function challenge_response() {
   print_green "------------------------------Authenticating Keystore control with Challenge Responses------------------------------"
+
+  CHALLENGE_RESPONSE_COUNT=0
+  challenge_kli_pair "${GAR1}" "${GAR1_PASSCODE}" "${GAR2}" "${GAR2_PASSCODE}"
+  challenge_kli_pair "${LAR1}" "${LAR1_PASSCODE}" "${LAR2}" "${LAR2_PASSCODE}"
+  challenge_keria_pair qar1 "${QAR1_PRE}" qar2 "${QAR2_PRE}"
+  challenge_keria_pair qar1 "${QAR1_PRE}" qar3 "${QAR3_PRE}"
+  challenge_keria_pair qar2 "${QAR2_PRE}" qar3 "${QAR3_PRE}"
+  challenge_kli_keria_pair "${GAR1}" "${GAR1_PASSCODE}" "${GAR1_PRE}" qar1 "${QAR1}" "${QAR1_PRE}"
+  challenge_kli_keria_pair "${LAR1}" "${LAR1_PASSCODE}" "${LAR1_PRE}" qar1 "${QAR1}" "${QAR1_PRE}"
+  challenge_keria_pair qar1 "${QAR1_PRE}" person "${PERSON_PRE}"
+
+  local expected_response_count_reached=false
+  [[ "${CHALLENGE_RESPONSE_COUNT}" -eq 16 ]] &&
+      expected_response_count_reached=true
+  if [[ "${expected_response_count_reached}" == false ]]; then
+      fail_workflow "Expected 16 directed challenge responses, completed ${CHALLENGE_RESPONSE_COUNT}"
+  fi
+  print_green "[challenge] Completed 16 directed responses across 8 trust relationships"
 }
 
 ################# Create Multisigs and perform delegation ################
@@ -1470,14 +1656,22 @@ EOM
 # Create OOR credential in QVI, issued to the Person
 function create_and_grant_oor_credential() {
     # Check if OOR credential already exists
-    local oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    local credential_lookup_failed=false
+    local credential_already_exists=false
+    local oor_said=""
+    oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
       "$PERSON_PRE" \
       "$OOR_SCHEMA"
-    )
-    if [[ ! "$oor_said" =~ "false" ]]; then
+    ) || credential_lookup_failed=true
+    if [[ "${credential_lookup_failed}" == true ]]; then
+        fail_workflow "[QVI] Failed to check for an existing OOR credential"
+    fi
+
+    [[ "${oor_said}" != *"false"* ]] && credential_already_exists=true
+    if [[ "${credential_already_exists}" == true ]]; then
         print_dark_gray "[QVI] OOR Credential already created"
         return
     fi
@@ -1491,13 +1685,17 @@ function create_and_grant_oor_credential() {
     echo
     print_green "[QVI] creating and granting OOR credential"
 
+    local credential_creation_failed=false
     sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-oor-credential-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "/acdc-info" \
       "${SIGTS_AIDS}" \
       "${PERSON_PRE}" \
-      "${QVI_DATA_DIR}"
+      "${QVI_DATA_DIR}" || credential_creation_failed=true
+    if [[ "${credential_creation_failed}" == true ]]; then
+        fail_workflow "[QVI] Failed to create and grant the OOR credential"
+    fi
 
     print_yellow "[QVI] Waiting for OOR IPEX messages to be witnessed"
     sleep 5
@@ -1510,33 +1708,51 @@ function create_and_grant_oor_credential() {
 # Person: Admit OOR credential from QVI
 function admit_oor_credential() {
     # check if OOR has been admitted to receiver
-    local person_oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+    local admission_lookup_failed=false
+    local credential_is_already_admitted=false
+    local person_oor_said=""
+    person_oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${OOR_SCHEMA}" \
       "${QVI_PRE}"
-    )
-    if [[ ! "$person_oor_said" =~ "false" ]]; then
+    ) || admission_lookup_failed=true
+    if [[ "${admission_lookup_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to check for an admitted OOR credential"
+    fi
+
+    [[ "${person_oor_said}" != *"false"* ]] &&
+        credential_is_already_admitted=true
+    if [[ "${credential_is_already_admitted}" == true ]]; then
         print_dark_gray "[PERSON] OOR Credential already admitted with SAID ${person_oor_said}"
         return
     fi
 
     # get OOR cred SAID from issuer
-    local qars_oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    local credential_lookup_failed=false
+    local qars_oor_said=""
+    qars_oor_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
       "$PERSON_PRE" \
       "$OOR_SCHEMA" | tr -d '[:space:]' # remove whitespace
-    )
+    ) || credential_lookup_failed=true
+    if [[ "${credential_lookup_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to find the issued OOR credential"
+    fi
     print_lcyan "OOR Credential SAID: ${qars_oor_said}"
 
     print_yellow "[PERSON] Admitting OOR credential ${qars_oor_said} to ${PERSON}"
+    local credential_admission_failed=false
     sig_tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${QVI_PRE}" \
-      "${qars_oor_said}"
+      "${qars_oor_said}" || credential_admission_failed=true
+    if [[ "${credential_admission_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to admit OOR credential ${qars_oor_said}"
+    fi
 
     print_yellow "[PERSON] Waiting for OOR Cred IPEX messages to be witnessed"
     sleep 5
@@ -1544,34 +1760,6 @@ function admit_oor_credential() {
     echo
     print_green "OOR Credential admitted"
     echo
-}
-
-function qars_present_oor_cred_to_sally() {
-  print_yellow "[QVI] Presenting OOR Credential to Sally from the QVI"
-
-  sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
-    "${ENVIRONMENT}" \
-    "${QVI_NAME}" \
-    "${SIGTS_AIDS}" \
-    "${OOR_SCHEMA}" \
-    "${QVI_PRE}" \
-    "${PERSON_PRE}"\
-    "${DIRECT_SALLY_PRE}"
-
-  start=$(date +%s)
-  present_result=0
-  print_dark_gray "[QVI] Waiting for Sally to receive the OOR Credential"
-  while [ $present_result -ne 200 ]; do
-    present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${QVI_PRE}")
-    print_dark_gray "[QVI] received OOR present result ${present_result} from Sally"
-    sleep 1
-    if (( $(date +%s)-start > 25 )); then
-      print_red "[QVI] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${QVI_PRE}"
-      break;
-    fi # 25 seconds timeout
-  done
-
-  print_green "[QVI] OOR Credential presented to Sally"
 }
 
 function qars_present_oor_auth_cred_to_sally () {
@@ -1606,27 +1794,162 @@ function qars_present_oor_auth_cred_to_sally () {
 function person_present_oor_cred_to_sally() {
     print_yellow "[QVI] Presenting OOR Credential to Sally from the Person"
 
+    local credential_transmission_failed=false
     sig_tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${OOR_SCHEMA}" \
       "${QVI_PRE}" \
-      "${DIRECT_SALLY_PRE}"
+      "${DIRECT_SALLY_PRE}" || credential_transmission_failed=true
+    if [[ "${credential_transmission_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to transmit the active OOR credential to Sally"
+    fi
 
+    local start
+    local present_result=0
+    local presentation_received=false
     start=$(date +%s)
-    present_result=0
     print_dark_gray "[PERSON] Waiting for Sally to receive the OOR Credential"
-    while [ $present_result -ne 200 ]; do
+    while [[ "${presentation_received}" == false ]]; do
       present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${PERSON_PRE}")
       print_dark_gray "[PERSON] received ${present_result} from Sally"
-      sleep 1
-      if (( $(date +%s)-start > 25 )); then
-        print_red "[PERSON] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
-        break;
+      [[ "${present_result}" -eq 200 ]] && presentation_received=true
+
+      local presentation_timed_out=false
+      (( $(date +%s) - start > 25 )) && presentation_timed_out=true
+      if [[ "${presentation_timed_out}" == true ]]; then
+        fail_workflow "[PERSON] TIMEOUT - Sally did not receive the OOR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
       fi # 25 seconds timeout
+      sleep 1
     done
 
     print_green "[PERSON] OOR Credential presented to Sally"
+}
+
+function load_qvi_leaf_credential_said() {
+    local artifact=$1
+    local key=$2
+    local label=$3
+    local artifact_is_missing=false
+    local said_load_failed=false
+
+    [[ -f "${artifact}" ]] || artifact_is_missing=true
+    if [[ "${artifact_is_missing}" == true ]]; then
+        fail_workflow "[QVI] Missing ${label} credential artifact ${artifact}"
+    fi
+
+    LOADED_CREDENTIAL_SAID=$(jq -er \
+        --arg key "${key}" \
+        '.[$key] | select(type == "string" and length > 0)' \
+        "${artifact}") || said_load_failed=true
+    if [[ "${said_load_failed}" == true ]]; then
+        fail_workflow "[QVI] ${artifact} does not contain a valid ${key}"
+    fi
+}
+
+function revoke_qvi_leaf_credential() {
+    local label=$1
+    local credential_said=$2
+    local revocation_failed=false
+
+    print_yellow "[QVI] Revoking ${label} credential ${credential_said}"
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-revoke-credential.ts" \
+        "${ENVIRONMENT}" \
+        "${QVI_NAME}" \
+        "${SIGTS_AIDS}" \
+        "${credential_said}" || revocation_failed=true
+    if [[ "${revocation_failed}" == true ]]; then
+        fail_workflow "[QVI] ${label} credential revocation failed"
+    fi
+    print_green "[QVI] ${label} credential revocation converged on all three QARs"
+}
+
+function revoke_oor_credential() {
+    load_qvi_leaf_credential_said \
+        "${LOCAL_QVI_DATA_DIR}/oor-cred-info.json" \
+        "oorCredSAID" \
+        "OOR"
+    OOR_CRED_SAID="${LOADED_CREDENTIAL_SAID}"
+    revoke_qvi_leaf_credential "OOR" "${OOR_CRED_SAID}"
+}
+
+function revoke_ecr_credential() {
+    load_qvi_leaf_credential_said \
+        "${LOCAL_QVI_DATA_DIR}/ecr-cred-info.json" \
+        "ecrCredSAID" \
+        "ECR"
+    ECR_CRED_SAID="${LOADED_CREDENTIAL_SAID}"
+    revoke_qvi_leaf_credential "ECR" "${ECR_CRED_SAID}"
+}
+
+function present_revoked_oor_to_sally() {
+    local credential_said_is_missing=false
+    [[ -z "${OOR_CRED_SAID}" ]] && credential_said_is_missing=true
+    if [[ "${credential_said_is_missing}" == true ]]; then
+        fail_workflow "[QVI] Cannot present a revoked OOR without its credential SAID"
+    fi
+
+    local credential_transmission_failed=false
+    local log_since
+    local start
+    local logs=""
+    local sally_proof_complete=false
+    local rejection_message="revoked credential ${OOR_CRED_SAID} being presented"
+    local report_message="Sending rev of OOR to ${WEBHOOK_HOST} with SAID ${OOR_CRED_SAID}"
+    log_since=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    start=$(date +%s)
+
+    print_yellow "[QVI] Presenting revoked OOR credential ${OOR_CRED_SAID} to Sally"
+    sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
+        "${ENVIRONMENT}" \
+        "${QVI_NAME}" \
+        "${SIGTS_AIDS}" \
+        "${OOR_SCHEMA}" \
+        "${QVI_PRE}" \
+        "${PERSON_PRE}" \
+        "${DIRECT_SALLY_PRE}" || credential_transmission_failed=true
+    if [[ "${credential_transmission_failed}" == true ]]; then
+        fail_workflow "[QVI] Failed to transmit revoked OOR credential ${OOR_CRED_SAID}"
+    fi
+
+    while [[ "${sally_proof_complete}" == false ]]; do
+        local proof_window_expired=false
+        (( $(date +%s) - start > 30 )) && proof_window_expired=true
+        if [[ "${proof_window_expired}" == true ]]; then
+            break
+        fi
+
+        local log_read_failed=false
+        logs=$(docker compose \
+            -f "${DOCKER_COMPOSE_FILE}" \
+            logs \
+            --no-color \
+            --since "${log_since}" \
+            direct-sally 2>&1) || log_read_failed=true
+        if [[ "${log_read_failed}" == true ]]; then
+            print_red "${logs}"
+            fail_workflow "[QVI] Failed to inspect direct Sally logs"
+        fi
+
+        local rejection_message_found=false
+        local report_message_found=false
+        [[ "${logs}" == *"${rejection_message}"* ]] &&
+            rejection_message_found=true
+        [[ "${logs}" == *"${report_message}"* ]] &&
+            report_message_found=true
+        [[ "${rejection_message_found}" == true &&
+           "${report_message_found}" == true ]] &&
+            sally_proof_complete=true
+        sleep 1
+    done
+
+    if [[ "${sally_proof_complete}" == true ]]; then
+        print_green "[QVI] Sally rejected revoked OOR ${OOR_CRED_SAID} and emitted its OOR revocation report"
+        return
+    fi
+
+    print_red "${logs}"
+    fail_workflow "[QVI] Sally did not prove revoked-OOR rejection and reporting for ${OOR_CRED_SAID}"
 }
 
 ############################ ECR Auth ##################################
@@ -1841,14 +2164,22 @@ EOM
 # QVI Grant ECR credential to PERSON
 function create_and_grant_ecr_credential() {
     # Check if ECR credential already exists
-    local ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
+    local credential_lookup_failed=false
+    local credential_already_exists=false
+    local ecr_said=""
+    ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
       "$PERSON_PRE" \
       "$ECR_SCHEMA" | tr -d '[:space:]' # remove whitespace
-    )
-    if [[ ! "$ecr_said" =~ "false" ]]; then
+    ) || credential_lookup_failed=true
+    if [[ "${credential_lookup_failed}" == true ]]; then
+        fail_workflow "[QVI] Failed to check for an existing ECR credential"
+    fi
+
+    [[ "${ecr_said}" != *"false"* ]] && credential_already_exists=true
+    if [[ "${credential_already_exists}" == true ]]; then
         print_dark_gray "[QVI] ECR Credential already created"
         return
     fi
@@ -1862,13 +2193,17 @@ function create_and_grant_ecr_credential() {
     pause "Press [enter] to create and grant the ECR credential"
     print_green "[QVI] creating and granting ECR credential"
 
+    local credential_creation_failed=false
     sig_tsx "${QVI_SIGNIFY_DIR}/qars/qars-ecr-credential-create.ts" \
       "${ENVIRONMENT}" \
       "${QVI_NAME}" \
       "/acdc-info" \
       "${SIGTS_AIDS}" \
       "${PERSON_PRE}" \
-      "${QVI_DATA_DIR}"
+      "${QVI_DATA_DIR}" || credential_creation_failed=true
+    if [[ "${credential_creation_failed}" == true ]]; then
+        fail_workflow "[QVI] Failed to create and grant the ECR credential"
+    fi
 
     print_yellow "[QVI] Waiting for ECR IPEX messages to be witnessed"
     sleep 8
@@ -1881,32 +2216,49 @@ function create_and_grant_ecr_credential() {
 # Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
     # check if ECR has been admitted to receiver
-    local ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
+    local admission_lookup_failed=false
+    local credential_is_already_admitted=false
+    local ecr_said=""
+    ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/person/person-check-received-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${ECR_SCHEMA}" \
       "${QVI_PRE}" | tr -d '[:space:]' # remove whitespace
-    )
-    if [[ ! "$ecr_said" =~ "false" ]]; then
+    ) || admission_lookup_failed=true
+    if [[ "${admission_lookup_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to check for an admitted ECR credential"
+    fi
+
+    [[ "${ecr_said}" != *"false"* ]] &&
+        credential_is_already_admitted=true
+    if [[ "${credential_is_already_admitted}" == true ]]; then
         print_dark_gray "[PERSON] ECR Credential already admitted with SAID ${ecr_said}"
         return
     fi
 
     # get ECR cred SAID from issuer
+    local credential_lookup_failed=false
     ecr_said=$(sig_tsx "${QVI_SIGNIFY_DIR}/qars/qar-check-issued-credential.ts" \
       "$ENVIRONMENT" \
       "$QVI_NAME" \
       "$SIGTS_AIDS" \
       "$PERSON_PRE" \
       "$ECR_SCHEMA" | tr -d '[:space:]' # remove whitespace
-    )
+    ) || credential_lookup_failed=true
+    if [[ "${credential_lookup_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to find the issued ECR credential"
+    fi
     print_yellow "[PERSON] Admitting ECR credential ${ecr_said} to ${PERSON}"
 
+    local credential_admission_failed=false
     sig_tsx "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
       "${ENVIRONMENT}" \
       "${SIGTS_AIDS}" \
       "${QVI_PRE}" \
-      "${ecr_said}"
+      "${ecr_said}" || credential_admission_failed=true
+    if [[ "${credential_admission_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to admit ECR credential ${ecr_said}"
+    fi
 
     print_yellow "[PERSON] Waiting for IPEX messages to be witnessed"
     sleep 5
@@ -1915,41 +2267,6 @@ function admit_ecr_credential() {
     print_green "ECR Credential admitted"
     echo
 }
-
-# Present ECR credential to Sally (vLEI Reporting API)
-# Sally does not recognize the ECR credential and will reject it.
-# This just tests out the presentation capability for testing purposes.
-function present_ecr_cred_to_sally() {
-    print_yellow "[QVI] Presenting ECR Credential to Sally"
-
-    sig_tsx "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${SIGTS_AIDS}" \
-      "${ECR_SCHEMA}" \
-      "${QVI_PRE}" \
-      "${DIRECT_SALLY_PRE}"
-
-    start=$(date +%s)
-    present_result=0
-    print_dark_gray "[PERSON] Waiting for Sally to receive the ECR Credential"
-    # This check will not return any 200 success values for the ECR as Sally does not recognize this credential.
-    # It is just here for illustration and to give Sally time to receive the credential.
-    while [ $present_result -ne 200 ]; do
-      present_result=$(curl -s -o /dev/null -w "%{http_code}" "${WEBHOOK_HOST_LOCAL}/?holder=${PERSON_PRE}")
-      print_dark_gray "[PERSON] received ${present_result} from Sally"
-      sleep 1
-      if (( $(date +%s)-start > 3 )); then
-        print_red "[PERSON] TIMEOUT - Sally did not receive the ECR Credential for ${PERSON_NAME} | ${PERSON_PRE}"
-        break;
-      fi
-    done
-
-    print_green "[PERSON] ECR Credential presented to Sally"
-}
-
-# QVI: Revoke ECR Auth and OOR Auth credentials
-
-# QVI: Present revoked credentials to Sally
 
 ############################ Staging Sally Presentation ##################################
 # Present LE credential to GLEIF Staging Sally
@@ -2035,7 +2352,7 @@ function setup() {
   read_prefixes
 
   resolve_oobis
-  # challenge_response() including SignifyTS Integration
+  challenge_response
 }
 
 # Sets up GEDA, GEDA registry, delegation to the QVI, and QVI OOBI resolution for GARs and LARs
@@ -2109,7 +2426,7 @@ function ecr_auth_cred() {
   prepare_ecr_auth_edge
 }
 
-# Creates the ECR credential, grants it to the Person, and presents it to Sally from the person
+# Creates the ECR credential, grants it to the Person, and admits it
 function ecr_cred() {
   prepare_ecr_cred_data
   create_and_grant_ecr_credential
@@ -2136,22 +2453,14 @@ function main_flow() {
   le_sally_presentation
 
   oor_auth_and_oor_cred
-  qars_present_oor_cred_to_sally
   pause "Press [ENTER] to present OOR to Sally"
   person_present_oor_cred_to_sally
-#  pause "Press [ENTER] to present OOR to Sally again"
-#  person_present_oor_cred_to_sally # second presentation for now since there is a bug where the first presentation does not succeed
 
   ecr_auth_and_ecr_cred
-  pause "Press [ENTER] to present ECR to Sally"
-  present_ecr_cred_to_sally
-  pause "Press [ENTER] to present ECR to Sally again"
-  present_ecr_cred_to_sally
+  revoke_oor_credential
+  present_revoked_oor_to_sally
+  revoke_ecr_credential
 
-  # TODO Revoke OOR
-  # TODO Present revoked OOR to Sally
-  # TODO Revoke ECR
-  # TODO Present revoked ECR to Sally
   pause "Press [enter] to end workflow"
   end_workflow
 }
@@ -2218,8 +2527,6 @@ function debug_workflow() {
 
   oor_auth_and_oor_cred
   pause "Press [ENTER] to present OOR to Sally"
-  person_present_oor_cred_to_sally
-  pause "Press [ENTER] to present OOR to Sally again"
   person_present_oor_cred_to_sally
 
   end_workflow

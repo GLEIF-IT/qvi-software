@@ -1,5 +1,5 @@
 import signify, { CreateIdentiferArgs, HabState, SignifyClient } from "signify-ts";
-import { waitAndMarkNotification } from "./notifications";
+import { waitAndRemoveNotification } from "./notifications";
 
 /**
  * Creates a multisig group with the given delegate member AID and other delegate member AIDs.
@@ -22,7 +22,10 @@ export async function createAIDMultisig(
     kargs: CreateIdentiferArgs,
     isInitiator: boolean = false
 ) {
-    if (!isInitiator) await waitAndMarkNotification(client, '/multisig/icp');
+    const participantIsFollower = isInitiator === false;
+    if (participantIsFollower) {
+        await waitAndRemoveNotification(client, '/multisig/icp');
+    }
 
     const icpResult = await client.identifiers().create(groupName, kargs);
     const op = await icpResult.op();
@@ -62,7 +65,10 @@ export async function addEndRoleMultisig(
     timestamp: string,
     isInitiator: boolean = false
 ) {
-    if (!isInitiator) await waitAndMarkNotification(client, '/multisig/rpy');
+    const participantIsFollower = isInitiator === false;
+    if (participantIsFollower) {
+        await waitAndRemoveNotification(client, '/multisig/rpy');
+    }
 
     const opList: any[] = [];
     const members = await client.identifiers().members(multisigAID.name);

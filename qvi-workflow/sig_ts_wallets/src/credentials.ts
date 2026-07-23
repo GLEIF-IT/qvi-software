@@ -1,5 +1,5 @@
 import signify, { CredentialData, HabState, Serder, SignifyClient } from "signify-ts";
-import { waitAndMarkNotification } from "./notifications";
+import { waitAndRemoveNotification } from "./notifications";
 
 /**
  * Creates a multisig registry by name for a set of single sig participants.
@@ -21,7 +21,10 @@ export async function createRegistryMultisig(
     nonce: string,
     isInitiator: boolean = false
 ) {
-    if (!isInitiator) await waitAndMarkNotification(client, '/multisig/vcp');
+    const participantIsFollower = isInitiator === false;
+    if (participantIsFollower) {
+        await waitAndRemoveNotification(client, '/multisig/vcp');
+    }
 
     const vcpResult = await client.registries().create({
         name: multisigAID.name,
@@ -64,24 +67,31 @@ export async function createRegistryMultisig(
  * @param otherMembersAIDs the other multisig participants creating this credential
  * @param multisigAIDName label of the multisig AID
  * @param kargsIss content of the credential
- * @param isInitiator whether the client is the lead of the multisig operation
+ * @param options coordination options for this participant
  * @returns 
  */
+export interface MultisigIssueOptions {
+    isInitiator?: boolean;
+}
+
 export async function issueCredentialMultisig(
     client: SignifyClient,
     aid: HabState,
     otherMembersAIDs: HabState[],
     multisigAIDName: string,
     kargsIss: CredentialData,
-    isInitiator: boolean = false
+    options: MultisigIssueOptions = {}
 ) {
-    if (!isInitiator) {
-        try {
-            await waitAndMarkNotification(client, '/multisig/iss');
-            console.log(`/multisig/iss notification marked for ${aid.name} : ${aid.prefix}`)
-        } catch (e) {
-            console.error(`No notification found for ${aid.name}: ${aid.prefix}. ${e}`);
-        }
+    const participantIsFollower = options.isInitiator !== true;
+    if (participantIsFollower) {
+        await waitAndRemoveNotification(
+            client,
+            '/multisig/iss',
+            {timeout: 30000}
+        );
+        console.log(
+            `/multisig/iss notification consumed for ${aid.name} : ${aid.prefix}`
+        );
     }
 
     const credResult = await client
@@ -115,6 +125,60 @@ export async function issueCredentialMultisig(
         );
 
     return op;
+}
+
+/**
+ * Revokes a credential issued by a multisig identifier one participant at a time.
+ */
+export async function revokeCredentialMultisig(
+    client: SignifyClient,
+    aid: HabState,
+    otherMembersAIDs: HabState[],
+    multisigAIDName: string,
+    credentialSaid: string,
+    timestamp: string,
+    isInitiator: boolean = false
+) {
+    const participantIsFollower = isInitiator === false;
+    if (participantIsFollower) {
+        await waitAndRemoveNotification(
+            client,
+            '/multisig/rev',
+            {timeout: 30000}
+        );
+    }
+
+    const result = await client
+        .credentials()
+        .revoke(multisigAIDName, credentialSaid, timestamp);
+    const multisigAID = await client.identifiers().get(multisigAIDName);
+    const keeper = client.manager!.get(multisigAID);
+    const sigs = await keeper.sign(signify.b(result.anc.raw));
+    const sigers = sigs.map((sig: string) => new signify.Siger({ qb64: sig }));
+    const ims = signify.d(signify.messagize(result.anc, sigers));
+    const atc = ims.substring(result.anc.size);
+    const embeds = {
+        rev: [result.rev, ''],
+        anc: [result.anc, atc],
+    };
+    const recipients = otherMembersAIDs.map((member) => member.prefix);
+
+    await client
+        .exchanges()
+        .send(
+            aid.name,
+            'multisig',
+            aid,
+            '/multisig/rev',
+            {
+                gid: multisigAID.prefix,
+                said: credentialSaid,
+            },
+            embeds,
+            recipients
+        );
+
+    return result.op;
 }
 
 /**
@@ -281,9 +345,10 @@ export async function admitSinglesig(
     aidName: string,
     recipientPrefix: string
 ) {
-    const grantMsgSaid = await waitAndMarkNotification(
+    const grantMsgSaid = await waitAndRemoveNotification(
         client,
-        '/exn/ipex/grant'
+        '/exn/ipex/grant',
+        {timeout: 30000}
     );
 
     const [admit, sigs, aend] = await client.ipex().admit({
@@ -316,7 +381,7 @@ export async function admitMultisig(
     recipientPrefix: string,
     timestamp: string
 ) {
-    const grantMsgSaid = await waitAndMarkNotification(
+    const grantMsgSaid = await waitAndRemoveNotification(
         client,
         '/exn/ipex/grant'
     );

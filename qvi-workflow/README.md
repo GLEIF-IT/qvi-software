@@ -24,9 +24,24 @@ There are three demonstrations:
 
 - Docker - make sure you have Docker installed and running on your machine.
 
-## TODOs
+## KERIA Docker workflow coverage
 
-- [ ] Add multisig revoke to the script and present a revoked credential to Sally. See signify-ts/examples/integration-tests/multisig.test.ts
+The `keria_docker` workflow authenticates the relationships needed by the QVI
+story with mutual 128-bit challenge responses: GAR1-GAR2, LAR1-LAR2, every QAR
+pair, GAR1-QAR1, QAR1-LAR1, and QAR1-Person. This is eight relationships and
+16 directed responses, not an all-to-all exchange.
+
+After issuing and admitting the QVI-issued OOR and ECR credentials, all three
+QARs revoke those two leaf credentials. The LE-issued OOR-Auth and ECR-Auth
+credentials remain active because the QVI is not their revocation authority.
+The Person presents the active OOR once. After revocation, the QVI presents
+the OOR again so direct Sally receives the current KEL and TEL; the workflow
+requires Sally to reject it as revoked and emit its supported OOR revocation
+action.
+
+Sally 1.0.2 does not support ECR reporting. The ECR path therefore ends with
+issuance, Person admission, and three-QAR revocation convergence. No ECR is
+presented to Sally.
 
 # Setup instructions 
 

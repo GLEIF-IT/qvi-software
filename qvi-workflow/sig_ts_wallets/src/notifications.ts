@@ -10,20 +10,24 @@ export interface Notification {
 }
 
 /**
- * Wait for a notification with a specific route and return the SAID of the Exchange (exn) message.
+ * Wait for a notification, consume it, and return the SAID of its Exchange message.
+ *
+ * Removing consumed notifications keeps later workflow messages visible in
+ * SignifyTS 0.3.0-rc1, whose notification client reads 25 entries by default.
  * @param client SignifyClient representing the Client AID
  * @param route Route of the notification to wait for
  * @returns SAID of the Exchange (exn) message
  */
-export async function waitAndMarkNotification(
+export async function waitAndRemoveNotification(
     client: SignifyClient,
-    route: string
+    route: string,
+    options: RetryOptions = {}
 ): Promise<string> {
-    const notes = await waitForNotifications(client, route);
+    const notes = await waitForNotifications(client, route, options);
 
     await Promise.all(
         notes.map(async (note) => {
-            await markNotification(client, note);
+            await markAndRemoveNotification(client, note);
         })
     );
 
@@ -44,7 +48,8 @@ export async function waitForNotifications(
             (note) => note.a.r === route && note.r === false
         );
 
-        if (!notes.length) {
+        const matchingNotificationWasNotFound = notes.length === 0;
+        if (matchingNotificationWasNotFound) {
             throw new Error(`No notifications with route ${route}`);
         }
 
@@ -64,16 +69,6 @@ export async function markAndRemoveNotification(
     } finally {
         await client.notifications().delete(note.i);
     }
-}
-
-/**
- * Mark notification as read.
- */
-export async function markNotification(
-    client: SignifyClient,
-    note: Notification
-): Promise<void> {
-    await client.notifications().mark(note.i);
 }
 
 export async function resolveOobi(

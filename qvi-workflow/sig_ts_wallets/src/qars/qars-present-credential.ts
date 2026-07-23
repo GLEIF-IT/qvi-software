@@ -6,7 +6,7 @@ import {
     getReceivedCredBySchemaAndIssuer,
     grantMultisig
 } from "../credentials.ts";
-import {waitAndMarkNotification} from "../notifications.ts";
+import {waitAndRemoveNotification} from "../notifications.ts";
 
 // process arguments
 const args = process.argv.slice(2);
@@ -112,19 +112,19 @@ export async function grantCredential(
     );
     console.log(`[QVI] IPEX Granting credential to ${recipientPrefix}...done`);
 
-    console.log(`[QVI] marking IPEX Grant notifications read for all QARs...`);
+    console.log(`[QVI] consuming IPEX Grant notifications for all QARs...`);
     try {
-        await waitAndMarkNotification(QAR1Client, '/exn/ipex/grant');
+        await waitAndRemoveNotification(QAR1Client, '/exn/ipex/grant');
     } catch (e) {
         console.log(`QAR1 did not have an /exn/ipex/grant notification to mark: ${e}`);
     }
     try {
-        await waitAndMarkNotification(QAR2Client, '/exn/ipex/grant');
+        await waitAndRemoveNotification(QAR2Client, '/exn/ipex/grant');
     } catch (e) {
         console.log(`QAR2 did not have an /exn/ipex/grant notification to mark: ${e}`);
     }
     try {
-        await waitAndMarkNotification(QAR3Client, '/exn/ipex/grant');
+        await waitAndRemoveNotification(QAR3Client, '/exn/ipex/grant');
     } catch (e) {
         console.log(`QAR3 did not have an /exn/ipex/grant notification to mark: ${e}`);
     }
