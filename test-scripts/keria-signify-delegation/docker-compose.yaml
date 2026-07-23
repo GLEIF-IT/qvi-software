@@ -1,0 +1,86 @@
+x-python-env: &python-env
+  PYTHONUNBUFFERED: "1"
+  PYTHONIOENCODING: "UTF-8"
+  PYTHONWARNINGS: "ignore::SyntaxWarning"
+
+x-healthcheck: &healthcheck
+  interval: 2s
+  timeout: 3s
+  retries: 30
+  start_period: 2s
+
+volumes:
+  wit-vol:
+  keria-vol:
+
+services:
+  witness-demo:
+    image: ${KERI_IMAGE:-weboftrust/keri}:${KERI_IMAGE_TAG:-1.2.13}
+    environment:
+      <<: *python-env
+    command: witness demo
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5642/oobi"]
+      <<: *healthcheck
+    volumes:
+      # KERI Configer requires write access; read-only config mounts fall back to empty local config.
+      - ./config/demo-witnesses:/keripy/scripts/keri/cf/main
+      - wit-vol:/usr/local/var/keri
+
+  keria:
+    image: ${KERIA_IMAGE:-weboftrust/keria}:${KERIA_IMAGE_TAG:-0.4.0}
+    environment:
+      <<: *python-env
+      KERI_AGENT_CORS: "1"
+    command: start --config-dir /keria/config --config-file keria --name keria
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml"]
+      <<: *healthcheck
+    volumes:
+      # KERIA reads this through KERI Configer too, so keep the config writable.
+      - ./config/keria.json:/keria/config/keri/cf/keria.json
+      - keria-vol:/usr/local/var/keri
+    depends_on:
+      witness-demo:
+        condition: service_healthy
+
+  kli:
+    image: ${KERI_IMAGE:-weboftrust/keri}:${KERI_IMAGE_TAG:-1.2.13}
+    environment:
+      <<: *python-env
+    volumes:
+      - ./docker-keystores:/usr/local/var/keri
+      - ./config:/config:ro
+      - ./events:/events
+    depends_on:
+      witness-demo:
+        condition: service_healthy
+
+  signifypy-runner:
+    build:
+      context: ./signifypy-runner
+      dockerfile: Dockerfile
+    environment:
+      <<: *python-env
+      KERIA_ADMIN_URL: http://keria:3901
+      KERIA_BOOT_URL: http://keria:3903
+      QVI_DATA_DIR: /qvi-data
+    volumes:
+      - ./qvi-data:/qvi-data
+    depends_on:
+      keria:
+        condition: service_healthy
+
+  signify-ts-runner:
+    build:
+      context: ./signify-ts-runner
+      dockerfile: Dockerfile
+    environment:
+      KERIA_ADMIN_URL: http://keria:3901
+      KERIA_BOOT_URL: http://keria:3903
+      QVI_DATA_DIR: /qvi-data
+    volumes:
+      - ./qvi-data:/qvi-data
+    depends_on:
+      keria:
+        condition: service_healthy

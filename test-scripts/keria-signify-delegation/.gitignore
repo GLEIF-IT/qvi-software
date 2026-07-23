@@ -1,0 +1,10 @@
+docker-keystores/*
+events/*
+qvi-data/*
+signifypy-runner/**/__pycache__/
+*.pyc
+signify-ts-runner/node_modules/
+signify-ts-runner/dist/
+!docker-keystores/.gitkeep
+!events/.gitkeep
+!qvi-data/.gitkeep
