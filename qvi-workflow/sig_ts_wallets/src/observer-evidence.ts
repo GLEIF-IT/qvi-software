@@ -1,8 +1,6 @@
-const EXPECTED_OBSERVER_COUNT = 3;
+import {sortAids} from './canonical-order.ts';
 
-function sorted(values: string[]): string[] {
-    return [...values].sort();
-}
+const EXPECTED_OBSERVER_COUNT = 3;
 
 export function assertExactObserverSet(
     observedAids: string[],
@@ -24,8 +22,8 @@ export function assertExactObserverSet(
         new Set(observedAids).size !== EXPECTED_OBSERVER_COUNT ||
         observedAids.some((aid) => aid.length === 0);
     const observerSetsMatch =
-        JSON.stringify(sorted(observedAids)) ===
-        JSON.stringify(sorted(expectedAids));
+        JSON.stringify(sortAids(observedAids)) ===
+        JSON.stringify(sortAids(expectedAids));
     if (observedObserversAreInvalid || observerSetsMatch === false) {
         throw new Error(
             `${evidenceName} observers ${JSON.stringify(observedAids)} do not match expected member AIDs ${JSON.stringify(expectedAids)}`

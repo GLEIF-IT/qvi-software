@@ -3,6 +3,11 @@ import {promises as fs} from 'node:fs';
 import type {SignifyClient} from 'signify-ts';
 
 import {
+    sortAgentEndpointsByEid,
+    sortAids,
+    sortOobis,
+} from '../canonical-order.ts';
+import {
     isMainModule,
     parseNamedArguments,
     participantConfigFromArguments,
@@ -73,6 +78,34 @@ function readEndpointUrl(value: unknown, eid: string): string {
     return url.toString();
 }
 
+function readSigningMemberAgentEndpoint(member: unknown): AgentEndpoint {
+    const memberIsAnObject = isRecord(member);
+    const memberEnds = memberIsAnObject ? member.ends : undefined;
+    const endsAreAnObject = isRecord(memberEnds);
+    const agentEnds = endsAreAnObject ? memberEnds.agent : undefined;
+    const memberIsInvalid = isRecord(agentEnds) === false;
+    if (memberIsInvalid) {
+        throw new Error(
+            'A QVI signing member has no agent endpoint data'
+        );
+    }
+
+    const concreteAgentEnds = agentEnds as Record<string, unknown>;
+    const agentEntries = Object.entries(concreteAgentEnds);
+    const hasExactlyOneAgent = agentEntries.length === 1;
+    if (hasExactlyOneAgent === false) {
+        throw new Error(
+            'Each QVI signing member must expose exactly one agent endpoint'
+        );
+    }
+
+    const [eid, endpoint] = agentEntries[0];
+    return {
+        eid,
+        url: readEndpointUrl(endpoint, eid),
+    };
+}
+
 function readMemberAgentEndpoints(
     members: unknown,
     expectedEids: string[]
@@ -88,40 +121,9 @@ function readMemberAgentEndpoints(
     }
     const concreteSigningMembers = signingMembers as unknown[];
 
-    const endpoints: AgentEndpoint[] = concreteSigningMembers.map(
-        (member: unknown) => {
-            const memberIsAnObject = isRecord(member);
-            const memberEnds = memberIsAnObject
-                ? member.ends
-                : undefined;
-            const endsAreAnObject = isRecord(memberEnds);
-            const agentEnds = endsAreAnObject
-                ? memberEnds.agent
-                : undefined;
-            const memberIsInvalid =
-                isRecord(agentEnds) === false;
-            if (memberIsInvalid) {
-                throw new Error(
-                    'A QVI signing member has no agent endpoint data'
-                );
-            }
-            const concreteAgentEnds =
-                agentEnds as Record<string, unknown>;
-            const agentEntries = Object.entries(concreteAgentEnds);
-            const hasExactlyOneAgent = agentEntries.length === 1;
-            if (hasExactlyOneAgent === false) {
-                throw new Error(
-                    'Each QVI signing member must expose exactly one agent endpoint'
-                );
-            }
-            const [eid, endpoint] = agentEntries[0];
-            return {
-                eid,
-                url: readEndpointUrl(endpoint, eid),
-            };
-        }
+    const endpoints = sortAgentEndpointsByEid(
+        concreteSigningMembers.map(readSigningMemberAgentEndpoint)
     );
-    endpoints.sort((left, right) => left.eid.localeCompare(right.eid));
 
     const observedEids = endpoints.map(({eid}) => eid);
     const endpointUrls = endpoints.map(({url}) => url);
@@ -132,9 +134,10 @@ function readMemberAgentEndpoints(
             'QVI member agents must expose three distinct endpoint URLs'
         );
     }
-    const expectedSorted = [...expectedEids].sort();
+    const expectedEidsInCanonicalOrder = sortAids(expectedEids);
     const endpointEidsAreExact =
-        JSON.stringify(observedEids) === JSON.stringify(expectedSorted);
+        JSON.stringify(observedEids) ===
+        JSON.stringify(expectedEidsInCanonicalOrder);
     if (endpointEidsAreExact === false) {
         throw new Error(
             'QVI member endpoint data does not cover the expected agent EIDs'
@@ -174,7 +177,7 @@ async function requireCommonAuthorizedAgentEids(
     qviPrefix: string,
     expectedEids: string[]
 ): Promise<void> {
-    const expectedSorted = [...expectedEids].sort();
+    const expectedEidsInCanonicalOrder = sortAids(expectedEids);
     const observations = await Promise.all(
         clients.map((client) =>
             client.oobis().endroles(qviPrefix, 'agent')
@@ -188,13 +191,13 @@ async function requireCommonAuthorizedAgentEids(
                 typeof role.eid === 'string' &&
                 role.eid.length > 0
         );
-        const observedEids = [
+        const observedEids = sortAids([
             ...new Set(roles.map(({eid}) => eid)),
-        ].sort();
+        ]);
         return (
             entriesAreScoped &&
             JSON.stringify(observedEids) ===
-                JSON.stringify(expectedSorted)
+                JSON.stringify(expectedEidsInCanonicalOrder)
         );
     });
     if (everyClientObservesExactRoles === false) {
@@ -267,9 +270,9 @@ export async function collectQviMultisigOobi(
             client.oobis().get(groupName, 'agent')
         )
     );
-    const enumeratedOobis = [
+    const enumeratedOobis = sortOobis([
         ...new Set(responses.flatMap((result) => result.oobis)),
-    ].sort();
+    ]);
     const enumeratedOobiIsMissing = enumeratedOobis.length === 0;
     if (enumeratedOobiIsMissing) {
         throw new Error(

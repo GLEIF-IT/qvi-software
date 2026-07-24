@@ -1,3 +1,4 @@
+import {sortAids} from './canonical-order.ts';
 import type {CredentialSnapshot} from './credential-state.ts';
 import type {
     GroupObservation,
@@ -47,14 +48,15 @@ export function assertGroupStateConvergence(
             `QAR group state diverged: ${JSON.stringify(observations.map(({snapshot}) => snapshot))}`
         );
     }
+    const expectedMembers = sortAids(expected.members);
     const expectedState = {
         prefix: expected.prefix,
         delegator: expected.delegator,
         sequence: expected.sequence,
         signingThreshold: expected.signingThreshold,
         nextThreshold: expected.nextThreshold,
-        signingMembers: [...expected.members].sort(),
-        rotationMembers: [...expected.members].sort(),
+        signingMembers: expectedMembers,
+        rotationMembers: expectedMembers,
     };
     const actualState = {
         prefix: baseline.prefix,

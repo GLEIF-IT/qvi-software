@@ -1,5 +1,7 @@
 import type {HabState, SignifyClient} from 'signify-ts';
 
+import {sortAids} from './canonical-order.ts';
+
 export interface GroupStateSnapshot {
     prefix: string;
     delegator: string;
@@ -15,10 +17,6 @@ export interface GroupObservation {
     observerAid: string;
     group: HabState;
     snapshot: GroupStateSnapshot;
-}
-
-function sorted(values: string[]): string[] {
-    return [...values].sort();
 }
 
 export async function readGroupObservation(
@@ -40,8 +38,8 @@ export async function readGroupObservation(
             establishmentDigest: group.state.ee.d,
             signingThreshold: group.state.kt,
             nextThreshold: group.state.nt,
-            signingMembers: sorted(signingMembers),
-            rotationMembers: sorted(rotationMembers),
+            signingMembers: sortAids(signingMembers),
+            rotationMembers: sortAids(rotationMembers),
         },
     };
 }

@@ -14,6 +14,11 @@ const AGENT_ENDPOINTS = [
     'http://keria2:3902/',
     'http://keria3:3902/',
 ];
+const AGENT_ENDPOINTS_BY_EID = [
+    {eid: 'EAgentOne', url: 'http://keria1:3902/'},
+    {eid: 'EAgentThree', url: 'http://keria3:3902/'},
+    {eid: 'EAgentTwo', url: 'http://keria2:3902/'},
+];
 
 interface AgentClientOptions {
     eid: string;
@@ -83,12 +88,7 @@ describe('QVI multisig OOBI', () => {
         );
         assert.deepEqual(
             result.agentEndpoints,
-            AGENT_EIDS.map((eid, index) => ({
-                eid,
-                url: AGENT_ENDPOINTS[index],
-            })).sort((left, right) =>
-                left.eid.localeCompare(right.eid)
-            )
+            AGENT_ENDPOINTS_BY_EID
         );
     });
 
