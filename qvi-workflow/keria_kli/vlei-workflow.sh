@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # vlei-workflow.sh for KERIA for the QVI and Person participants and the KLI for the GEDA and LE participants.
 
+umask 077
+
 # Runs the entire QVI issuance workflow end to end starting from multisig AID creation including the
 # GLEIF External Delegated AID (GEDA) creation all the way to OOR and ECR credential issuance to the
 # Person AID for usage in the iXBRL data attestation.
@@ -16,15 +18,17 @@
 #   > vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/
 # and from the keria repo within a Python virtual environment run:
 #   > keria start --config-dir scripts --config-file keria --loglevel INFO
-# and from the sally repo within a Python virtual environment run:
-#   > sally server start --direct --http 9723 --salt 0AD45YWdzWSwNREuAoitH_CC --name sally --alias sally --config-dir scripts --config-file sally.json --incept-file sally-incept.json --passcode VVmRdBTe5YCyLMmYRqTAi --web-hook http://127.0.0.1:9923 --auth EMCRBKH4Kvj03xbEVzKmOIrg0sosqHUF9VG2vzT9ybzv --loglevel INFO
 # and make sure to perform "npm install" in this directory to be able to run the NodeJS scripts.
 
 source color-printing.sh
 
+QVI_WORKFLOW_SCRIPT_DIR=$(
+  cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+)
+source "${QVI_WORKFLOW_SCRIPT_DIR}/lib/rotation-proof.sh"
+
 SALLY_PID=""
 WEBHOOK_PID=""
-INDIRECT_MODE_SALLY=false
 
 function sally_teardown() {
   if [ -n "$SALLY_PID" ]; then
@@ -55,6 +59,12 @@ function pause() {
 
 #### prepare environment ####
 source vlei-env.sh # Load URLs, AID names, prefixes, salts, passcodes, schemas,  config dir, and registries
+# Keep secrets in this shell instead of inheriting them into every child process.
+export -n \
+  GAR1_SALT GAR1_PASSCODE GAR2_SALT GAR2_PASSCODE \
+  LAR1_SALT LAR1_PASSCODE LAR2_SALT LAR2_PASSCODE \
+  QAR1_SALT QAR2_SALT QAR3_SALT PERSON_SALT \
+  SALLY_SALT SALLY_PASSCODE
 
 # environment selector for the SignifyTS scripts
 ENVIRONMENT=local-single-keria
@@ -65,6 +75,7 @@ SIG_TS_WALLETS_DIR=$(dirname "$0")/../sig_ts_wallets/src
 
 # Data directory where the QVI and Person from SignifyTS will use for storing data
 QVI_DATA_DIR="./qvi_data"
+PARTICIPANT_CONFIG="${QVI_DATA_DIR}/participants.json"
 
 # ensure services are up
 function test_dependencies() {
@@ -96,12 +107,54 @@ function test_dependencies() {
     fi
 }
 
-# KERIA SignifyTS QVI salts
-export SIGTS_AIDS="qar1|$QAR1|$QAR1_SALT,qar2|$QAR2|$QAR2_SALT,qar3|$QAR3|$QAR3_SALT,person|$PERSON|$PERSON_SALT"
+function write_participant_config() {
+  mkdir -p "${QVI_DATA_DIR}"
+  {
+    printf '{\n'
+    printf '  "environment": "%s",\n' "${ENVIRONMENT}"
+    printf '  "participants": {\n'
+    printf '    "qar1": {"position":"qar1","name":"%s","salt":"%s","keriaHost":1},\n' "${QAR1}" "${QAR1_SALT}"
+    printf '    "qar2": {"position":"qar2","name":"%s","salt":"%s","keriaHost":1},\n' "${QAR2}" "${QAR2_SALT}"
+    printf '    "qar3": {"position":"qar3","name":"%s","salt":"%s","keriaHost":1},\n' "${QAR3}" "${QAR3_SALT}"
+    printf '    "person": {"position":"person","name":"%s","salt":"%s","keriaHost":1}\n' "${PERSON}" "${PERSON_SALT}"
+    printf '  }\n'
+    printf '}\n'
+  } > "${PARTICIPANT_CONFIG}"
+  chmod 600 "${PARTICIPANT_CONFIG}"
+}
+
+function credential_lookup_found() {
+  local lookup_json=$1
+  printf '%s' "${lookup_json}" |
+    jq -e '.found == true and (.credentialSaid | type == "string")' >/dev/null 2>&1
+}
+
+function require_credential_said() {
+  local lookup_json=$1
+  local description=$2
+  local credential_said=""
+  local parse_status=0
+  local credential_was_found=false
+
+  credential_said=$(printf '%s' "${lookup_json}" |
+    jq -er 'select(.found == true) | .credentialSaid') || parse_status=$?
+  if [[ ${parse_status} -eq 0 && -n "${credential_said}" ]]; then
+    credential_was_found=true
+  fi
+  if [[ "${credential_was_found}" == false ]]; then
+    print_red "${description} lookup did not return one credential SAID"
+    return 1
+  fi
+
+  printf '%s\n' "${credential_said}"
+}
 
 function create_signifyts_aids() {
   print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
-  tsx "${SIG_TS_WALLETS_DIR}/qars/qars-and-person-setup.ts" $ENVIRONMENT $QVI_DATA_DIR $SIGTS_AIDS
+  write_participant_config
+  tsx "${SIG_TS_WALLETS_DIR}/qars/qars-and-person-setup.ts" \
+    --config "${PARTICIPANT_CONFIG}" \
+    --data-dir "${QVI_DATA_DIR}"
   print_green "QVI and Person Identifiers from SignifyTS + KERIA are "
 
   qvi_setup_data=$(cat "${QVI_DATA_DIR}"/qars-and-person-info.json)
@@ -182,7 +235,6 @@ function create_aids() {
     create_aid "${GAR2}"  "${GAR2_SALT}"  "${GAR2_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     create_aid "${LAR1}"  "${LAR1_SALT}"  "${LAR1_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     create_aid "${LAR2}"  "${LAR2_SALT}"  "${LAR2_PASSCODE}"  "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
-    create_aid "${SALLY}" "${SALLY_SALT}" "${SALLY_PASSCODE}" "${CONFIG_DIR}" "${INIT_CFG}" "${temp_icp_config}"
     rm "$temp_icp_config"
 }
 
@@ -206,9 +258,8 @@ function check_webhook_up() {
   fi
 }
 
-INDIRECT_MODE_SALLY=false
 function sally_setup() {
-    export SALLY_OOBI="http://127.0.0.1:9723/oobi"
+    export SALLY_OOBI="${SALLY_HOST}/oobi"
 
     # skip setup if already running
     if [[ $(check_sally_up) -eq 0 ]]; then
@@ -223,36 +274,20 @@ function sally_setup() {
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
 
-    # defaults to direct mode
-    if [[ $INDIRECT_MODE_SALLY = true ]] ; then
-      print_yellow "Starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
-      sally server start \
-        --name "${SALLY}" \
-        --alias "${SALLY}" \
-        --salt "${SALLY_SALT}" \
-        --config-dir sally \
-        --config-file sally.json \
-        --passcode "${SALLY_PASSCODE}" \
-        --web-hook http://127.0.0.1:9923 \
-        --auth "${GEDA_PRE}" & # who will be presenting the credential
-      SALLY_PID=$!
-      export SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
-    else
-      print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
-      sally server start \
-        --direct \
-        --name "${SALLY}" \
-        --alias "${SALLY}" \
-        --salt "${SALLY_SALT}" \
-        --config-dir sally \
-        --config-file sally.json \
-        --incept-file sally-incept.json \
-        --passcode "${SALLY_PASSCODE}" \
-        --web-hook http://127.0.0.1:9923 \
-        --auth "${GEDA_PRE}" & # who will be presenting the credential
-      SALLY_PID=$!
-      export SALLY_OOBI="http://127.0.0.1:9723/oobi"
-    fi
+    print_yellow "Starting Sally on ${SALLY_HOST} in direct mode"
+    sally server start \
+      --direct \
+      --http 9823 \
+      --name "${SALLY}" \
+      --alias "${SALLY}" \
+      --salt "${SALLY_SALT}" \
+      --config-dir direct-sally \
+      --config-file direct-sally.json \
+      --incept-file sally-incept-no-wits.json \
+      --passcode "${SALLY_PASSCODE}" \
+      --web-hook "${WEBHOOK_HOST}" \
+      --auth "${GEDA_PRE}" &
+    SALLY_PID=$!
     print_yellow "Waiting 3 seconds for Sally to start..."
     sleep 3
 }
@@ -272,7 +307,9 @@ function resolve_oobis() {
 
     OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,direct-sally|$SALLY_OOBI"
 
-    tsx "${SIG_TS_WALLETS_DIR}/qars/resolve-oobi-gars-lars-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
+    tsx "${SIG_TS_WALLETS_DIR}/qars/resolve-oobi-gars-lars-sally.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --oobis "${OOBIS_FOR_KERIA}"
 
     echo
     print_lcyan "-----Resolving OOBIs-----"
@@ -537,16 +574,18 @@ function resolve_geda_oobi() {
     GEDA_OOBI=""
     GEDA_OOBI=$(kli oobi generate --name ${GAR1} --passcode ${GAR1_PASSCODE} --alias ${GEDA_NAME} --role witness)
     echo "GEDA OOBI: ${GEDA_OOBI}"
-    tsx "${SIG_TS_WALLETS_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${GEDA_NAME}" "${GEDA_OOBI}"
+    tsx "${SIG_TS_WALLETS_DIR}/qars/qvi-resolve-oobi.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --alias "${GEDA_NAME}" \
+      --oobi "${GEDA_OOBI}"
 }
 
 # Create delegated multisig QVI AID
 function create_qvi_multisig() {
     tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${QVI_DATA_DIR}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --artifact-dir "${QVI_DATA_DIR}"
     QVI_MULTISIG_SEQ_NO=$(cat "${QVI_DATA_DIR}"/qvi-sequence-no.json | jq .sequenceNo | tr -d '"')
     if [[ "$QVI_MULTISIG_SEQ_NO" -gt -1 ]]; then
         print_dark_gray "[QVI] Multisig AID ${QVI_NAME} already exists"
@@ -557,11 +596,10 @@ function create_qvi_multisig() {
     local delegator_prefix=$(kli status --name ${GAR1} --alias ${GEDA_NAME} --passcode ${GAR1_PASSCODE} | awk '/Identifier:/ {print $2}')
     print_yellow "Delegator Prefix: ${delegator_prefix}"
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-create-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${QVI_DATA_DIR}" \
-      "${SIGTS_AIDS}" \
-      "${delegator_prefix}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --data-dir "${QVI_DATA_DIR}" \
+      --delegator-prefix "${delegator_prefix}"
     local delegated_multisig_info=$(cat $QVI_DATA_DIR/qvi-multisig-info.json)
     print_yellow "Delegated Multisig Info:"
     print_lcyan $delegated_multisig_info
@@ -585,7 +623,10 @@ function create_qvi_multisig() {
     sleep 5
 
     print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover new GEDA delegation seal anchored in interaction event."
-    tsx "${SIG_TS_WALLETS_DIR}/qars/qars-complete-multisig-incept.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
+    tsx "${SIG_TS_WALLETS_DIR}/qars/qars-complete-multisig-incept.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --geda-prefix "${GEDA_PRE}" \
+      --operation-artifact "${QVI_DATA_DIR}/qvi-multisig-info.json"
 
     MULTISIG_INFO=$(cat $QVI_DATA_DIR/qvi-multisig-info.json)
     QVI_PRE=$(echo $MULTISIG_INFO | jq .msPrefix | tr -d '"')
@@ -597,33 +638,61 @@ function authorize_qvi_multisig_agent_endpoint_role(){
     QVI_OOBI=""
     print_yellow "Authorizing QVI multisig agent endpoint role"
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-authorize-endroles-get-qvi-oobi.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${QVI_DATA_DIR}" \
-      "${SIGTS_AIDS}"
-    QVI_OOBI=$(cat "${QVI_DATA_DIR}/qvi-oobi.json" | jq .oobi | tr -d '"')
-    print_green "QVI Agent OOBI: ${QVI_OOBI}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --data-dir "${QVI_DATA_DIR}"
+    QVI_OOBI=$(jq -er '.agentOobis[0].oobi' "${QVI_DATA_DIR}/qvi-oobi.json")
+    print_green "QVI Agent OOBIs:"
+    jq -r '.agentOobis[] | "  \(.eid): \(.oobi)"' "${QVI_DATA_DIR}/qvi-oobi.json"
 }
 
 # Delegated multisig rotation
 function qvi_rotate() {
     tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${QVI_DATA_DIR}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --artifact-dir "${QVI_DATA_DIR}"
     QVI_MULTISIG_SEQ_NO=$(cat "${QVI_DATA_DIR}"/qvi-sequence-no.json | jq .sequenceNo | tr -d '"')
     if [[ "$QVI_MULTISIG_SEQ_NO" -ge 1 ]]; then
         print_dark_gray "[QVI] Multisig AID ${QVI_NAME} already rotated with SN=${QVI_MULTISIG_SEQ_NO}"
         return
     fi
     print_yellow "[QVI] Rotating QVI Multisig"
+    local qvi_rotation_artifact="${QVI_DATA_DIR}/qvi-rotation-info.json"
+    local rotation_submission_status=0
+    local rotation_submission_succeeded=false
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-rotate-qvi-multisig.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" > "${qvi_rotation_artifact}" ||
+      rotation_submission_status=$?
+    if [[ ${rotation_submission_status} -eq 0 ]]; then
+        rotation_submission_succeeded=true
+    fi
+    if [[ "${rotation_submission_succeeded}" == false ]]; then
+        print_red "[QVI] Failed to submit multisig rotation"
+        return 1
+    fi
+
+    local rotation_artifact_status=0
+    local rotation_artifact_is_valid=false
+    jq -e '
+      (.ok == true) and
+      (.status == "submitted") and
+      (.operationNames | length == 3) and
+      ([.operationNames[]] | unique | length == 1) and
+      (.notificationReferences.qar2.notificationIds | length > 0) and
+      (.notificationReferences.qar3.notificationIds | length > 0)
+    ' "${qvi_rotation_artifact}" >/dev/null ||
+      rotation_artifact_status=$?
+    if [[ ${rotation_artifact_status} -eq 0 ]]; then
+        rotation_artifact_is_valid=true
+    fi
+    if [[ "${rotation_artifact_is_valid}" == false ]]; then
+        print_red "[QVI] Rotation did not return three member operation names"
+        return 1
+    fi
     QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
-    print_green "[QVI] Rotated QVI Multisig with prefix: ${QVI_PREFIX}"
+    print_green "[QVI] Submitted QVI Multisig rotation for prefix: ${QVI_PREFIX}"
 
 
     # GEDA participants Query keystate from QARs
@@ -663,15 +732,43 @@ function qvi_rotate() {
     pid=$!
     PID_LIST+=" $pid"
 
-    print_yellow "[GEDA] Waiting 5s on delegated rotation completion"
+    print_yellow "[GEDA] Waiting on delegated rotation approval"
     wait $PID_LIST
-    sleep 5
 
-    print_lcyan "[QVI] QARs refresh GEDA multisig keystate to discover GEDA approval of delegated rotation"
-    tsx "${SIG_TS_WALLETS_DIR}/qars/qars-refresh-geda-multisig-state.ts" $ENVIRONMENT $SIGTS_AIDS $GEDA_PRE
+    print_lcyan "[QVI] QARs refresh GEDA multisig keystate and await every member rotation operation"
+    local qvi_rotation_completion_artifact="${QVI_DATA_DIR}/qvi-rotation-completion.json"
+    local rotation_completion_status=0
+    local rotation_completion_succeeded=false
+    tsx "${SIG_TS_WALLETS_DIR}/qars/qars-refresh-geda-multisig-state.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --geda-prefix "${GEDA_PRE}" \
+      --operation-artifact "${qvi_rotation_artifact}" \
+      --group-name "${QVI_NAME}" \
+      --qvi-prefix "${QVI_PREFIX}" \
+      > "${qvi_rotation_completion_artifact}" ||
+      rotation_completion_status=$?
+    if [[ ${rotation_completion_status} -eq 0 ]]; then
+        rotation_completion_succeeded=true
+    fi
+    if [[ "${rotation_completion_succeeded}" == false ]]; then
+        print_red "[QVI] One or more member rotation operations failed"
+        return 1
+    fi
 
-    print_yellow "[QVI] Waiting 8s for QARs to refresh GEDA keystate and complete delegation"
-    sleep 8
+    local rotation_evidence_status=0
+    local rotation_evidence_is_complete=false
+    qvi_rotation_completion_artifact_is_valid \
+      "${qvi_rotation_completion_artifact}" \
+      "${QVI_PREFIX}" ||
+      rotation_evidence_status=$?
+    if [[ ${rotation_evidence_status} -eq 0 ]]; then
+        rotation_evidence_is_complete=true
+    fi
+    if [[ "${rotation_evidence_is_complete}" == false ]]; then
+        print_red "[QVI] Rotation completion returned incomplete member evidence"
+        return 1
+    fi
+    print_green "[QVI] All three QAR rotation operations completed"
 }
 
 # GEDA and LE: Resolve QVI OOBI
@@ -683,19 +780,19 @@ function resolve_qvi_oobi() {
     fi
 
     echo
-    echo "QVI OOBI: ${QVI_OOBI}"
-    print_yellow "Resolving QVI OOBI for GEDA and LE"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${QVI_OOBI}"
+    print_yellow "Resolving all three endpoint-qualified QVI agent OOBIs for GEDA and LE"
+    while IFS= read -r qvi_agent_oobi; do
+      kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${qvi_agent_oobi}"
+      kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${qvi_agent_oobi}"
+      kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${qvi_agent_oobi}"
+      kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${qvi_agent_oobi}"
+    done < <(jq -er '.agentOobis[].oobi' "${QVI_DATA_DIR}/qvi-oobi.json")
 
     print_yellow "Resolving QVI OOBI for Person"
     tsx "${SIG_TS_WALLETS_DIR}/person-resolve-qvi-oobi.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${QVI_OOBI}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --oobi-file "${QVI_DATA_DIR}/qvi-oobi.json"
     echo
 }
 
@@ -825,12 +922,17 @@ function admit_qvi_credential() {
         --said \
         --schema "${QVI_SCHEMA}")
     received=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-received-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${QVI_CRED_SAID}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --credential-said "${QVI_CRED_SAID}"
     )
-    if [[ "$received" == "true" ]]; then
+    local credential_was_received=false
+    local lookup_status=0
+    credential_lookup_found "${received}" || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+        credential_was_received=true
+    fi
+    if [[ "${credential_was_received}" == true ]]; then
         print_dark_gray "[QVI] QVI Credential ${QVI_CRED_SAID} already admitted"
         return
     fi
@@ -838,11 +940,10 @@ function admit_qvi_credential() {
     echo
     print_yellow "[QVI] Admitting QVI Credential ${QVI_CRED_SAID} from GEDA"
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-admit-credential-qvi.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${GEDA_PRE}" \
-      "${QVI_CRED_SAID}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuer-prefix "${GEDA_PRE}" \
+      --credential-said "${QVI_CRED_SAID}"
 
     echo
     print_green "[QVI] Admitted QVI credential"
@@ -853,13 +954,14 @@ function present_qvi_cred_to_sally() {
   print_yellow "[QVI] Presenting QVI Credential to Sally"
 
   tsx "${SIG_TS_WALLETS_DIR}/qars/qars-present-credential.ts" \
-    "${ENVIRONMENT}" \
-    "${QVI_NAME}" \
-    "${SIGTS_AIDS}" \
-    "${QVI_SCHEMA}" \
-    "${GEDA_PRE}" \
-    "${QVI_PRE}"\
-    "${SALLY_PRE}"
+    --config "${PARTICIPANT_CONFIG}" \
+    --group-name "${QVI_NAME}" \
+    --credential-said "${QVI_CRED_SAID}" \
+    --expected-issuer "${GEDA_PRE}" \
+    --expected-schema "${QVI_SCHEMA}" \
+    --expected-issuee "${QVI_PRE}" \
+    --recipient-prefix "${SALLY_PRE}" \
+    --expected-status active
 
   start=$(date +%s)
   present_result=0
@@ -953,17 +1055,19 @@ function resolve_le_oobi() {
     LE_OOBI=""
     LE_OOBI=$(kli oobi generate --name ${LAR1} --passcode ${LAR1_PASSCODE} --alias ${LE_NAME} --role witness)
     echo "LE OOBI: ${LE_OOBI}"
-    tsx "${SIG_TS_WALLETS_DIR}/qars/qvi-resolve-oobi.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${LE_NAME}" "${LE_OOBI}"
+    tsx "${SIG_TS_WALLETS_DIR}/qars/qvi-resolve-oobi.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --alias "${LE_NAME}" \
+      --oobi "${LE_OOBI}"
 }
 
 # Create QVI credential registry
 function create_qvi_reg() {
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-registry-create.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${QVI_REGISTRY}" \
-      "${QVI_DATA_DIR}" \
-      "${SIGTS_AIDS}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --registry-name "${QVI_REGISTRY}" \
+      --data-dir "${QVI_DATA_DIR}"
     QVI_REG_REGK=$(cat "${QVI_DATA_DIR}/qvi-registry-info.json" | jq .registryRegk | tr -d '"')
     print_green "[QVI] Credential Registry created for QVI with regk: ${QVI_REG_REGK}"
 }
@@ -1008,14 +1112,20 @@ EOM
 # Create LE credential in QVI
 function create_and_grant_le_credential() {
     # Check if LE credential already exists
-    le_said=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
-      $ENVIRONMENT \
-      $QVI_NAME \
-      $SIGTS_AIDS \
-      $LE_PRE \
-      $LE_SCHEMA
+    local le_lookup
+    le_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuee-prefix "${LE_PRE}" \
+      --schema-said "${LE_SCHEMA}"
     )
-    if [[ ! "$le_said" =~ "false" ]]; then
+    local credential_was_issued=false
+    local lookup_status=0
+    credential_lookup_found "${le_lookup}" || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+        credential_was_issued=true
+    fi
+    if [[ "${credential_was_issued}" == true ]]; then
         print_dark_gray "[QVI] LE Credential already created"
         return
     fi
@@ -1030,12 +1140,11 @@ function create_and_grant_le_credential() {
     print_lcyan "$(cat ./acdc-info/temp-data/legal-entity-data.json)"
 
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-le-credential-create.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "./acdc-info/" \
-      "${SIGTS_AIDS}" \
-      "${LE_PRE}" \
-      "${QVI_DATA_DIR}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --data-dir "./acdc-info/" \
+      --issuee-prefix "${LE_PRE}" \
+      --artifact-dir "${QVI_DATA_DIR}"
 
     echo
     print_lcyan "[QVI] LE Credential created"
@@ -1110,14 +1219,32 @@ function admit_le_credential() {
 function present_le_cred_to_sally() {
   print_yellow "[QVI] Presenting LE Credential to Sally"
 
+  local le_lookup
+  local le_credential_said
+  local lookup_status=0
+  local lookup_succeeded=false
+  le_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
+    --config "${PARTICIPANT_CONFIG}" \
+    --group-name "${QVI_NAME}" \
+    --issuee-prefix "${LE_PRE}" \
+    --schema-said "${LE_SCHEMA}")
+  le_credential_said=$(require_credential_said "${le_lookup}" "LE credential") || lookup_status=$?
+  if [[ ${lookup_status} -eq 0 ]]; then
+    lookup_succeeded=true
+  fi
+  if [[ "${lookup_succeeded}" == false ]]; then
+    return 1
+  fi
+
   tsx "${SIG_TS_WALLETS_DIR}/qars/qars-present-credential.ts" \
-    "${ENVIRONMENT}" \
-    "${QVI_NAME}" \
-    "${SIGTS_AIDS}" \
-    "${LE_SCHEMA}" \
-    "${QVI_PRE}" \
-    "${LE_PRE}"\
-    "${SALLY_PRE}"
+    --config "${PARTICIPANT_CONFIG}" \
+    --group-name "${QVI_NAME}" \
+    --credential-said "${le_credential_said}" \
+    --expected-issuer "${QVI_PRE}" \
+    --expected-schema "${LE_SCHEMA}" \
+    --expected-issuee "${LE_PRE}" \
+    --recipient-prefix "${SALLY_PRE}" \
+    --expected-status active
 
   start=$(date +%s)
   present_result=0
@@ -1345,12 +1472,17 @@ function admit_oor_auth_credential() {
         --said \
         --schema ${OOR_AUTH_SCHEMA})
     received=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-received-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${OOR_AUTH_SAID}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --credential-said "${OOR_AUTH_SAID}"
     )
-    if [[ "$received" == "true" ]]; then
+    local credential_was_received=false
+    local lookup_status=0
+    credential_lookup_found "${received}" || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+        credential_was_received=true
+    fi
+    if [[ "${credential_was_received}" == true ]]; then
         print_dark_gray "[QVI] OOR Auth Credential already admitted"
         return
     fi
@@ -1358,11 +1490,10 @@ function admit_oor_auth_credential() {
     echo
     print_yellow "[QVI] Admitting OOR Auth Credential ${OOR_AUTH_SAID} from LE"
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-admit-credential-qvi.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${LE_PRE}" \
-      "${OOR_AUTH_SAID}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuer-prefix "${LE_PRE}" \
+      --credential-said "${OOR_AUTH_SAID}"
 
     print_yellow "[QVI] Waiting for OOR Auth IPEX admit messages to be witnessed"
     sleep 8
@@ -1415,14 +1546,20 @@ EOM
 # Create OOR credential in QVI, issued to the Person
 function create_and_grant_oor_credential() {
     # Check if OOR credential already exists
-    oor_said=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
-      "$ENVIRONMENT" \
-      "$QVI_NAME" \
-      "$SIGTS_AIDS" \
-      "$PERSON_PRE" \
-      "$OOR_SCHEMA"
+    local oor_lookup
+    oor_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuee-prefix "${PERSON_PRE}" \
+      --schema-said "${OOR_SCHEMA}"
     )
-    if [[ ! "$oor_said" =~ "false" ]]; then
+    local credential_was_issued=false
+    local lookup_status=0
+    credential_lookup_found "${oor_lookup}" || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+        credential_was_issued=true
+    fi
+    if [[ "${credential_was_issued}" == true ]]; then
         print_dark_gray "[QVI] OOR Credential already created"
         return
     fi
@@ -1437,12 +1574,11 @@ function create_and_grant_oor_credential() {
     print_green "[QVI] creating and granting OOR credential"
 
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-oor-credential-create.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "./acdc-info" \
-      "${SIGTS_AIDS}" \
-      "${PERSON_PRE}" \
-      "${QVI_DATA_DIR}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --data-dir "./acdc-info" \
+      --issuee-prefix "${PERSON_PRE}" \
+      --artifact-dir "${QVI_DATA_DIR}"
 
     print_yellow "[QVI] Waiting for OOR IPEX messages to be witnessed"
     sleep 5
@@ -1455,34 +1591,59 @@ function create_and_grant_oor_credential() {
 # Person: Admit OOR credential from QVI
 function admit_oor_credential() {
     # check if OOR has been admitted to receiver
-    oor_said=$(tsx "${SIG_TS_WALLETS_DIR}/person/person-check-received-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${SIGTS_AIDS}" \
-      "${OOR_SCHEMA}" \
-      "${QVI_PRE}"
+    local person_oor_lookup
+    person_oor_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/person/person-check-received-credential.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --schema-said "${OOR_SCHEMA}" \
+      --issuer-prefix "${QVI_PRE}"
     )
-    if [[ ! "$oor_said" =~ "false" ]]; then
-        print_dark_gray "[PERSON] OOR Credential already admitted with SAID ${oor_said}"
+    local credential_was_received=false
+    local lookup_status=0
+    credential_lookup_found "${person_oor_lookup}" || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+        credential_was_received=true
+    fi
+    if [[ "${credential_was_received}" == true ]]; then
+        local admitted_oor_said
+        local admitted_lookup_status=0
+        local admitted_lookup_succeeded=false
+        admitted_oor_said=$(require_credential_said "${person_oor_lookup}" "Person OOR credential") || admitted_lookup_status=$?
+        if [[ ${admitted_lookup_status} -eq 0 ]]; then
+            admitted_lookup_succeeded=true
+        fi
+        if [[ "${admitted_lookup_succeeded}" == false ]]; then
+            return 1
+        fi
+        print_dark_gray "[PERSON] OOR Credential already admitted with SAID ${admitted_oor_said}"
         return
     fi
 
     # get OOR cred SAID from issuer
-    oor_said=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
-      "$ENVIRONMENT" \
-      "$QVI_NAME" \
-      "$SIGTS_AIDS" \
-      "$PERSON_PRE" \
-      "$OOR_SCHEMA"
+    local issued_oor_lookup
+    issued_oor_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuee-prefix "${PERSON_PRE}" \
+      --schema-said "${OOR_SCHEMA}"
     )
+    local oor_said
+    local issued_lookup_status=0
+    local issued_lookup_succeeded=false
+    oor_said=$(require_credential_said "${issued_oor_lookup}" "Issued OOR credential") || issued_lookup_status=$?
+    if [[ ${issued_lookup_status} -eq 0 ]]; then
+        issued_lookup_succeeded=true
+    fi
+    if [[ "${issued_lookup_succeeded}" == false ]]; then
+        return 1
+    fi
 
     echo
     print_yellow "[PERSON] Admitting OOR credential ${oor_said} to ${PERSON}"
 
     tsx "${SIG_TS_WALLETS_DIR}/person/person-admit-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${SIGTS_AIDS}" \
-      "${QVI_PRE}" \
-      "${oor_said}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --issuer-prefix "${QVI_PRE}" \
+      --credential-said "${oor_said}"
 
     print_yellow "[PERSON] Waiting for OOR Cred IPEX messages to be witnessed"
     sleep 5
@@ -1496,12 +1657,30 @@ function admit_oor_credential() {
 function present_oor_cred_to_sally() {
     print_yellow "[QVI] Presenting OOR Credential to Sally"
 
+    local issued_oor_lookup
+    local oor_said
+    issued_oor_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuee-prefix "${PERSON_PRE}" \
+      --schema-said "${OOR_SCHEMA}")
+    local lookup_status=0
+    local lookup_succeeded=false
+    oor_said=$(require_credential_said "${issued_oor_lookup}" "Issued OOR credential") || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+      lookup_succeeded=true
+    fi
+    if [[ "${lookup_succeeded}" == false ]]; then
+      return 1
+    fi
+
     tsx "${SIG_TS_WALLETS_DIR}/person/person-grant-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${SIGTS_AIDS}" \
-      "${OOR_SCHEMA}" \
-      "${QVI_PRE}" \
-      "${SALLY_PRE}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --credential-said "${oor_said}" \
+      --expected-issuer "${QVI_PRE}" \
+      --expected-schema "${OOR_SCHEMA}" \
+      --expected-issuee "${PERSON_PRE}" \
+      --recipient-prefix "${SALLY_PRE}"
 
     start=$(date +%s)
     present_result=0
@@ -1666,12 +1845,17 @@ function admit_ecr_auth_credential() {
         --said \
         --schema ${ECR_AUTH_SCHEMA})
     received=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-received-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${ECR_AUTH_SAID}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --credential-said "${ECR_AUTH_SAID}"
     )
-    if [[ "$received" == "true" ]]; then
+    local credential_was_received=false
+    local lookup_status=0
+    credential_lookup_found "${received}" || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+        credential_was_received=true
+    fi
+    if [[ "${credential_was_received}" == true ]]; then
         print_dark_gray "[QVI] ECR Auth Credential already admitted"
         return
     fi
@@ -1679,11 +1863,10 @@ function admit_ecr_auth_credential() {
     echo
     print_yellow "[QVI] Admitting ECR Auth Credential ${ECR_AUTH_SAID} from LE"
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-admit-credential-qvi.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${LE_PRE}" \
-      "${ECR_AUTH_SAID}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuer-prefix "${LE_PRE}" \
+      --credential-said "${ECR_AUTH_SAID}"
 
     print_yellow "[QVI] Waiting 8s for IPEX admit messages to be witnessed"
     sleep 8
@@ -1737,14 +1920,20 @@ EOM
 # QVI Grant ECR credential to PERSON
 function create_and_grant_ecr_credential() {
     # Check if ECR credential already exists
-    ecr_said=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
-      "$ENVIRONMENT" \
-      "$QVI_NAME" \
-      "$SIGTS_AIDS" \
-      "$PERSON_PRE" \
-      "$ECR_SCHEMA"
+    local ecr_lookup
+    ecr_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuee-prefix "${PERSON_PRE}" \
+      --schema-said "${ECR_SCHEMA}"
     )
-    if [[ ! "$ecr_said" =~ "false" ]]; then
+    local credential_was_issued=false
+    local lookup_status=0
+    credential_lookup_found "${ecr_lookup}" || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+        credential_was_issued=true
+    fi
+    if [[ "${credential_was_issued}" == true ]]; then
         print_dark_gray "[QVI] ECR Credential already created"
         return
     fi
@@ -1759,12 +1948,11 @@ function create_and_grant_ecr_credential() {
     print_green "[QVI] creating and granting ECR credential"
 
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-ecr-credential-create.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "./acdc-info" \
-      "${SIGTS_AIDS}" \
-      "${PERSON_PRE}" \
-      "${QVI_DATA_DIR}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --data-dir "./acdc-info" \
+      --issuee-prefix "${PERSON_PRE}" \
+      --artifact-dir "${QVI_DATA_DIR}"
 
     print_yellow "[QVI] Waiting for ECR IPEX messages to be witnessed"
     sleep 8
@@ -1777,34 +1965,59 @@ function create_and_grant_ecr_credential() {
 # Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
     # check if ECR has been admitted to receiver
-    ecr_said=$(tsx "${SIG_TS_WALLETS_DIR}/person/person-check-received-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${SIGTS_AIDS}" \
-      "${ECR_SCHEMA}" \
-      "${QVI_PRE}"
+    local person_ecr_lookup
+    person_ecr_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/person/person-check-received-credential.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --schema-said "${ECR_SCHEMA}" \
+      --issuer-prefix "${QVI_PRE}"
     )
-    if [[ ! "$ecr_said" =~ "false" ]]; then
-        print_dark_gray "[PERSON] ECR Credential already admitted with SAID ${ecr_said}"
+    local credential_was_received=false
+    local lookup_status=0
+    credential_lookup_found "${person_ecr_lookup}" || lookup_status=$?
+    if [[ ${lookup_status} -eq 0 ]]; then
+        credential_was_received=true
+    fi
+    if [[ "${credential_was_received}" == true ]]; then
+        local admitted_ecr_said
+        local admitted_lookup_status=0
+        local admitted_lookup_succeeded=false
+        admitted_ecr_said=$(require_credential_said "${person_ecr_lookup}" "Person ECR credential") || admitted_lookup_status=$?
+        if [[ ${admitted_lookup_status} -eq 0 ]]; then
+            admitted_lookup_succeeded=true
+        fi
+        if [[ "${admitted_lookup_succeeded}" == false ]]; then
+            return 1
+        fi
+        print_dark_gray "[PERSON] ECR Credential already admitted with SAID ${admitted_ecr_said}"
         return
     fi
 
     # get ECR cred SAID from issuer
-    ecr_said=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
-      "$ENVIRONMENT" \
-      "$QVI_NAME" \
-      "$SIGTS_AIDS" \
-      "$PERSON_PRE" \
-      "$ECR_SCHEMA"
+    local issued_ecr_lookup
+    issued_ecr_lookup=$(tsx "${SIG_TS_WALLETS_DIR}/qars/qar-check-issued-credential.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --issuee-prefix "${PERSON_PRE}" \
+      --schema-said "${ECR_SCHEMA}"
     )
+    local ecr_said
+    local issued_lookup_status=0
+    local issued_lookup_succeeded=false
+    ecr_said=$(require_credential_said "${issued_ecr_lookup}" "Issued ECR credential") || issued_lookup_status=$?
+    if [[ ${issued_lookup_status} -eq 0 ]]; then
+        issued_lookup_succeeded=true
+    fi
+    if [[ "${issued_lookup_succeeded}" == false ]]; then
+        return 1
+    fi
 
     echo
     print_yellow "[PERSON] Admitting ECR credential ${ecr_said} to ${PERSON}"
 
     tsx "${SIG_TS_WALLETS_DIR}/person/person-admit-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${SIGTS_AIDS}" \
-      "${QVI_PRE}" \
-      "${ecr_said}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --issuer-prefix "${QVI_PRE}" \
+      --credential-said "${ecr_said}"
 
     print_yellow "[PERSON] Waiting for IPEX messages to be witnessed"
     sleep 5
@@ -1902,7 +2115,16 @@ function main_flow() {
   pause "Press [enter] to continue with GEDA delegation to QVI"
   geda_delegation_to_qvi
   pause "Press [enter] to continue with QVI identifier rotation"
-  qvi_rotate
+  local qvi_rotation_status=0
+  local qvi_rotation_succeeded=false
+  qvi_rotate || qvi_rotation_status=$?
+  if [[ ${qvi_rotation_status} -eq 0 ]]; then
+      qvi_rotation_succeeded=true
+  fi
+  if [[ "${qvi_rotation_succeeded}" == false ]]; then
+      print_red "[QVI] Delegated multisig rotation did not complete"
+      return 1
+  fi
   resolve_qvi_oobi
 
   pause "Press [enter] to continue with QVI credential creation"
@@ -1924,8 +2146,7 @@ function main_flow() {
   present_oor_cred_to_sally
 
   ecr_auth_and_ecr_cred
-  pause "Press [enter] to present ecr credential to Sally"
-  present_ecr_cred_to_sally
+  print_dark_gray "[QVI] ECR flow ends after Person admission; Sally 1.0.2 does not support ECR reporting"
 }
 
 function debug_flow() {
@@ -1942,17 +2163,18 @@ function debug_flow() {
 
 # Function to display usage
 usage() {
+    local usage_exit_status=${1:-1}
+
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -k, --keystore-dir DIR  Specify keystore directory directory (default: ./docker-keystores)"
     echo "  -a, --alias ALIAS       OOBI alias for target Sally deployment (default: alternate)"
     echo "      --challenge         Use challenge and response section of workflow"
-    echo "      --indirect          Use indirect mode Sally (verification agent)"
     echo "  -d, --debug             Run the Debug workflow"
     echo "  -c, --clear             Clear all containers, keystores, and networks"
     echo "  -h, --help              Display this help message"
     echo "  --pause                 Enable pausing between steps"
-    exit 1
+    exit "${usage_exit_status}"
 }
 
 # Parse command-line options
@@ -1962,14 +2184,10 @@ while [[ $# -gt 0 ]]; do
             cleanup
             ;;
         -h|--help)
-            usage
+            usage 0
             ;;
         --challenge)
             CHALLENGE_ENABLED=true
-            shift
-            ;;
-        --indirect)
-            INDIRECT_MODE_SALLY=true
             shift
             ;;
         --pause)
@@ -2000,7 +2218,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            usage
+            usage 1
             ;;
     esac
 done
