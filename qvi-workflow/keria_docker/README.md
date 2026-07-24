@@ -160,7 +160,6 @@ npm test
 
 cd ../keria_docker
 python3 -m unittest discover -s callback_recorder/tests -v
-for test_script in tests/*.sh; do bash "$test_script"; done
 docker compose \
   --env-file keria-signify-docker.env \
   -f docker-compose-keria_signify_qvi.yaml \
