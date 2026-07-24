@@ -1,16 +1,63 @@
-import {checkIssuedCredential, checkReceivedCredential} from "../qvi-operations.ts";
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
+import {checkIssuedCredential} from "../qvi-operations.ts";
+import type {TestEnvironmentPreset} from '../resolve-env.ts';
 
-/*
-Checks the specified multisig with the first QAR to see if a credential has been received
- */
+export interface CheckIssuedCredentialOptions {
+    groupName: string;
+    participantSource: string;
+    issueePrefix: string;
+    schemaSaid: string;
+    environment: TestEnvironmentPreset;
+}
 
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1]
-const aidInfoArg = args[2]
-const issueePre = args[3]
-const schemaSAID = args[4]
+export async function checkQarIssuedCredential(
+    options: CheckIssuedCredentialOptions
+) {
+    return checkIssuedCredential(
+        options.groupName,
+        options.participantSource,
+        options.schemaSaid,
+        options.issueePrefix,
+        options.environment
+    );
+}
 
-const exists: string = await checkIssuedCredential(multisigName, aidInfoArg, schemaSAID, issueePre, env);
-console.log(exists);
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            [
+                'config',
+                'group-name',
+                'issuee-prefix',
+                'schema-said',
+            ],
+            [
+                'environment',
+                'group-name',
+                'participant-source',
+                'issuee-prefix',
+                'schema-said',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'group-name',
+            'issuee-prefix',
+            'schema-said',
+        ]);
+        const invocation = participantInvocationFromArguments(parsed);
+        return checkQarIssuedCredential({
+            groupName: parsed['group-name'],
+            participantSource: invocation.participantSource,
+            issueePrefix: parsed['issuee-prefix'],
+            schemaSaid: parsed['schema-said'],
+            environment: invocation.environment,
+        });
+    });
+}

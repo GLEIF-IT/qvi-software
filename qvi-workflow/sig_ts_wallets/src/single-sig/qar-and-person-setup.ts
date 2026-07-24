@@ -4,20 +4,13 @@ import {resolveOobi} from "../oobis";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import fs from 'fs';
 import {parseAidInfoSingleSig} from "../create-aid.ts";
-
-/**
- * Expects the following arguments, in order:
- * 1. env: The runtime environment to use for resolving environment variables
- * 2. aidInfoArg: A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * 3. dataDir: The path prefix to the directory where the client info file will be written
- */
-// Pull in arguments from the command line and configuration
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const dataDir = args[1];
-const aidInfoArg = args[2];
-
-const {witnessIds, vleiServerUrl} = resolveEnvironment(env);
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    requireNamedArguments,
+    runJsonCli,
+    singleSigParticipantInvocationFromArguments,
+} from '../cli.ts';
 
 // Credential schema IDs and URLs to resolve from the credential schema caching server (vLEI server)
 const QVI_SCHEMA="EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao"
@@ -27,16 +20,22 @@ const OOR_AUTH_SCHEMA="EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E"
 const ECR_SCHEMA="EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw"
 const OOR_SCHEMA="EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy"
 
-const QVI_SCHEMA_URL=`${vleiServerUrl}/oobi/${QVI_SCHEMA}`;
-const LE_SCHEMA_URL=`${vleiServerUrl}/oobi/${LE_SCHEMA}`;
-const ECR_AUTH_SCHEMA_URL=`${vleiServerUrl}/oobi/${ECR_AUTH_SCHEMA}`;
-const OOR_AUTH_SCHEMA_URL=`${vleiServerUrl}/oobi/${OOR_AUTH_SCHEMA}`;
-const ECR_SCHEMA_URL=`${vleiServerUrl}/oobi/${ECR_SCHEMA}`;
-const OOR_SCHEMA_URL=`${vleiServerUrl}/oobi/${OOR_SCHEMA}`;
-
 // Create AIDs for the QARs and the person based on the command line arguments
 // aidInfoArg format: "qar|Alice|salt,person|David|salt"
-async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmentPreset) {
+export async function setupQviAndPerson(
+    aidInfoArg: string,
+    environment: TestEnvironmentPreset
+) {
+    const {witnessIds, vleiServerUrl} =
+        resolveEnvironment(environment);
+    const schemaOobis = [
+        QVI_SCHEMA,
+        LE_SCHEMA,
+        ECR_AUTH_SCHEMA,
+        OOR_AUTH_SCHEMA,
+        ECR_SCHEMA,
+        OOR_SCHEMA,
+    ].map((schemaSaid) => `${vleiServerUrl}/oobi/${schemaSaid}`);
     const {QAR, PERSON} = parseAidInfoSingleSig(aidInfoArg);
     const [_WAN, WIL, WES] = witnessIds; // QARs use WIL, Person uses WES
 
@@ -80,19 +79,8 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
     // resolve credential OOBIs
     console.log("QAR and Person resolving credential OOBIs...")
     await Promise.all([
-        resolveOobi(QARClient, QVI_SCHEMA_URL),
-        resolveOobi(QARClient, LE_SCHEMA_URL),
-        resolveOobi(QARClient, ECR_AUTH_SCHEMA_URL),
-        resolveOobi(QARClient, OOR_AUTH_SCHEMA_URL),
-        resolveOobi(QARClient, ECR_SCHEMA_URL),
-        resolveOobi(QARClient, OOR_SCHEMA_URL),
-
-        resolveOobi(personClient, QVI_SCHEMA_URL),
-        resolveOobi(personClient, LE_SCHEMA_URL),
-        resolveOobi(personClient, ECR_AUTH_SCHEMA_URL),
-        resolveOobi(personClient, OOR_AUTH_SCHEMA_URL),
-        resolveOobi(personClient, ECR_SCHEMA_URL),
-        resolveOobi(personClient, OOR_SCHEMA_URL),
+        ...schemaOobis.map((oobi) => resolveOobi(QARClient, oobi)),
+        ...schemaOobis.map((oobi) => resolveOobi(personClient, oobi)),
     ])
 
     return {
@@ -108,6 +96,28 @@ async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmen
         }
     }
 }
-const clientInfo: any = await setupQVIAndPerson(aidInfoArg, env);
-console.log("Writing QAR and Person data to file...");
-await fs.promises.writeFile(`${dataDir}/qar-and-person-info.json`, JSON.stringify(clientInfo));
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'artifact-dir'],
+            ['environment', 'artifact-dir', 'participant-source']
+        );
+        requireNamedArguments(parsed, ['artifact-dir']);
+        const invocation =
+            singleSigParticipantInvocationFromArguments(parsed);
+        const participants = await setupQviAndPerson(
+            invocation.participantSource,
+            invocation.environment
+        );
+        await fs.promises.writeFile(
+            `${parsed['artifact-dir']}/qar-and-person-info.json`,
+            JSON.stringify(participants)
+        );
+        return {
+            status: 'ready',
+            participants,
+        };
+    });
+}

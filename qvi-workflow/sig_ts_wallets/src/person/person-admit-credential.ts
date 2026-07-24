@@ -4,16 +4,16 @@ import {TestEnvironmentPreset} from "../resolve-env";
 import {
     admitSinglesig,
     getReceivedCredential,
-    waitForCredential
+    requireCredential
 } from "../credentials";
-import {waitAndRemoveNotification} from "../notifications";
-
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1]
-const issuerPrefixArg = args[2]
-const credSAIDArg = args[3]
+import {credentialSnapshot} from '../credential-state.ts';
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
 /**
  * Admits a credential for the person AID
@@ -24,13 +24,8 @@ const credSAIDArg = args[3]
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function admitCredential(aidInfo: string, issuerPrefix: string, credSAID: string, environment: TestEnvironmentPreset) {
-    // get Clients
-    const {QAR1, QAR2, QAR3, PERSON} = parseAidInfo(aidInfo);
-    // Create SignifyTS Clients
-    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
-    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
-    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
+export async function admitCredential(aidInfo: string, issuerPrefix: string, credSAID: string, environment: TestEnvironmentPreset) {
+    const {PERSON} = parseAidInfo(aidInfo);
     const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
 
     const PersonId = await PersonClient.identifiers().get(PERSON.name);
@@ -39,37 +34,50 @@ async function admitCredential(aidInfo: string, issuerPrefix: string, credSAID: 
     const credentialIsMissing = cred === undefined;
     if (credentialIsMissing) {
         console.log(`Credential ${credSAID} not found for ${PersonId.name}, admitting...`);
-        await admitSinglesig(
+        cred = await admitSinglesig(
             PersonClient,
             PersonId.name,
             issuerPrefix,
+            credSAID,
         );
-
-        await Promise.all([
-            waitAndRemoveNotification(
-                QAR1Client,
-                '/exn/ipex/admit',
-                {timeout: 30000}
-            ),
-            waitAndRemoveNotification(
-                QAR2Client,
-                '/exn/ipex/admit',
-                {timeout: 30000}
-            ),
-            waitAndRemoveNotification(
-                QAR3Client,
-                '/exn/ipex/admit',
-                {timeout: 30000}
-            ),
-        ]);
-
-        cred = await waitForCredential(PersonClient, credSAID, 30);
     } else{
         console.log(`Credential ${credSAID} already admitted`);
     }
-    return cred;
+    return credentialSnapshot(
+        requireCredential(
+            cred,
+            `Person credential ${credSAID}`
+        ),
+        PersonId.prefix
+    );
 }
-console.log(`Admitting credential with issuer ${issuerPrefixArg} of SAID ${credSAIDArg} `);
-const admitResult: any = await admitCredential(aidInfoArg, issuerPrefixArg, credSAIDArg, env);
-console.log(`Person admitted credential with SAID: ${credSAIDArg}`);
-console.log("Credential admitted:", admitResult.sad.a);
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'issuer-prefix', 'credential-said'],
+            [
+                'environment',
+                'participant-source',
+                'issuer-prefix',
+                'credential-said',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'issuer-prefix',
+            'credential-said',
+        ]);
+        const invocation = participantInvocationFromArguments(parsed);
+        const admitted = await admitCredential(
+            invocation.participantSource,
+            parsed['issuer-prefix'],
+            parsed['credential-said'],
+            invocation.environment
+        );
+        return {
+            status: 'admitted',
+            credential: admitted,
+        };
+    });
+}

@@ -1,24 +1,15 @@
 import { getOrCreateContact } from "../agent-contacts";
 import {getOrCreateClient} from "../keystore-creation";
-import { AidInfo, OobiInfo } from "../qvi-data";
+import {parseAidInfo} from '../create-aid.ts';
+import {OobiInfo} from "../qvi-data";
 import { TestEnvironmentPreset } from "../resolve-env";
-
-// Pull in arguments from the command line and configuration
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1];
-const oobiArg = args[2];
-
-export function parseAidInfo(aidInfoArg: string) {
-    const aids = aidInfoArg.split(','); // expect format: "qar1|Alice|salt1,qar2|Bob|salt2,qar3|Charlie|salt3,person|David|salt4"
-    const aidObjs: AidInfo[] = aids.map((aidInfo) => {
-        const [position, name, salt] = aidInfo.split('|'); // expect format: "qar1|Alice|salt1"
-        return {position, name, salt};
-    });
-
-    const PERSON = aidObjs.find((aid) => aid.position === 'person') as AidInfo;
-    return {PERSON};
-}
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
 export function parseOobiInfo(oobiInfo: string) {
     const oobiInfos = oobiInfo.split(','); // expect format: "gedaName|OOBI,leName|OOBI"
@@ -31,7 +22,11 @@ export function parseOobiInfo(oobiInfo: string) {
     return {SALLY};
 }
 
-async function getSallyPre(aidStrArg: string, oobiStrArg: string, environment: TestEnvironmentPreset) {
+export async function getSallyPre(
+    aidStrArg: string,
+    oobiStrArg: string,
+    environment: TestEnvironmentPreset
+) {
     // Get Client
     const {PERSON} = parseAidInfo(aidStrArg);
     const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
@@ -41,5 +36,21 @@ async function getSallyPre(aidStrArg: string, oobiStrArg: string, environment: T
     const sallyPre = await getOrCreateContact(PersonClient, SALLY.position, SALLY.oobi);
     return sallyPre;
 }
-const sallyPre: string = await getSallyPre(aidInfoArg, oobiArg, env);
-console.log(sallyPre);
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'oobis'],
+            ['environment', 'participant-source', 'oobis']
+        );
+        requireNamedArguments(parsed, ['oobis']);
+        const invocation = participantInvocationFromArguments(parsed);
+        const sallyPrefix = await getSallyPre(
+            invocation.participantSource,
+            parsed.oobis,
+            invocation.environment
+        );
+        return {sallyPrefix};
+    });
+}

@@ -9,6 +9,51 @@ import {
 } from 'signify-ts';
 import { resolveEnvironment, TestEnvironmentPreset } from './resolve-env';
 import { waitOperation } from './operations';
+import {workflowTimeoutMs} from './retry.ts';
+
+let boundedFetchIsInstalled = false;
+
+function installBoundedFetch(): void {
+    if (boundedFetchIsInstalled) {
+        return;
+    }
+
+    const originalFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = async (
+        input: RequestInfo | URL,
+        init: RequestInit = {}
+    ): Promise<Response> => {
+        const controller = new AbortController();
+        const timeout = setTimeout(
+            () => controller.abort(
+                new Error('KERIA HTTP request timed out')
+            ),
+            workflowTimeoutMs()
+        );
+        const upstreamSignal = init.signal;
+        const abortFromUpstream = () =>
+            controller.abort(upstreamSignal?.reason);
+        upstreamSignal?.addEventListener(
+            'abort',
+            abortFromUpstream,
+            {once: true}
+        );
+
+        try {
+            return await originalFetch(input, {
+                ...init,
+                signal: controller.signal,
+            });
+        } finally {
+            clearTimeout(timeout);
+            upstreamSignal?.removeEventListener(
+                'abort',
+                abortFromUpstream
+            );
+        }
+    };
+    boundedFetchIsInstalled = true;
+}
 
 /**
  * Connect or boot a SignifyClient instance
@@ -19,6 +64,7 @@ export async function getOrCreateClient(
     keriaHost?: number
 ): Promise<SignifyClient> {
     const env = resolveEnvironment(environment);
+    installBoundedFetch();
     await ready();
     bran ??= randomPasscode();
     bran = bran.padEnd(21, '_');
@@ -45,12 +91,30 @@ export async function getOrCreateClient(
     const client = new SignifyClient(adminUrl, bran, Tier.low, bootUrl);
     try {
         await client.connect();
-    } catch {
+    } catch (error: unknown) {
+        const failureIsMissingAgent =
+            error instanceof Error &&
+            error.message.includes('agent does not exist for controller');
+        if (failureIsMissingAgent === false) {
+            throw error;
+        }
+
         const res = await client.boot();
-        if (!res.ok) throw new Error();
+        const bootSucceeded = res.ok;
+        if (bootSucceeded === false) {
+            const body = await res.text();
+            throw new Error(
+                `KERIA boot failed: ${res.status} ${res.statusText} ${body}`
+            );
+        }
         await client.connect();
     }
-    // console.log('client', {agent: client.agent?.pre, controller: client.controller.pre});
+    const connectedAgentIsMissing =
+        typeof client.agent?.pre !== 'string' ||
+        client.agent.pre.length === 0;
+    if (connectedAgentIsMissing) {
+        throw new Error('KERIA connect completed without an agent AID');
+    }
     return client;
 }
 
@@ -97,11 +161,19 @@ export async function getOrCreateAID(
         await waitOperation(client, await result.op());
         const aid = await client.identifiers().get(name);
 
+        const agentPrefix = client.agent?.pre;
+        const agentPrefixIsMissing =
+            typeof agentPrefix !== 'string' ||
+            agentPrefix.length === 0;
+        if (agentPrefixIsMissing) {
+            throw new Error(
+                `Cannot authorize ${name} without a connected KERIA agent`
+            );
+        }
         const op = await client
             .identifiers()
-            .addEndRole(name, 'agent', client!.agent!.pre);
-        const resp = await waitOperation(client, await op.op());
-        // console.log(name, 'AID:', aid.prefix);
+            .addEndRole(name, 'agent', agentPrefix);
+        await waitOperation(client, await op.op());
         return aid;
     }
 }

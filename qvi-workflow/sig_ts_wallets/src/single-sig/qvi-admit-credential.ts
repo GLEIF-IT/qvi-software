@@ -1,14 +1,19 @@
 import {parseAidInfoSingleSig} from "../create-aid";
 import {getOrCreateClient} from "../keystore-creation";
 import {TestEnvironmentPreset} from "../resolve-env";
-import {admitSinglesig, getReceivedCredential, waitForCredential} from "../credentials";
-
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1]
-const issuerPrefix = args[2]
-const credSAID = args[3]
+import {
+    admitSinglesig,
+    getReceivedCredential,
+    requireCredential,
+} from "../credentials";
+import {credentialSnapshot} from '../credential-state.ts';
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    requireNamedArguments,
+    runJsonCli,
+    singleSigParticipantInvocationFromArguments,
+} from '../cli.ts';
 
 /**
  * Admits a credential using the QVI AID
@@ -19,22 +24,66 @@ const credSAID = args[3]
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function admitCredentialQvi(aidInfo: string, issuerPrefix: string, credSAID: string, environment: TestEnvironmentPreset) {
+export async function admitCredentialQvi(
+    aidInfo: string,
+    issuerPrefix: string,
+    credSAID: string,
+    environment: TestEnvironmentPreset
+) {
     const {QVI} = parseAidInfoSingleSig(aidInfo);
     const QVIClient = await getOrCreateClient(QVI.salt, environment, 1);
     const QVIId = await QVIClient.identifiers().get(QVI.name);
     
     let cred = await getReceivedCredential(QVIClient, credSAID);
-    if (!cred) {
-        await admitSinglesig(
+    const credentialMustBeAdmitted = cred === undefined;
+    if (credentialMustBeAdmitted) {
+        cred = await admitSinglesig(
             QVIClient,
             QVIId.name,
             issuerPrefix,
+            credSAID,
         );
-        cred = await waitForCredential(QVIClient, credSAID);
-        console.log(`Credential ${credSAID} admitted by QVI: `, cred.sad.a);
+        console.log(
+            `Credential ${credSAID} admitted by QVI: `,
+            credentialSnapshot(cred, QVIId.prefix)
+        );
     }
+    const admittedCredential = requireCredential(
+        cred,
+        `QVI credential ${credSAID}`
+    );
+    return {
+        status: 'admitted' as const,
+        credential: credentialSnapshot(
+            admittedCredential,
+            QVIId.prefix
+        ),
+    };
 }
-const admitResult: any = await admitCredentialQvi(aidInfoArg, issuerPrefix, credSAID, env);
 
-console.log(`Credential ${credSAID} admitted`);
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'issuer-prefix', 'credential-said'],
+            [
+                'environment',
+                'participant-source',
+                'issuer-prefix',
+                'credential-said',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'issuer-prefix',
+            'credential-said',
+        ]);
+        const invocation =
+            singleSigParticipantInvocationFromArguments(parsed);
+        return admitCredentialQvi(
+            invocation.participantSource,
+            parsed['issuer-prefix'],
+            parsed['credential-said'],
+            invocation.environment
+        );
+    });
+}

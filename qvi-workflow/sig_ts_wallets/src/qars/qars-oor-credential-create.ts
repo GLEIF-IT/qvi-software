@@ -3,38 +3,81 @@ import {CredentialData, CredentialSubject} from "signify-ts";
 import {createTimestamp, parseAidInfo} from "../create-aid";
 import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
-import {getIssuedCredential, grantMultisig, issueCredentialMultisig} from "../credentials";
-import {waitAndRemoveNotification} from "../notifications";
-import {waitOperation} from "../operations";
+import {
+    completeMultisigIpex,
+    getIssuedCredential,
+    grantMultisig,
+    issueCredentialMultisig,
+    requireCredential,
+} from "../credentials";
+import {
+    assertIssuedCredentialConvergence,
+    credentialSnapshot,
+    type CredentialSnapshot,
+} from '../credential-state.ts';
+import {
+    type OperationEvidence,
+} from '../operations.ts';
+import {
+    completeCoordinatedOperations,
+} from '../coordinated-operation.ts';
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1];
-const dataDir = args[2];
-const aidInfoArg = args[3];
-const personPrefix = args[4];
-const qviDataDir = args[5];
-
-// resolve witness IDs for QVI multisig AID configuration
-const {witnessIds} = resolveEnvironment(env);
 const OOR_SCHEMA_SAID = 'EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy';
+
+export interface CreateOorCredentialOptions {
+    groupName: string;
+    dataDir: string;
+    participantSource: string;
+    issueePrefix: string;
+    environment: TestEnvironmentPreset;
+}
+
+export interface OorCredentialArtifact {
+    oorCredSAID: string;
+    oorCredIssuer: string;
+    oorCredIssuee: string;
+}
+
+export interface GrantCoordinationReceipt {
+    sender: string;
+    recipient: string;
+    exnSaid: string;
+    innerExchangeSaid: string;
+}
+
+export interface CreateOorCredentialResult {
+    artifact: OorCredentialArtifact;
+    observations: CredentialSnapshot[];
+    operationEvidence: OperationEvidence[];
+    issuanceReceipts: GrantCoordinationReceipt[];
+    coordinationReceipts: GrantCoordinationReceipt[];
+}
 
 /**
  * Uses QAR1, QAR2, and QAR3 to issue the OOR credential to the person AID.
- *
- * @param multisigName name of the QVI multisig to create and issue the OOR from
- * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param personPrefix identifier prefix for the person AID who would be the recipient, or issuee, of the OOR credential.
- * @param witnessIds list of witness identifiers to use for the multisig AID configuration
- * @param environment the runtime environment to use for resolving environment variables
- * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function createOORCredential(multisigName: string, aidInfo: string, personPrefix: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
-    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+export async function createOorCredential(
+    options: CreateOorCredentialOptions
+): Promise<CreateOorCredentialResult> {
+    const {
+        groupName,
+        dataDir,
+        participantSource,
+        issueePrefix,
+        environment,
+    } = options;
+    const {witnessIds} = resolveEnvironment(environment);
+    const [, WIL] = witnessIds;
 
     // get Clients
-    const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
+    const {QAR1, QAR2, QAR3} = parseAidInfo(participantSource);
     const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
     const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
     const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
@@ -53,165 +96,342 @@ async function createOORCredential(multisigName: string, aidInfo: string, person
         getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
         getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
     ]);
+    const memberPrefixes = [
+        QAR1Id.prefix,
+        QAR2Id.prefix,
+        QAR3Id.prefix,
+    ];
 
-    const qviAID = await QAR1Client.identifiers().get(multisigName);
+    const qviAids = await Promise.all([
+        QAR1Client.identifiers().get(groupName),
+        QAR2Client.identifiers().get(groupName),
+        QAR3Client.identifiers().get(groupName),
+    ]);
+    const qviAID = qviAids[0];
+    const qviPrefixConverged = qviAids.every(
+        (group) => group.prefix === qviAID.prefix
+    );
+    if (qviPrefixConverged === false) {
+        throw new Error('QARs disagree on the QVI prefix');
+    }
 
-    // QVI issues a LE vLEI credential to the LE (GIDA in this case).
-    // Skip if the credential has already been issued.
+    // Reuse an existing OOR credential only while all three QARs observe the
+    // same active issuance event.
     let oorCredByQAR1 = await getIssuedCredential(
         QAR1Client,
         qviAID.prefix,
-        personPrefix,
+        issueePrefix,
         OOR_SCHEMA_SAID
     );
     let oorCredbyQAR2 = await getIssuedCredential(
         QAR2Client,
         qviAID.prefix,
-        personPrefix,
+        issueePrefix,
         OOR_SCHEMA_SAID
     );
     let oorCredbyQAR3 = await getIssuedCredential(
         QAR3Client,
         qviAID.prefix,
-        personPrefix,
+        issueePrefix,
         OOR_SCHEMA_SAID
     );
+
     
-    
-    if (oorCredByQAR1 && oorCredbyQAR2 && oorCredbyQAR3) {
+    const existingCredentials = [
+        oorCredByQAR1,
+        oorCredbyQAR2,
+        oorCredbyQAR3,
+    ];
+    const everyQarHasCredential = existingCredentials.every(
+        (credential) => credential !== undefined
+    );
+    const noQarHasCredential = existingCredentials.every(
+        (credential) => credential === undefined
+    );
+    if (everyQarHasCredential) {
+        const snapshots = existingCredentials.map(
+            (credential, index) =>
+                credentialSnapshot(
+                    requireCredential(
+                        credential,
+                        `QAR${index + 1} OOR credential`
+                    ),
+                    memberPrefixes[index]
+                )
+        );
+        assertIssuedCredentialConvergence(
+            snapshots,
+            memberPrefixes,
+            'OOR credential'
+        );
         console.log("OOR credential already exists");
         return {
-            oorCredSAID: oorCredByQAR1.sad.d,
-            oorCredIssuer: oorCredByQAR1.sad.i,
-            oorCredIssuee: oorCredByQAR1.sad.a.i,
-        }
+            artifact: {
+                oorCredSAID: snapshots[0].said,
+                oorCredIssuer: snapshots[0].issuer,
+                oorCredIssuee: snapshots[0].issuee,
+            },
+            observations: snapshots,
+            operationEvidence: [],
+            issuanceReceipts: [],
+            coordinationReceipts: [],
+        };
     }
-    else {
-        console.log("OOR Credential does not exist, creating and granting");
 
-        const registries:[{name: string, regk: string}] = await QAR1Client.registries().list(multisigName)
-        const qviRegistry = registries[0];
-        
-        let data: string = "";
-        data = await fs.promises.readFile(`${dataDir}/temp-data/oor-data.json`, 'utf-8');
-        let oorData = JSON.parse(data);
+    const onlySomeQarsHaveCredential = noQarHasCredential === false;
+    if (onlySomeQarsHaveCredential) {
+        throw new Error(
+            'OOR credential exists on only a subset of QARs'
+        );
+    }
+    console.log("OOR Credential does not exist, creating and granting");
 
-        data = await fs.promises.readFile(`${dataDir}/temp-data/oor-auth-edge.json`, 'utf-8');
-        let oorAuthEdge = JSON.parse(data);
+    const registries = await QAR1Client.registries().list(groupName);
+    const registryCountIsInvalid = registries.length !== 1;
+    if (registryCountIsInvalid) {
+        throw new Error(
+            `Expected one QVI registry; found ${registries.length}`
+        );
+    }
+    const qviRegistry = registries[0];
 
-        data = await fs.promises.readFile(`${dataDir}/rules/oor-rules.json`, 'utf-8');
-        let oorRules = JSON.parse(data);
+    const oorData = JSON.parse(
+        await fs.promises.readFile(
+            `${dataDir}/temp-data/oor-data.json`,
+            'utf-8'
+        )
+    );
+    const oorAuthEdge = JSON.parse(
+        await fs.promises.readFile(
+            `${dataDir}/temp-data/oor-auth-edge.json`,
+            'utf-8'
+        )
+    );
+    const oorRules = JSON.parse(
+        await fs.promises.readFile(
+            `${dataDir}/rules/oor-rules.json`,
+            'utf-8'
+        )
+    );
 
-        const kargsSub: CredentialSubject = {
-            i: personPrefix,
-            dt: createTimestamp(),
-            ...oorData,
-        };
-        const kargsIss: CredentialData = {
-            i: qviAID.prefix,
-            ri: qviRegistry.regk,
-            s: OOR_SCHEMA_SAID,
-            a: kargsSub,
-            e: oorAuthEdge,
-            r: oorRules,
-        };
-        const IssOp1 = await issueCredentialMultisig(
-            QAR1Client,
-            QAR1Id,
-            [QAR2Id, QAR3Id],
-            qviAID.name,
-            kargsIss,
-            {isInitiator: true}
-        );
-        const IssOp2 = await issueCredentialMultisig(
-            QAR2Client,
-            QAR2Id,
-            [QAR1Id, QAR3Id],
-            qviAID.name,
-            kargsIss
-        );
-        const IssOp3 = await issueCredentialMultisig(
-            QAR3Client,
-            QAR3Id,
-            [QAR1Id, QAR2Id],
-            qviAID.name,
-            kargsIss
-        );
+    const kargsSub: CredentialSubject = {
+        i: issueePrefix,
+        dt: createTimestamp(),
+        ...oorData,
+    };
+    const kargsIss: CredentialData = {
+        i: qviAID.prefix,
+        ri: qviRegistry.regk,
+        s: OOR_SCHEMA_SAID,
+        a: kargsSub,
+        e: oorAuthEdge,
+        r: oorRules,
+    };
+    const IssOp1 = await issueCredentialMultisig(
+        QAR1Client,
+        QAR1Id,
+        [QAR2Id, QAR3Id],
+        qviAID.name,
+        kargsIss,
+        {isInitiator: true}
+    );
+    const IssOp2 = await issueCredentialMultisig(
+        QAR2Client,
+        QAR2Id,
+        [QAR1Id, QAR3Id],
+        qviAID.name,
+        kargsIss,
+        {coordinator: QAR1Id.prefix}
+    );
+    const IssOp3 = await issueCredentialMultisig(
+        QAR3Client,
+        QAR3Id,
+        [QAR1Id, QAR2Id],
+        qviAID.name,
+        kargsIss,
+        {coordinator: QAR1Id.prefix}
+    );
 
-        await Promise.all([
-            waitOperation(QAR1Client, IssOp1),
-            waitOperation(QAR2Client, IssOp2),
-            waitOperation(QAR3Client, IssOp3),
-        ]);
+    const operationEvidence = await completeCoordinatedOperations([
+        {client: QAR1Client, result: IssOp1},
+        {client: QAR2Client, result: IssOp2},
+        {client: QAR3Client, result: IssOp3},
+    ]);
 
-        await waitAndRemoveNotification(
-            QAR1Client,
-            '/multisig/iss',
-            {timeout: 30000}
-        );
+    oorCredByQAR1 = await getIssuedCredential(
+        QAR1Client,
+        qviAID.prefix,
+        issueePrefix,
+        OOR_SCHEMA_SAID
+    );
+    oorCredbyQAR2 = await getIssuedCredential(
+        QAR2Client,
+        qviAID.prefix,
+        issueePrefix,
+        OOR_SCHEMA_SAID
+    );
+    oorCredbyQAR3 = await getIssuedCredential(
+        QAR3Client,
+        qviAID.prefix,
+        issueePrefix,
+        OOR_SCHEMA_SAID
+    );
+    const issuedCredentials = [
+        requireCredential(oorCredByQAR1, 'QAR1 OOR credential'),
+        requireCredential(oorCredbyQAR2, 'QAR2 OOR credential'),
+        requireCredential(oorCredbyQAR3, 'QAR3 OOR credential'),
+    ];
+    const issuedSnapshots = issuedCredentials.map(
+        (credential, index) =>
+            credentialSnapshot(
+                credential,
+                memberPrefixes[index]
+            )
+    );
+    assertIssuedCredentialConvergence(
+        issuedSnapshots,
+        memberPrefixes,
+        'OOR credential'
+    );
 
-        oorCredByQAR1 = await getIssuedCredential(
-            QAR1Client,
-            qviAID.prefix,
-            personPrefix,
-            OOR_SCHEMA_SAID
-        );
-        oorCredbyQAR2 = await getIssuedCredential(
-            QAR2Client,
-            qviAID.prefix,
-            personPrefix,
-            OOR_SCHEMA_SAID
-        );
-        oorCredbyQAR3 = await getIssuedCredential(
-            QAR3Client,
-            qviAID.prefix,
-            personPrefix,
-            OOR_SCHEMA_SAID
-        );
+    const grantTime = createTimestamp();
+    console.log("IPEX Granting OOR credential to Person...");
+    const grant1 = await grantMultisig(
+        QAR1Client,
+        QAR1Id,
+        [QAR2Id, QAR3Id],
+        qviAids[0],
+        issueePrefix,
+        issuedCredentials[0],
+        grantTime,
+        {isInitiator: true}
+    );
+    const grant2 = await grantMultisig(
+        QAR2Client,
+        QAR2Id,
+        [QAR1Id, QAR3Id],
+        qviAids[1],
+        issueePrefix,
+        issuedCredentials[1],
+        grantTime,
+        {coordinator: QAR1Id.prefix}
+    );
+    const grant3 = await grantMultisig(
+        QAR3Client,
+        QAR3Id,
+        [QAR1Id, QAR2Id],
+        qviAids[2],
+        issueePrefix,
+        issuedCredentials[2],
+        grantTime,
+        {coordinator: QAR1Id.prefix}
+    );
+    await Promise.all([
+        completeMultisigIpex(QAR1Client, grant1),
+        completeMultisigIpex(QAR2Client, grant2),
+        completeMultisigIpex(QAR3Client, grant3),
+    ]);
 
-        const grantTime = createTimestamp();
-        console.log("IPEX Granting OOR credential to Person...");
-        await grantMultisig(
-            QAR1Client,
-            QAR1Id,
-            [QAR2Id, QAR3Id],
-            qviAID,
-            personPrefix,
-            oorCredByQAR1,
-            grantTime,
-            true
-        );
-        await grantMultisig(
-            QAR2Client,
-            QAR2Id,
-            [QAR1Id, QAR3Id],
-            qviAID,
-            personPrefix,
-            oorCredbyQAR2,
-            grantTime
-        );
-        await grantMultisig(
-            QAR3Client,
-            QAR3Id,
-            [QAR1Id, QAR2Id],
-            qviAID,
-            personPrefix,
-            oorCredbyQAR3,
-            grantTime
-        );
+    return {
+        artifact: {
+            oorCredSAID: issuedSnapshots[0].said,
+            oorCredIssuer: issuedSnapshots[0].issuer,
+            oorCredIssuee: issuedSnapshots[0].issuee,
+        },
+        observations: issuedSnapshots,
+        operationEvidence,
+        issuanceReceipts: [
+            ...IssOp1.wrapperReceipts.map((receipt) => ({
+                sender: QAR1Id.prefix,
+                ...receipt,
+                innerExchangeSaid: issuedSnapshots[0].currentTelDigest,
+            })),
+            ...IssOp2.wrapperReceipts.map((receipt) => ({
+                sender: QAR2Id.prefix,
+                ...receipt,
+                innerExchangeSaid: issuedSnapshots[1].currentTelDigest,
+            })),
+            ...IssOp3.wrapperReceipts.map((receipt) => ({
+                sender: QAR3Id.prefix,
+                ...receipt,
+                innerExchangeSaid: issuedSnapshots[2].currentTelDigest,
+            })),
+        ],
+        coordinationReceipts: [
+            ...grant1.wrapperReceipts.map((receipt) => ({
+                sender: QAR1Id.prefix,
+                ...receipt,
+                innerExchangeSaid: grant1.innerExchangeSaid,
+            })),
+            ...grant2.wrapperReceipts.map((receipt) => ({
+                sender: QAR2Id.prefix,
+                ...receipt,
+                innerExchangeSaid: grant2.innerExchangeSaid,
+            })),
+            ...grant3.wrapperReceipts.map((receipt) => ({
+                sender: QAR3Id.prefix,
+                ...receipt,
+                innerExchangeSaid: grant3.innerExchangeSaid,
+            })),
+        ],
+    };
+}
 
-        await waitAndRemoveNotification(
-            QAR1Client,
-            '/multisig/exn',
-            {timeout: 30000}
+function parseOorCredentialArguments(
+    argv: string[]
+): CreateOorCredentialOptions & {artifactDir: string} {
+    const parsed = parseNamedOrPositionalArguments(
+        argv,
+        [
+            'config',
+            'group-name',
+            'data-dir',
+            'issuee-prefix',
+            'artifact-dir',
+        ],
+        [
+            'environment',
+            'group-name',
+            'data-dir',
+            'participant-source',
+            'issuee-prefix',
+            'artifact-dir',
+        ]
+    );
+    requireNamedArguments(parsed, [
+        'group-name',
+        'data-dir',
+        'issuee-prefix',
+        'artifact-dir',
+    ]);
+    const invocation = participantInvocationFromArguments(parsed);
+    return {
+        groupName: parsed['group-name'],
+        dataDir: parsed['data-dir'],
+        participantSource: invocation.participantSource,
+        issueePrefix: parsed['issuee-prefix'],
+        artifactDir: parsed['artifact-dir'],
+        environment: invocation.environment,
+    };
+}
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const options = parseOorCredentialArguments(
+            process.argv.slice(2)
+        );
+        const result = await createOorCredential(options);
+        await fs.promises.writeFile(
+            `${options.artifactDir}/oor-cred-info.json`,
+            JSON.stringify(result.artifact)
         );
         return {
-            oorCredSAID: oorCredByQAR1.sad.d,
-            oorCredIssuer: oorCredByQAR1.sad.i,
-            oorCredIssuee: oorCredByQAR1.sad.a.i,
-        }
-    }
+            status: 'converged',
+            credential: result.artifact,
+            observations: result.observations,
+            operationEvidence: result.operationEvidence,
+            issuanceReceipts: result.issuanceReceipts,
+            coordinationReceipts: result.coordinationReceipts,
+        };
+    });
 }
-const oorCreateResult: any = await createOORCredential(multisigName, aidInfoArg, personPrefix, witnessIds, env);
-await fs.promises.writeFile(`${qviDataDir}/oor-cred-info.json`, JSON.stringify(oorCreateResult));
-console.log("OOR credential created and granted");

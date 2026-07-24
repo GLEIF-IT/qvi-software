@@ -1,5 +1,27 @@
 import { setTimeout } from 'timers/promises';
 
+const DEFAULT_WORKFLOW_TIMEOUT_MS = 120_000;
+
+export function workflowTimeoutMs(): number {
+    const configured =
+        process.env.QVI_OPERATION_TIMEOUT_SECONDS;
+    if (configured === undefined) {
+        return DEFAULT_WORKFLOW_TIMEOUT_MS;
+    }
+
+    const seconds = Number(configured);
+    const timeoutIsInvalid =
+        Number.isFinite(seconds) === false ||
+        Number.isInteger(seconds) === false ||
+        seconds < 1;
+    if (timeoutIsInvalid) {
+        throw new Error(
+            'QVI_OPERATION_TIMEOUT_SECONDS must be a positive integer'
+        );
+    }
+    return seconds * 1_000;
+}
+
 export interface RetryOptions {
     maxSleep?: number;
     minSleep?: number;
@@ -16,7 +38,7 @@ export async function retry<T>(
         maxSleep = 1000,
         minSleep = 10,
         maxRetries,
-        timeout = 10000,
+        timeout = workflowTimeoutMs(),
     } = options;
 
     const increaseFactor = 50;
@@ -44,10 +66,11 @@ export async function retry<T>(
         }
     }
 
-    if (!cause) {
-        cause = new Error(`Failed after ${retries} attempts`);
-    }
-
-    Object.assign(cause, { retries, maxAttempts: maxRetries });
-    throw cause;
+    const finalCause =
+        cause ?? new Error(`Failed after ${retries} attempts`);
+    Object.assign(finalCause, {
+        retries,
+        maxAttempts: maxRetries,
+    });
+    throw finalCause;
 }

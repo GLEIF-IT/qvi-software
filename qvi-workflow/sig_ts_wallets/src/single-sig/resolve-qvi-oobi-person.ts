@@ -2,13 +2,13 @@ import {parseAidInfoSingleSig} from "../create-aid.ts";
 import {TestEnvironmentPreset} from "../resolve-env.ts";
 import {getOrCreateClient} from "../keystore-creation.ts";
 import {getOrCreateContact} from "../agent-contacts.ts";
-
-// Pull in arguments from the command line and configuration
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const qviName = args[1];
-const aidInfoArg = args[2];
-const qviOobiArg = args[3];
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    requireNamedArguments,
+    runJsonCli,
+    singleSigParticipantInvocationFromArguments,
+} from '../cli.ts';
 
 /**
  * Resolves the QVI Multisig OOBI for the Person in preparation for receiving the ECR and OOR credentials
@@ -17,12 +17,40 @@ const qviOobiArg = args[3];
  * @param qviOobi The QVI multisig OOBI
  * @param environment the runtime environment to use for resolving environment variables
  */
-async function resolveQVIOobi(qviName: string, aidInfo: string, qviOobi: string, environment: TestEnvironmentPreset) {
+export async function resolveQviOobi(
+    qviName: string,
+    aidInfo: string,
+    qviOobi: string,
+    environment: TestEnvironmentPreset
+) {
     // create SignifyTS Clients
     const {PERSON} = parseAidInfoSingleSig(aidInfo);
     // Create SignifyTS Clients
     const personClient = await getOrCreateClient(PERSON.salt, environment, 1);
     await getOrCreateContact(personClient, qviName, qviOobi);
+    return {status: 'resolved' as const, qviName};
 }
-await resolveQVIOobi(qviName, aidInfoArg, qviOobiArg, env);
-console.log('Person resolved QVI OOBI ' + qviOobiArg);
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'qvi-name', 'qvi-oobi'],
+            [
+                'environment',
+                'qvi-name',
+                'participant-source',
+                'qvi-oobi',
+            ]
+        );
+        requireNamedArguments(parsed, ['qvi-name', 'qvi-oobi']);
+        const invocation =
+            singleSigParticipantInvocationFromArguments(parsed);
+        return resolveQviOobi(
+            parsed['qvi-name'],
+            invocation.participantSource,
+            parsed['qvi-oobi'],
+            invocation.environment
+        );
+    });
+}

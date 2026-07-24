@@ -1,20 +1,17 @@
 import fs from "fs";
-import signify, { CreateIdentiferArgs, HabState } from "signify-ts";
+import signify, { CreateIdentiferArgs } from "signify-ts";
 import { parseAidInfo } from "../create-aid";
 import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import { createAIDMultisig } from "../multisig-creation";
+import {notificationReference} from '../notifications.ts';
 import { resolveEnvironment, TestEnvironmentPreset } from "../resolve-env";
-
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1];
-const dataDir = args[2];
-const aidInfoArg = args[3];
-const delegationPrefix = args[4];
-
-// resolve witness IDs for QVI multisig AID configuration
-const {witnessIds} = resolveEnvironment(env);
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
 
 /**
@@ -27,8 +24,9 @@ const {witnessIds} = resolveEnvironment(env);
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function createQviMultisig(multisigName: string, aidInfo: string, delpre: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
-    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+export async function createQviMultisig(multisigName: string, aidInfo: string, delpre: string, environment: TestEnvironmentPreset) {
+    const {witnessIds} = resolveEnvironment(environment);
+    const [WAN, WIL, WES] = witnessIds; // QARs use WIL, Person uses WES
 
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
@@ -50,64 +48,63 @@ async function createQviMultisig(multisigName: string, aidInfo: string, delpre: 
         getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
     ]);
 
-    // Create a multisig AID for the QVI.
-    // Skip if a QVI AID has already been incepted.
-    
-    let qar1Ms, qar2Ms, qar3Ms: HabState;
-    try {
-        qar1Ms = await QAR1Client.identifiers().get(multisigName);
-        qar2Ms = await QAR2Client.identifiers().get(multisigName);
-        qar3Ms = await QAR3Client.identifiers().get(multisigName);
-        // return early if the QVI AID has already been incepted
-    } catch (e: any) {
-        // get QAR keystates for inclusion in the multisig inception event
-        const rstates = [QAR1Id.state, QAR2Id.state, QAR3Id.state];
+    const rstates = [QAR1Id.state, QAR2Id.state, QAR3Id.state];
+    const kargsMultisigAID: CreateIdentiferArgs = {
+        delpre: delpre,
+        algo: signify.Algos.group,
+        isith: ['1/3', '1/3', '1/3'],
+        nsith: ['1/3', '1/3', '1/3'],
+        toad: aidConfigQARs.toad,
+        wits: aidConfigQARs.wits,
+        states: [...rstates],
+        rstates: rstates,
+    };
 
-        // configure QVI AID multisig inception event
-        const kargsMultisigAID: CreateIdentiferArgs = {
-            delpre: delpre,
-            algo: signify.Algos.group,
-            isith: ['1/3', '1/3', '1/3'],
-            nsith: ['1/3', '1/3', '1/3'],
-            toad: aidConfigQARs.toad,
-            wits: aidConfigQARs.wits,
-            states: [...rstates],
-            rstates: rstates,
-        };
+    kargsMultisigAID.mhab = QAR1Id;
+    const inception1 = await createAIDMultisig(
+        QAR1Client,
+        QAR1Id,
+        [QAR2Id, QAR3Id],
+        multisigName,
+        kargsMultisigAID,
+        {isInitiator: true}
+    );
+    kargsMultisigAID.mhab = QAR2Id;
+    const inception2 = await createAIDMultisig(
+        QAR2Client,
+        QAR2Id,
+        [QAR1Id, QAR3Id],
+        multisigName,
+        kargsMultisigAID,
+        {coordinator: QAR1Id.prefix}
+    );
+    kargsMultisigAID.mhab = QAR3Id;
+    const inception3 = await createAIDMultisig(
+        QAR3Client,
+        QAR3Id,
+        [QAR1Id, QAR2Id],
+        multisigName,
+        kargsMultisigAID,
+        {coordinator: QAR1Id.prefix}
+    );
 
-        // set member hab to QAR1 and perform multisig inception
-        kargsMultisigAID.mhab = QAR1Id;
-        const multisigAIDOp1 = await createAIDMultisig(
-            QAR1Client,
-            QAR1Id,
-            [QAR2Id, QAR3Id],
-            multisigName,
-            kargsMultisigAID,
-            true
-        );
-        // change member hab to QAR2 and perform multisig inception
-        kargsMultisigAID.mhab = QAR2Id;
-        const multisigAIDOp2 = await createAIDMultisig(
-            QAR2Client,
-            QAR2Id,
-            [QAR1Id, QAR3Id],
-            multisigName,
-            kargsMultisigAID
-        );
-        // change member hab to QAR3 and perform multisig inception
-        kargsMultisigAID.mhab = QAR3Id;
-        const multisigAIDOp3 = await createAIDMultisig(
-            QAR3Client,
-            QAR3Id,
-            [QAR1Id, QAR2Id],
-            multisigName,
-            kargsMultisigAID
-        );
-
-        qar1Ms = await QAR1Client.identifiers().get(multisigName);
-        qar2Ms = await QAR2Client.identifiers().get(multisigName);
-        qar3Ms = await QAR3Client.identifiers().get(multisigName);
+    const [qar1Ms, qar2Ms, qar3Ms] = await Promise.all([
+        QAR1Client.identifiers().get(multisigName),
+        QAR2Client.identifiers().get(multisigName),
+        QAR3Client.identifiers().get(multisigName),
+    ]);
+    const groupPrefixConverged =
+        qar2Ms.prefix === qar1Ms.prefix &&
+        qar3Ms.prefix === qar1Ms.prefix;
+    if (groupPrefixConverged === false) {
+        throw new Error('QARs disagree on the delegated QVI prefix');
     }
+
+    const inceptions = [
+        {sender: QAR1Id.prefix, ...inception1},
+        {sender: QAR2Id.prefix, ...inception2},
+        {sender: QAR3Id.prefix, ...inception3},
+    ];
     
     
     return {
@@ -116,11 +113,60 @@ async function createQviMultisig(multisigName: string, aidInfo: string, delpre: 
             i: qar1Ms.prefix,
             s: '0',
             d: qar1Ms.prefix,
-        }
+        },
+        operationNames: inceptions.map(
+            (inception) => inception.operation.name
+        ),
+        coordinationNotifications: inceptions.map(
+            (inception) => ({
+                memberPrefix: inception.sender,
+                notifications: inception.coordination.map(
+                    notificationReference
+                ),
+            })
+        ),
+        coordinationReceipts: inceptions.flatMap(
+            (inception) =>
+                inception.wrapperReceipts.map((receipt) => ({
+                    sender: inception.sender,
+                    ...receipt,
+                }))
+        ),
     }
 }
-const multisigOobiObj: any = await createQviMultisig(multisigName, aidInfoArg, delegationPrefix, witnessIds, env);
-console.log("Writing QVI multisig AID info to file...");
-console.log(multisigOobiObj);
-await fs.promises.writeFile(`${dataDir}/qvi-multisig-info.json`, JSON.stringify(multisigOobiObj));
-console.log("QVI delegated multisig AID created, waiting for GEDA to confirm delegation...");
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'group-name', 'data-dir', 'delegator-prefix'],
+            [
+                'environment',
+                'group-name',
+                'data-dir',
+                'participant-source',
+                'delegator-prefix',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'group-name',
+            'data-dir',
+            'delegator-prefix',
+        ]);
+        const invocation = participantInvocationFromArguments(parsed);
+        const multisig = await createQviMultisig(
+            parsed['group-name'],
+            invocation.participantSource,
+            parsed['delegator-prefix'],
+            invocation.environment
+        );
+        await fs.promises.writeFile(
+            `${parsed['data-dir']}/qvi-multisig-info.json`,
+            JSON.stringify(multisig)
+        );
+        return {
+            status: 'inception-submitted',
+            ...multisig,
+        };
+    });
+}

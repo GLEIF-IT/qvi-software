@@ -4,18 +4,13 @@ import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {parseOobiInfoSingleSig} from "./oobis.ts";
 import {resolveOobi} from "../oobis.ts";
 import fs from "fs";
-
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const qviName = args[1];
-const aidInfoArg = args[2];
-const oobiInfoArg = args[3];
-const delegatorPrefix = args[4];
-const dataDir = args[5];
-
-// resolve witness IDs for QVI multisig AID configuration
-const {witnessIds} = resolveEnvironment(env);
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    requireNamedArguments,
+    runJsonCli,
+    singleSigParticipantInvocationFromArguments,
+} from '../cli.ts';
 
 /**
  * Create a delegated AID for the QVI delegated from the AID specified by delpre.
@@ -26,8 +21,15 @@ const {witnessIds} = resolveEnvironment(env);
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function createQviDelegate(qviName: string, aidInfo: string, oobiInfo: string, delegatorPrefix: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
-    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+export async function createQviDelegate(
+    qviName: string,
+    aidInfo: string,
+    oobiInfo: string,
+    delegatorPrefix: string,
+    environment: TestEnvironmentPreset
+) {
+    const {witnessIds} = resolveEnvironment(environment);
+    const [, WIL] = witnessIds;
 
     // get Clients
     const {QVI} = parseAidInfoSingleSig(aidInfo);
@@ -51,7 +53,46 @@ async function createQviDelegate(qviName: string, aidInfo: string, oobiInfo: str
     return {delegatePre, icpOpName: op.name}
 }
 
-
-const {delegatePre, icpOpName} = await createQviDelegate(qviName, aidInfoArg, oobiInfoArg, delegatorPrefix, witnessIds, env);
-console.log("Writing QVI delegate prefix and op name to file...");
-await fs.promises.writeFile(`${dataDir}/qvi-delegate-info.json`, JSON.stringify({qviPre: delegatePre, icpOpName}));
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            [
+                'config',
+                'qvi-name',
+                'oobis',
+                'delegator-prefix',
+                'artifact-dir',
+            ],
+            [
+                'environment',
+                'qvi-name',
+                'participant-source',
+                'oobis',
+                'delegator-prefix',
+                'artifact-dir',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'qvi-name',
+            'oobis',
+            'delegator-prefix',
+            'artifact-dir',
+        ]);
+        const invocation =
+            singleSigParticipantInvocationFromArguments(parsed);
+        const {delegatePre, icpOpName} = await createQviDelegate(
+            parsed['qvi-name'],
+            invocation.participantSource,
+            parsed.oobis,
+            parsed['delegator-prefix'],
+            invocation.environment
+        );
+        const artifact = {qviPre: delegatePre, icpOpName};
+        await fs.promises.writeFile(
+            `${parsed['artifact-dir']}/qvi-delegate-info.json`,
+            JSON.stringify(artifact)
+        );
+        return artifact;
+    });
+}

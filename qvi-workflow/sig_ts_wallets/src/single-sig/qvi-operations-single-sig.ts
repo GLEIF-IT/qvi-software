@@ -23,7 +23,10 @@ export async function checkReceivedCredentialSingleSig(aidInfo: string, credSAID
         credSAID
     )
     if (!receivedCred) {
-        return "false-credential-not-found"
+        return {found: false as const}
     }
-    return "true"
+    return {
+        found: true as const,
+        credentialSaid: receivedCred.sad.d,
+    }
 }

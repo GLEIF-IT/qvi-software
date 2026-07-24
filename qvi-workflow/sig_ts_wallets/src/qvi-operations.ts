@@ -29,11 +29,24 @@ export async function checkIssuedCredential(multisigName: string, aidInfo: strin
         multisig.prefix,
         issueePrefix,
         schemaSAID
-    )
-    if (!issuedCred) {
-        return "false-credential-not-found"
+    );
+    const credentialIsMissing = issuedCred === undefined;
+    if (credentialIsMissing) {
+        return {found: false as const};
     }
-    return issuedCred.sad.d
+    const credentialIsActive = issuedCred.status.s === '0';
+    if (credentialIsActive === false) {
+        return {
+            found: false as const,
+            reason: 'credential-not-active' as const,
+            credentialSaid: issuedCred.sad.d,
+            statusSequence: issuedCred.status.s,
+        };
+    }
+    return {
+        found: true as const,
+        credentialSaid: issuedCred.sad.d,
+    };
 }
 
 /**
@@ -52,17 +65,22 @@ export async function checkReceivedCredential(multisigName: string, aidInfo: str
     const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
 
     // Check to see if QVI multisig exists
-    let multisig = await QAR1Client.identifiers().get(multisigName);
+    const multisig = await QAR1Client.identifiers().get(multisigName);
 
     // Check to see if the QVI credential exists
-    let receivedCred = await getReceivedCredential(
+    const receivedCred = await getReceivedCredential(
         QAR1Client,
         credSAID
-    )
-    if (!receivedCred) {
-        return "false-credential-not-found"
+    );
+    const receivedCredentialIsMissing =
+        receivedCred === undefined;
+    if (receivedCredentialIsMissing) {
+        return {found: false as const};
     }
-    return "true"
+    return {
+        found: true as const,
+        credentialSaid: receivedCred.sad.d,
+    };
 }
 
 /**

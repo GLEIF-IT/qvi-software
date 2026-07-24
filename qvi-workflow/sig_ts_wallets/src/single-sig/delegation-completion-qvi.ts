@@ -3,15 +3,13 @@ import {getOrCreateClient} from "../keystore-creation.ts";
 import {TestEnvironmentPreset} from "../resolve-env.ts";
 import {waitOperation} from "../operations.ts";
 import fs from "fs";
-
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const qviName = args[1];
-const aidInfoArg = args[2];
-const delegatorPrefix = args[3];
-const icpOpName = args[4];
-const dataDir = args[5];
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    requireNamedArguments,
+    runJsonCli,
+    singleSigParticipantInvocationFromArguments,
+} from '../cli.ts';
 
 /**
  * Both completes the delegation by refreshing keystate from the delegator to discover the approval
@@ -24,7 +22,13 @@ const dataDir = args[5];
  * @param icpOpName
  * @param environment
  */
-async function completeDelegation(qviName: string, aidInfo: string, delegatorPrefix: string, icpOpName: string, environment: TestEnvironmentPreset) {
+export async function completeDelegation(
+    qviName: string,
+    aidInfo: string,
+    delegatorPrefix: string,
+    icpOpName: string,
+    environment: TestEnvironmentPreset
+) {
     // get Clients
     const {QVI} = parseAidInfoSingleSig(aidInfo);
     const QVIClient = await getOrCreateClient(QVI.salt, environment, 1);
@@ -38,18 +42,83 @@ async function completeDelegation(qviName: string, aidInfo: string, delegatorPre
     const qviAid = await QVIClient.identifiers().get(qviName);
     console.log('Delegation approved for aid:', qviAid.prefix);
 
+    const agentPrefix = QVIClient.agent?.pre;
+    const agentPrefixIsMissing =
+        typeof agentPrefix !== 'string' || agentPrefix.length === 0;
+    if (agentPrefixIsMissing) {
+        throw new Error(
+            `KERIA returned no agent AID while authorizing ${qviName}`
+        );
+    }
     const endRoleRes = await QVIClient
         .identifiers()
-        .addEndRole(qviName, 'agent', QVIClient!.agent!.pre);
+        .addEndRole(qviName, 'agent', agentPrefix);
     await waitOperation(QVIClient, await endRoleRes.op());
     const qviOobis = await QVIClient.oobis().get(qviName);
-    console.log(`Full Agent OOBI: ${qviOobis.oobis[0]}`)
-    const agentOobi = qviOobis.oobis[0].split('/agent/')[0];
+    const agentOobi = qviOobis.oobis[0];
+    const agentOobiIsMissing =
+        typeof agentOobi !== 'string' || agentOobi.length === 0;
+    if (agentOobiIsMissing) {
+        throw new Error(
+            `KERIA returned no endpoint-qualified agent OOBI for ${qviName}`
+        );
+    }
+    const expectedPath =
+        `/oobi/${qviAid.prefix}/agent/${agentPrefix}`;
+    const oobiPathMatches =
+        new URL(agentOobi).pathname === expectedPath;
+    if (oobiPathMatches === false) {
+        throw new Error(
+            `QVI agent OOBI path does not match ${expectedPath}`
+        );
+    }
+    console.log(`Full Agent OOBI: ${agentOobi}`)
 
     console.log(`Agent OOBI for delegate ${qviName}: ${agentOobi}`);
     return agentOobi;
 
 }
-const agentOobi = await completeDelegation(qviName, aidInfoArg, delegatorPrefix, icpOpName, env);
-console.log("Delegation check complete, writing agent OOBI to file...");
-await fs.promises.writeFile(`${dataDir}/qvi-agent-oobi.json`, JSON.stringify({qviAgentOobi: agentOobi}));
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            [
+                'config',
+                'qvi-name',
+                'delegator-prefix',
+                'inception-operation',
+                'artifact-dir',
+            ],
+            [
+                'environment',
+                'qvi-name',
+                'participant-source',
+                'delegator-prefix',
+                'inception-operation',
+                'artifact-dir',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'qvi-name',
+            'delegator-prefix',
+            'inception-operation',
+            'artifact-dir',
+        ]);
+        const invocation =
+            singleSigParticipantInvocationFromArguments(parsed);
+        const agentOobi = await completeDelegation(
+            parsed['qvi-name'],
+            invocation.participantSource,
+            parsed['delegator-prefix'],
+            parsed['inception-operation'],
+            invocation.environment
+        );
+        const artifact = {qviAgentOobi: agentOobi};
+        await fs.promises.writeFile(
+            `${parsed['artifact-dir']}/qvi-agent-oobi.json`,
+            JSON.stringify(artifact)
+        );
+        return artifact;
+    });
+}

@@ -1,28 +1,125 @@
-import { getOrCreateContact } from "./agent-contacts";
-import {getOrCreateClient} from "./keystore-creation";
-import { TestEnvironmentPreset } from "./resolve-env";
-import { parseAidInfo } from "./create-aid";
-import { OobiInfo } from "./qvi-data";
+import {readFileSync} from 'node:fs';
 
-// Pull in arguments from the command line and configuration
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1];
-const aidInfoArg = args[2];
-const qviOobiArg = args[3];
+import {getOrCreateContact} from './agent-contacts.ts';
+import {
+    isMainModule,
+    parseNamedArguments,
+    readParticipantConfig,
+    requireNamedArguments,
+    runJsonCli,
+} from './cli.ts';
+import {getOrCreateClient} from './keystore-creation.ts';
+import type {QviAgentOobis} from './qars/qars-authorize-endroles-get-qvi-oobi.ts';
 
-/**
- * Resolves the QVI Multisig OOBI for the Person in preparation for receiving the ECR and OOR credentials
- * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param qviOobi The QVI multisig OOBI
- * @param environment the runtime environment to use for resolving environment variables
- */
-async function resolveQVIOobi(multisigName: string, aidInfo: string, qviOobi: string, environment: TestEnvironmentPreset) {
-    // create SignifyTS Clients
-    const {PERSON} = parseAidInfo(aidInfo);
-    // Create SignifyTS Clients
-    const personClient = await getOrCreateClient(PERSON.salt, environment, 1);
-    await getOrCreateContact(personClient, multisigName, qviOobi);
+export interface ResolveQviOobisOptions {
+    configPath: string;
+    groupName: string;
+    oobiFile: string;
 }
-await resolveQVIOobi(multisigName, aidInfoArg, qviOobiArg, env);
-console.log('Person resolved QVI OOBI ' + qviOobiArg);
+
+function readQviOobis(path: string): QviAgentOobis {
+    const decoded = JSON.parse(
+        readFileSync(path, 'utf8')
+    ) as unknown;
+    const artifactIsInvalid =
+        typeof decoded !== 'object' ||
+        decoded === null ||
+        typeof (decoded as {qviPrefix?: unknown}).qviPrefix !==
+            'string' ||
+        Array.isArray(
+            (decoded as {agentOobis?: unknown}).agentOobis
+        ) === false;
+    if (artifactIsInvalid) {
+        throw new Error(`Invalid QVI OOBI artifact ${path}`);
+    }
+
+    const artifact = decoded as QviAgentOobis;
+    const entryCountIsInvalid = artifact.agentOobis.length !== 3;
+    const eids = artifact.agentOobis.map((entry) => entry.eid);
+    const urls = artifact.agentOobis.map((entry) => entry.oobi);
+    const valuesAreNotUnique =
+        new Set(eids).size !== 3 || new Set(urls).size !== 3;
+    if (entryCountIsInvalid || valuesAreNotUnique) {
+        throw new Error(
+            'QVI OOBI artifact must contain three unique EIDs and URLs'
+        );
+    }
+    for (const entry of artifact.agentOobis) {
+        const expectedPath =
+            `/oobi/${artifact.qviPrefix}/agent/${entry.eid}`;
+        const pathMatches =
+            new URL(entry.oobi).pathname === expectedPath;
+        if (pathMatches === false) {
+            throw new Error(
+                `QVI OOBI ${entry.oobi} does not match ${expectedPath}`
+            );
+        }
+    }
+    return artifact;
+}
+
+export async function resolveQviOobisForPerson(
+    options: ResolveQviOobisOptions
+) {
+    const config = readParticipantConfig(options.configPath);
+    const person = config.participants.person;
+    const client = await getOrCreateClient(
+        person.salt,
+        config.environment,
+        person.keriaHost
+    );
+    const artifact = readQviOobis(options.oobiFile);
+    const resolvedPrefixes = [];
+    for (const entry of artifact.agentOobis) {
+        resolvedPrefixes.push(
+            await getOrCreateContact(
+                client,
+                options.groupName,
+                entry.oobi
+            )
+        );
+    }
+    const everyOobiResolvedToQvi = resolvedPrefixes.every(
+        (prefix) => prefix === artifact.qviPrefix
+    );
+    if (everyOobiResolvedToQvi === false) {
+        throw new Error(
+            `QVI agent OOBIs resolved to unexpected prefixes: ${resolvedPrefixes.join(',')}`
+        );
+    }
+
+    return {
+        status: 'resolved' as const,
+        qviPrefix: artifact.qviPrefix,
+        agentEids: artifact.agentOobis.map((entry) => entry.eid),
+    };
+}
+
+function parseResolveArguments(
+    argv: string[]
+): ResolveQviOobisOptions {
+    const args = parseNamedArguments(argv, [
+        'config',
+        'group-name',
+        'oobi-file',
+    ]);
+    requireNamedArguments(args, [
+        'config',
+        'group-name',
+        'oobi-file',
+    ]);
+    return {
+        configPath: args.config,
+        groupName: args['group-name'],
+        oobiFile: args['oobi-file'],
+    };
+}
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const options = parseResolveArguments(
+            process.argv.slice(2)
+        );
+        return resolveQviOobisForPerson(options);
+    });
+}

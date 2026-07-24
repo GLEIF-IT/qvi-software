@@ -1,12 +1,15 @@
 {
     "type": "module",
     "private": true,
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "test": "tsx --test test/*.test.ts"
+    },
     "dependencies": {
-        "signify-ts": "0.3.0-rc1"
+        "signify-ts": "0.4.0"
     },
     "devDependencies": {
         "@types/node": "^22.10.5",
-        "ts-node": "^10.9.2",
         "tsx": "^4.20.6",
         "typescript": "^5.7.2"
     }

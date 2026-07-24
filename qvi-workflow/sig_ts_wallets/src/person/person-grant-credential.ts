@@ -1,65 +1,143 @@
-import {TestEnvironmentPreset} from "../resolve-env.ts";
-import {createTimestamp, parseAidInfo} from "../create-aid.ts";
-import {getOrCreateClient} from "../keystore-creation.ts";
-import {getReceivedCredBySchemaAndIssuer} from "../credentials.ts";
-import {Serder} from "signify-ts";
-import {waitOperation} from "../operations.ts";
+import {Serder} from 'signify-ts';
 
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1]
-const schemaSAID = args[2]
-const issuerPrefix = args[3]
-const recipientPrefix = args[4]
+import {
+    assertExpectedCredential,
+    credentialSnapshot,
+    selectCredential,
+} from '../credential-state.ts';
+import {
+    isMainModule,
+    parseNamedArguments,
+    readParticipantConfig,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
+import {createTimestamp} from '../create-aid.ts';
+import {getOrCreateClient} from '../keystore-creation.ts';
+import {
+    requireOperationResponse,
+    waitOperation,
+} from '../operations.ts';
 
-/**
- * Grants a credential from the Person AID to a recipient
- *
- * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param schemaSAID The schema SAID of the type of credential issuance to check for.
- * @param issuerPrefix identifier of the issuer AID who issued the credential
- * @param recipientPrefix identifier of the recipient AID who is receiving the credential
- * @param environment the runtime environment to use for resolving environment variables
- * @returns {Promise<string>} String true/false if QVI credential exists or not for the QAR
- */
-export async function grantCredential(aidInfo: string, schemaSAID: string, issuerPrefix: string, recipientPrefix: string, environment: TestEnvironmentPreset) {
-    // get Clients
-    const {PERSON} = parseAidInfo(aidInfo);
-    const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
+export interface PersonPresentationOptions {
+    configPath: string;
+    credentialSaid: string;
+    expectedIssuer: string;
+    expectedSchema: string;
+    expectedIssuee: string;
+    recipientPrefix: string;
+}
 
-    // Check to see if the QVI credential exists
-    let receivedCred = await getReceivedCredBySchemaAndIssuer(
-        PersonClient,
-        schemaSAID,
-        issuerPrefix
-    )
-    if (!receivedCred) {
-        return "false-credential-not-found"
+export async function presentPersonCredential(
+    options: PersonPresentationOptions
+) {
+    const config = readParticipantConfig(options.configPath);
+    const person = config.participants.person;
+    const client = await getOrCreateClient(
+        person.salt,
+        config.environment,
+        person.keriaHost
+    );
+    const personAid = await client
+        .identifiers()
+        .get(person.name);
+    const expected = {
+        said: options.credentialSaid,
+        issuer: options.expectedIssuer,
+        schema: options.expectedSchema,
+        issuee: options.expectedIssuee,
+    };
+    const credential = await selectCredential(client, expected);
+    const snapshot = credentialSnapshot(
+        credential,
+        personAid.prefix
+    );
+    assertExpectedCredential(snapshot, expected);
+    const credentialIsActive = snapshot.statusSequence === '0';
+    if (credentialIsActive === false) {
+        throw new Error(
+            `Person credential ${snapshot.said} is not active`
+        );
+    }
+    const personIsIssuee =
+        personAid.prefix === options.expectedIssuee;
+    if (personIsIssuee === false) {
+        throw new Error(
+            `Person AID ${personAid.prefix} does not match credential issuee ${options.expectedIssuee}`
+        );
     }
 
-    const PersonAID = await PersonClient.identifiers().get(PERSON.name);
-
-    // grant credential
-    const dt = createTimestamp();
-    const [grant, gsigs, gend] = await PersonClient.ipex().grant({
-        senderName: PERSON.name,
-        acdc: new Serder(receivedCred.sad),
-        anc: new Serder(receivedCred.anc),
-        iss: new Serder(receivedCred.iss),
-        ancAttachment: receivedCred.ancAttachment,
-        recipient: recipientPrefix,
-        datetime: dt,
-    });
-
-    const op = await PersonClient
+    const [grant, signatures, attachment] =
+        await client.ipex().grant({
+            senderName: person.name,
+            acdc: new Serder(credential.sad),
+            anc: new Serder(credential.anc),
+            iss: new Serder(credential.iss),
+            ancAttachment: credential.ancatc,
+            recipient: options.recipientPrefix,
+            datetime: createTimestamp(),
+        });
+    const operation = await client
         .ipex()
-        .submitGrant(PERSON.name, grant, gsigs, gend, [
-            recipientPrefix,
-        ]);
-    await waitOperation(PersonClient, op);
+        .submitGrant(
+            person.name,
+            grant,
+            signatures,
+            attachment,
+            [options.recipientPrefix]
+        );
+    const completed = await waitOperation(client, operation);
+    const response = requireOperationResponse(
+        completed,
+        (value): value is {said: string} =>
+            typeof value === 'object' &&
+            value !== null &&
+            typeof (value as {said?: unknown}).said === 'string',
+        'Person IPEX grant'
+    );
 
-    return op.response;
+    return {
+        status: 'presented' as const,
+        credential: snapshot,
+        recipientPrefix: options.recipientPrefix,
+        grantExchangeSaid: response.said,
+    };
 }
-const granted: string = await grantCredential(aidInfoArg, schemaSAID, issuerPrefix, recipientPrefix, env);
-console.log(granted);
+
+function parsePresentationArguments(
+    argv: string[]
+): PersonPresentationOptions {
+    const args = parseNamedArguments(argv, [
+        'config',
+        'credential-said',
+        'expected-issuer',
+        'expected-schema',
+        'expected-issuee',
+        'recipient-prefix',
+    ]);
+    requireNamedArguments(args, [
+        'config',
+        'credential-said',
+        'expected-issuer',
+        'expected-schema',
+        'expected-issuee',
+        'recipient-prefix',
+    ]);
+    return {
+        configPath: args.config,
+        credentialSaid: args['credential-said'],
+        expectedIssuer: args['expected-issuer'],
+        expectedSchema: args['expected-schema'],
+        expectedIssuee: args['expected-issuee'],
+        recipientPrefix: args['recipient-prefix'],
+    };
+}
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const options = parsePresentationArguments(
+            process.argv.slice(2)
+        );
+        return presentPersonCredential(options);
+    });
+}

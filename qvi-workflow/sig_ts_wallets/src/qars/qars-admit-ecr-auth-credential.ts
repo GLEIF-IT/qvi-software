@@ -1,11 +1,49 @@
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 import {checkReceivedCredential} from "../qvi-operations.ts";
+import type {TestEnvironmentPreset} from '../resolve-env.ts';
 
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1]
-const aidInfoArg = args[2]
-const credSAID = args[3]
+export async function checkEcrAuthAdmission(options: {
+    groupName: string;
+    participantSource: string;
+    credentialSaid: string;
+    environment: TestEnvironmentPreset;
+}) {
+    return checkReceivedCredential(
+        options.groupName,
+        options.participantSource,
+        options.credentialSaid,
+        options.environment
+    );
+}
 
-const exists: string = await checkReceivedCredential(multisigName, aidInfoArg, credSAID, env);
-console.log(exists);
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'group-name', 'credential-said'],
+            [
+                'environment',
+                'group-name',
+                'participant-source',
+                'credential-said',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'group-name',
+            'credential-said',
+        ]);
+        const invocation = participantInvocationFromArguments(parsed);
+        return checkEcrAuthAdmission({
+            groupName: parsed['group-name'],
+            participantSource: invocation.participantSource,
+            credentialSaid: parsed['credential-said'],
+            environment: invocation.environment,
+        });
+    });
+}

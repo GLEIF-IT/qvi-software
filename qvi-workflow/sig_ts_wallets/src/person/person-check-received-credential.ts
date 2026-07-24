@@ -2,17 +2,13 @@ import {TestEnvironmentPreset} from "../resolve-env.ts";
 import {parseAidInfo} from "../create-aid.ts";
 import {getOrCreateClient} from "../keystore-creation.ts";
 import {getReceivedCredBySchemaAndIssuer} from "../credentials.ts";
-
-/*
-Checks the specified multisig with the first QAR to see if a credential has been received
- */
-
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1]
-const schemaSAID = args[2]
-const issuerPrefix = args[3]
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
 /**
  * Checks to see if the Person has a credential
@@ -29,15 +25,43 @@ export async function checkReceivedCredentialPerson(aidInfo: string, schemaSAID:
     const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
 
     // Check to see if the QVI credential exists
-    let receivedCred = await getReceivedCredBySchemaAndIssuer(
+    const receivedCred = await getReceivedCredBySchemaAndIssuer(
         PersonClient,
         schemaSAID,
         issuerPrefix
-    )
-    if (!receivedCred) {
-        return "false-credential-not-found"
+    );
+    const credentialIsMissing = receivedCred === undefined;
+    if (credentialIsMissing) {
+        return {found: false as const};
     }
-    return receivedCred.sad.d
+    return {
+        found: true as const,
+        credentialSaid: receivedCred.sad.d,
+    };
 }
-const exists: string = await checkReceivedCredentialPerson(aidInfoArg, schemaSAID, issuerPrefix, env);
-console.log(exists);
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'schema-said', 'issuer-prefix'],
+            [
+                'environment',
+                'participant-source',
+                'schema-said',
+                'issuer-prefix',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'schema-said',
+            'issuer-prefix',
+        ]);
+        const invocation = participantInvocationFromArguments(parsed);
+        return checkReceivedCredentialPerson(
+            invocation.participantSource,
+            parsed['schema-said'],
+            parsed['issuer-prefix'],
+            invocation.environment
+        );
+    });
+}

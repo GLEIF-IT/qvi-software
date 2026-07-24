@@ -3,14 +3,17 @@ import {getOrCreateClient} from "../keystore-creation";
 import { TestEnvironmentPreset } from "../resolve-env";
 import { OobiInfo } from "../qvi-data";
 import { parseAidInfo } from "../create-aid";
-
-// Pull in arguments from the command line and configuration
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
 // parse the OOBIs for the GEDA, GIDA, and Sally needed for initial setup
 export function parseOobiInfo(oobiInfoArg: string) {
-    const oobiInfos = oobiInfoArg.split(','); // expect format: "gar1|OOBI,gar2|OOBI,lar1|OOBI,lar1|OOBI,sally-indirect|OOBI"
+    const oobiInfos = oobiInfoArg.split(','); // expect format: "gar1|OOBI,gar2|OOBI,lar1|OOBI,lar2|OOBI,direct-sally|OOBI"
     const oobiObjs: OobiInfo[] = oobiInfos.map((aidInfo) => {
         const [position, oobi] = aidInfo.split('|'); // expect format: "gar1|OOBI"
         return {position, oobi};
@@ -27,7 +30,7 @@ export function parseOobiInfo(oobiInfoArg: string) {
 // Resolve OOBIs between the QARs and the person and the GEDA, GIDA, and Sally based on script arguments
 // aidInfoArg format: "qar1|Alice|salt1,qar2|Bob|salt2,qar3|Charlie|salt3,person|David|salt4"
 // oobiStrArg format: "gar1|OOBI,gar2|OOBI,lar1|OOBI,lar2|OOBI,sally|OOBI"
-async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: TestEnvironmentPreset) {
+export async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: TestEnvironmentPreset) {
     // create SignifyTS Clients
     const {QAR1, QAR2, QAR3, PERSON} = parseAidInfo(aidStrArg);
     const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
@@ -59,6 +62,26 @@ async function resolveOobis(aidStrArg: string, oobiStrArg: string, environment: 
         getOrCreateContact(PersonClient, LAR1.position, LAR1.oobi),
         getOrCreateContact(PersonClient, LAR2.position, LAR2.oobi),
         getOrCreateContact(PersonClient, SALLY.position, SALLY.oobi),
-    ])
+    ]);
 }
-await resolveOobis(args[1], args[2], env);
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'oobis'],
+            ['environment', 'participant-source', 'oobis']
+        );
+        requireNamedArguments(parsed, ['oobis']);
+        const invocation = participantInvocationFromArguments(parsed);
+        await resolveOobis(
+            invocation.participantSource,
+            parsed.oobis,
+            invocation.environment
+        );
+        return {
+            status: 'resolved',
+            contactCount: 18,
+        };
+    });
+}

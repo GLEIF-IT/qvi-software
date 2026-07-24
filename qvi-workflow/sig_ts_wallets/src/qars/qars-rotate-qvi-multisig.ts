@@ -1,20 +1,30 @@
-import signify, {HabState, Serder, Siger, SignifyClient} from "signify-ts";
+import signify, {
+    assertMultisigRot,
+    type HabState,
+    type KeyState,
+    type Siger,
+    type SignifyClient,
+} from 'signify-ts';
 import {parseAidInfo} from "../create-aid";
+import {sendExchangeToEachRecipient} from '../exchanges.ts';
 import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
-import {waitAndRemoveNotification} from "../notifications.ts";
-import {waitOperation} from "../operations.ts";
-
-type KeyState = {i: string};
-
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1];
-const aidInfoArg = args[2];
-
-// resolve witness IDs for QVI multisig AID configuration
-const {witnessIds} = resolveEnvironment(env);
+import {
+    notificationReference,
+    waitForMatchingNotification,
+} from '../notifications.ts';
+import {
+    waitKeyStateOperation,
+    waitOperation,
+    validateThreeMemberOperationNames,
+} from '../operations.ts';
+import {
+    isMainModule,
+    parseNamedOrPositionalArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
 
 /**
@@ -26,8 +36,13 @@ const {witnessIds} = resolveEnvironment(env);
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
-    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+export async function rotateMultisig(
+    multisigName: string,
+    aidInfo: string,
+    environment: TestEnvironmentPreset
+) {
+    const {witnessIds} = resolveEnvironment(environment);
+    const [, WIL] = witnessIds;
 
     // get Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
@@ -80,11 +95,12 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
     const rstates = [...states];
 
     console.log("Creating multisig rotation operation...");
-    const rotateOp = await QAR1Client.identifiers().rotate(
+    const qar1RotRes = await QAR1Client.identifiers().rotate(
         multisigName, {states: states, rstates: rstates}
     );
-    const body = rotateOp.serder;
-    let sigs = rotateOp.sigs;
+    const qar1RotOp = await qar1RotRes.op();
+    const body = qar1RotRes.serder;
+    let sigs = qar1RotRes.sigs;
 
     // add signature attachments to the exn message
     const sigers: Siger[] = sigs.map((sig) => new signify.Siger({qb64: sig}));
@@ -94,39 +110,51 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
         rot: [body, atc]
     };
     // signing member IDs (signing this rotation - must satisfy the current signing threshold and prior next)
-    const smids = states.map((state: KeyState) => state['i']);
-    const rmids = states.map((state: KeyState) => state['i']);
+    const smids = states.map((state: KeyState) => state.i);
+    const rmids = states.map((state: KeyState) => state.i);
     const payload = { gid: body.pre, smids: smids, rmids: rmids};
-    const recipients = [aid2State, aid3State].map((state: KeyState) => state['i']);
+    const recipients = [aid2State, aid3State].map(
+        (state: KeyState) => state.i
+    );
 
     console.log(`Sending multisig rotation exchange message to ${recipients}...`);
-    await QAR1Client
-        .exchanges()
-        .send(
-            QAR1.name,
-            multisigName,
-            QAR1Id,
-            '/multisig/rot',
-            payload,
-            embeds,
-            recipients
-        );
+    const qar1Receipts = await sendExchangeToEachRecipient(QAR1Client, {
+        name: QAR1.name,
+        topic: multisigName,
+        sender: QAR1Id,
+        route: '/multisig/rot',
+        payload,
+        embeds,
+        recipients,
+    });
     console.log("Multisig joining rotation as QARs...");
     // await new Promise(resolve => setTimeout(resolve, 3000));// wait for the operation to be processed
 
 
-    console.log("Waiting to consume notifications for multisig rotation...");
+    console.log("Waiting for multisig rotation notifications...");
     // join operation with other QARs
     // join with QAR2
-    const qar2RotExnSAID = await waitAndRemoveNotification(
-            QAR2Client, '/multisig/rot');
+    const qar2RotationNotification =
+        await waitForMatchingNotification(QAR2Client, {
+            notificationRoute: '/multisig/rot',
+            exchangeRoute: '/multisig/rot',
+            sender: QAR1Id.prefix,
+            recipient: QAR2Id.prefix,
+            groupPrefix: body.pre,
+        });
 
     const qar2ExnReplayList = await QAR2Client
         .groups()
-        .getRequest(qar2RotExnSAID);
+        .getRequest(qar2RotationNotification.exchangeSaid);
 
-    const qar2RotExn = qar2ExnReplayList[0].exn;
-    const qar2RotSerd = new Serder(qar2RotExn.e.rot);
+    const qar2Request = assertMultisigRot(qar2ExnReplayList[0]);
+    const replayedRotationMatches =
+        qar2Request.exn.e.rot.d === body.said;
+    if (replayedRotationMatches === false) {
+        throw new Error(
+            `QAR2 received rotation ${qar2Request.exn.e.rot.d}; expected ${body.said}`
+        );
+    }
 
     const qar2RotRes = await QAR2Client.identifiers().rotate(
         multisigName, {states: states, rstates: rstates}
@@ -141,29 +169,46 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
         rot: [qar2RotSerder, qar2atc]
     }
 
-    const qar2Recp = [aid1State, aid3State].map((state) => state["i"]);
-    const qar2ExnResp = await QAR2Client.exchanges()
-        .send(
-            QAR2.name,
-            multisigName,
-            QAR2Id,
-            '/multisig/rot',
-            {gid: qar2RotSerder.pre, smids: smids, rmids: rmids},
-            qar2Embeds,
-            qar2Recp
-        );
-    console.log("QAR2 joined multisig rotation, waiting for QAR3 to join...");
+    const qar2Recp = [aid1State, aid3State].map((state) => state.i);
+    const qar2Receipts = await sendExchangeToEachRecipient(QAR2Client, {
+        name: QAR2.name,
+        topic: multisigName,
+        sender: QAR2Id,
+        route: '/multisig/rot',
+        payload: {
+            gid: qar2RotSerder.pre,
+            smids,
+            rmids,
+        },
+        embeds: qar2Embeds,
+        recipients: qar2Recp,
+    });
+    console.log(
+        "QAR2 joined multisig rotation; retaining its notice until completion"
+    );
 
     const qar2MSAID = await QAR2Client.identifiers().get(multisigName);
-    const qar3RotExnSAID = await waitAndRemoveNotification(
-            QAR3Client, '/multisig/rot');
+    const qar3RotationNotification =
+        await waitForMatchingNotification(QAR3Client, {
+            notificationRoute: '/multisig/rot',
+            exchangeRoute: '/multisig/rot',
+            sender: QAR2Id.prefix,
+            recipient: QAR3Id.prefix,
+            groupPrefix: body.pre,
+        });
 
     const qar3ExnReplayList = await QAR3Client
         .groups()
-        .getRequest(qar3RotExnSAID);
+        .getRequest(qar3RotationNotification.exchangeSaid);
 
-    const qar3RotExn = qar3ExnReplayList[0].exn;
-    const qar3RotSer = new Serder(qar3RotExn.e.rot);
+    const qar3Request = assertMultisigRot(qar3ExnReplayList[0]);
+    const qar3ReplayedRotationMatches =
+        qar3Request.exn.e.rot.d === body.said;
+    if (qar3ReplayedRotationMatches === false) {
+        throw new Error(
+            `QAR3 received rotation ${qar3Request.exn.e.rot.d}; expected ${body.said}`
+        );
+    }
 
     const qar3RotRes = await QAR3Client.identifiers().rotate(
         multisigName, {states: states, rstates: rstates}
@@ -178,20 +223,33 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
         rot: [qar3RotSerder, qar3atc]
     }
 
-    const qar3Recp = [aid1State, aid2State].map((state) => state["i"]);
-    const qar3ExnResp = await QAR3Client.exchanges()
-        .send(
-            QAR3.name,
-            multisigName,
-            QAR3Id,
-            '/multisig/rot',
-            {gid: qar3RotSerder.pre, smids: smids, rmids: rmids},
-            qar3Embeds,
-            qar3Recp
-        );
-    console.log("QAR3 joined multisig rotation, waiting for GEDA to confirm rotation...");
+    const qar3Recp = [aid1State, aid2State].map((state) => state.i);
+    const qar3Receipts = await sendExchangeToEachRecipient(QAR3Client, {
+        name: QAR3.name,
+        topic: multisigName,
+        sender: QAR3Id,
+        route: '/multisig/rot',
+        payload: {
+            gid: qar3RotSerder.pre,
+            smids,
+            rmids,
+        },
+        embeds: qar3Embeds,
+        recipients: qar3Recp,
+    });
+    console.log(
+        "QAR3 joined multisig rotation; retaining its notice until completion"
+    );
 
     const qar3MSAID = await QAR3Client.identifiers().get(multisigName);
+    const operationNames = validateThreeMemberOperationNames(
+        [
+            qar1RotOp.name,
+            qar2RotOp.name,
+            qar3RotOp.name,
+        ],
+        'Delegated rotation completion'
+    );
 
     // refresh each other's key state again
     const initialUpdates = await Promise.all([
@@ -210,6 +268,33 @@ async function rotateMultisig(multisigName: string, aidInfo: string, witnessIds:
         waitOperation(QAR3Client, initialUpdates[4]),
         waitOperation(QAR3Client, initialUpdates[5]),
     ]);
+    return {
+        status: 'submitted' as const,
+        groupName: multisigName,
+        operationNames,
+        notificationReferences: {
+            qar2: notificationReference(
+                qar2RotationNotification
+            ),
+            qar3: notificationReference(
+                qar3RotationNotification
+            ),
+        },
+        coordinationReceipts: [
+            ...qar1Receipts.map((receipt) => ({
+                sender: QAR1Id.prefix,
+                ...receipt,
+            })),
+            ...qar2Receipts.map((receipt) => ({
+                sender: QAR2Id.prefix,
+                ...receipt,
+            })),
+            ...qar3Receipts.map((receipt) => ({
+                sender: QAR3Id.prefix,
+                ...receipt,
+            })),
+        ],
+    };
 }
 
 /**
@@ -281,15 +366,29 @@ async function rotateMultisigMembersAndRefreshKeystate(members: {name: string, c
     ]);
 
     const [aid2State, aid3State, aid1State] = await Promise.all([
-        waitOperation(QAR1Client, updates[0]),
-        waitOperation(QAR1Client, updates[1]),
-        waitOperation(QAR2Client, updates[2]),
-        waitOperation(QAR2Client, updates[3]),
-        waitOperation(QAR3Client, updates[4]),
-        waitOperation(QAR3Client, updates[5]),
+        waitKeyStateOperation(QAR1Client, updates[0]),
+        waitKeyStateOperation(QAR1Client, updates[1]),
+        waitKeyStateOperation(QAR2Client, updates[2]),
+        waitKeyStateOperation(QAR2Client, updates[3]),
+        waitKeyStateOperation(QAR3Client, updates[4]),
+        waitKeyStateOperation(QAR3Client, updates[5]),
     ]);
-    return [aid1State.response, aid2State.response, aid3State.response];
+    return [aid1State, aid2State, aid3State] as const;
 }
 
-const multisigOobiObj: any = await rotateMultisig(multisigName, aidInfoArg, witnessIds, env);
-console.log("QVI delegated multisig rotated, waiting for GEDA to confirm rotation...");
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedOrPositionalArguments(
+            process.argv.slice(2),
+            ['config', 'group-name'],
+            ['environment', 'group-name', 'participant-source']
+        );
+        requireNamedArguments(parsed, ['group-name']);
+        const invocation = participantInvocationFromArguments(parsed);
+        return rotateMultisig(
+            parsed['group-name'],
+            invocation.participantSource,
+            invocation.environment
+        );
+    });
+}
