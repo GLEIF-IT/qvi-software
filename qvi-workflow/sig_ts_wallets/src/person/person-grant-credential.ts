@@ -1,36 +1,28 @@
 import {Serder} from 'signify-ts';
 
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {getCredential} from '../credential-state.ts';
-import {getOrCreateClient} from '../keystore-creation.ts';
+import {
+    connectClient,
+    type WorkflowConfig,
+} from '../client.ts';
 import {
     requireOperationResponse,
     waitOperation,
 } from '../operations.ts';
 
 export interface PersonPresentationOptions {
-    config: ParticipantConfig;
+    config: WorkflowConfig;
     credentialSaid: string;
     recipientPrefix: string;
 }
 
+/** Present one credential directly from the configured person wallet. */
 export async function presentPersonCredential(
     options: PersonPresentationOptions
 ) {
     const person = options.config.participants.person;
-    const client = await getOrCreateClient(
-        person.salt,
-        options.config.environment,
-        person.keriaHost
-    );
+    const client = await connectClient(person);
     const credential = await getCredential(
         client,
         options.credentialSaid
@@ -66,25 +58,4 @@ export async function presentPersonCredential(
         credentialSaid: options.credentialSaid,
         recipientPrefix: options.recipientPrefix,
     };
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'credential-said',
-            'recipient-prefix',
-        ]);
-        requireNamedArguments(args, [
-            'credential-said',
-            'recipient-prefix',
-        ]);
-        return presentPersonCredential({
-            config: participantConfigFromArguments(args),
-            credentialSaid: args['credential-said'],
-            recipientPrefix: args['recipient-prefix'],
-        });
-    });
 }

@@ -8,14 +8,24 @@ import {
 } from './notifications.ts';
 import {waitOperation} from './operations.ts';
 
-export interface CoordinatedOperation {
+export interface MultisigResult {
     operation: Operation | string;
     coordination: MatchedNotification[];
 }
 
-export interface PersistedCoordinatedOperation {
+export interface SavedMultisigResult {
     operationName: string;
     notificationIds: string[];
+}
+
+interface MemberResult {
+    client: SignifyClient;
+    result: MultisigResult;
+}
+
+interface SavedMemberResult {
+    client: SignifyClient;
+    result: SavedMultisigResult;
 }
 
 /**
@@ -25,11 +35,8 @@ export interface PersistedCoordinatedOperation {
  * protocol lifecycle: followers must keep the request available until their
  * local operation succeeds.
  */
-export async function completeCoordinatedOperations(
-    members: Array<{
-        client: SignifyClient;
-        result: CoordinatedOperation;
-    }>
+export async function completeMultisigOps(
+    members: MemberResult[]
 ): Promise<void> {
     await Promise.all(
         members.map(({client, result}) =>
@@ -47,11 +54,8 @@ export async function completeCoordinatedOperations(
 /**
  * Completes operations restored after an external delegation approval.
  */
-export async function completePersistedCoordinatedOperations(
-    members: Array<{
-        client: SignifyClient;
-        result: PersistedCoordinatedOperation;
-    }>
+export async function completeSavedMultisigOps(
+    members: SavedMemberResult[]
 ): Promise<void> {
     await Promise.all(
         members.map(({client, result}) =>

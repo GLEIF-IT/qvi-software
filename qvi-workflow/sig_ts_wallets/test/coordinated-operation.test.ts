@@ -8,7 +8,7 @@ import type {
     SignifyClient,
 } from 'signify-ts';
 
-import {completeCoordinatedOperations} from '../src/coordinated-operation.ts';
+import {completeMultisigOps} from '../src/coordinated-operation.ts';
 import type {
     MatchedNotification,
     Notification,
@@ -72,7 +72,7 @@ function member(
 describe('coordinated operation completion', () => {
     it('consumes notices after every operation succeeds', async () => {
         const trace: string[] = [];
-        await completeCoordinatedOperations([
+        await completeMultisigOps([
             member('qar1', 'success', trace),
             member('qar2', 'success', trace),
             member('qar3', 'success', trace),
@@ -86,7 +86,7 @@ describe('coordinated operation completion', () => {
     it('retains notices when one operation fails', async () => {
         const trace: string[] = [];
         await assert.rejects(
-            completeCoordinatedOperations([
+            completeMultisigOps([
                 member('qar1', 'success', trace),
                 member('qar2', 'failure', trace),
                 member('qar3', 'success', trace),

@@ -1,22 +1,14 @@
-import fs from 'node:fs';
-
 import {randomNonce} from 'signify-ts';
 
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
+import type {WorkflowConfig} from '../client.ts';
 import {createRegistryMultisig} from '../credentials.ts';
 import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
 import {retry} from '../retry.ts';
 import {loadQviMembers} from './qvi-context.ts';
 
+/** Create the QVI registry and require it to converge across all members. */
 export async function createQviRegistry(
-    config: ParticipantConfig,
+    config: WorkflowConfig,
     groupName: string,
     registryName: string
 ) {
@@ -71,33 +63,5 @@ export async function createQviRegistry(
             );
         }
         return {registryRegk: registryId};
-    });
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'group-name',
-            'registry-name',
-            'data-dir',
-        ]);
-        requireNamedArguments(args, [
-            'group-name',
-            'registry-name',
-            'data-dir',
-        ]);
-        const registry = await createQviRegistry(
-            participantConfigFromArguments(args),
-            args['group-name'],
-            args['registry-name']
-        );
-        await fs.promises.writeFile(
-            `${args['data-dir']}/qvi-registry-info.json`,
-            JSON.stringify(registry)
-        );
-        return {status: 'created', ...registry};
     });
 }

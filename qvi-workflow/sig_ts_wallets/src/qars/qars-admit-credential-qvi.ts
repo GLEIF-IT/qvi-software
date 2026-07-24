@@ -1,11 +1,4 @@
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
+import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
     admitMultisig,
@@ -15,8 +8,9 @@ import {credentialSnapshot} from '../credential-state.ts';
 import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
 import {loadQviMembers} from './qvi-context.ts';
 
+/** Admit one credential through the final QVI roster. */
 export async function admitCredentialQvi(
-    config: ParticipantConfig,
+    config: WorkflowConfig,
     groupName: string,
     issuerPrefix: string,
     credentialSaid: string
@@ -61,33 +55,4 @@ export async function admitCredentialQvi(
             )
         )
     );
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'group-name',
-            'issuer-prefix',
-            'credential-said',
-        ]);
-        requireNamedArguments(args, [
-            'group-name',
-            'issuer-prefix',
-            'credential-said',
-        ]);
-        const snapshots = await admitCredentialQvi(
-            participantConfigFromArguments(args),
-            args['group-name'],
-            args['issuer-prefix'],
-            args['credential-said']
-        );
-        return {
-            status: 'admitted',
-            credentialSaid: args['credential-said'],
-            observations: snapshots,
-        };
-    });
 }

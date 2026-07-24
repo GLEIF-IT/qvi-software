@@ -1,0 +1,1250 @@
+import {promises as fs, readFileSync} from 'node:fs';
+import {resolve as resolvePath} from 'node:path';
+import {pathToFileURL} from 'node:url';
+
+import type {HabState, SignifyClient} from 'signify-ts';
+
+import {
+    assertSignifyVersion,
+    bootClient,
+    connectClient,
+    connectParticipants,
+    createAid,
+    getAid,
+    readWorkflowConfig,
+    readParticipantEvidence,
+    requireHttpUrl,
+    resolveAidOobi,
+    resolveOobi,
+    type ParticipantEvidence,
+    type WorkflowConfig,
+    type ParticipantRole,
+    waitOperation,
+} from './client.ts';
+import {
+    assertGroupConvergence,
+    assertPersonCredentialState,
+    assertQviCredentialConvergence,
+    type ExpectedCredentialState,
+} from './assertions.ts';
+import {
+    completeSavedGroupEvent,
+    submitGroupInception,
+    submitGroupRotation,
+    submitJoiningMemberRotation,
+    type GroupEventSubmission,
+    type SavedGroupEvent,
+} from './multisig.ts';
+import {notificationReference} from './notifications.ts';
+import {createQviRegistry} from './qars/qars-registry-create.ts';
+import {
+    createLeCredential,
+    LE_SCHEMA_SAID,
+} from './qars/qars-le-credential-create.ts';
+import {
+    createOorCredential,
+    OOR_SCHEMA_SAID,
+} from './qars/qars-oor-credential-create.ts';
+import {
+    createEcrCredential,
+    ECR_SCHEMA_SAID,
+} from './qars/qars-ecr-credential-create.ts';
+import {admitCredentialQvi} from './qars/qars-admit-credential-qvi.ts';
+import {presentCredential} from './qars/qars-present-credential.ts';
+import {runRevocation} from './qars/qars-revoke-credential.ts';
+import {authorizeAgentEndRoles} from './qars/qars-authorize-endroles-get-qvi-oobi.ts';
+import {admitCredential as admitPersonCredential} from './person/person-admit-credential.ts';
+import {presentPersonCredential} from './person/person-grant-credential.ts';
+
+const SCHEMA_SAIDS = [
+    'EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao',
+    LE_SCHEMA_SAID,
+    'EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g',
+    'EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E',
+    ECR_SCHEMA_SAID,
+    OOR_SCHEMA_SAID,
+] as const;
+
+const SETUP_ROLES: readonly ParticipantRole[] = [
+    'qar1',
+    'qar2',
+    'qar3',
+    'qar4',
+    'person',
+];
+
+interface SetupWallet {
+    role: ParticipantRole;
+    client: SignifyClient;
+}
+
+interface ReadyWallet extends SetupWallet {
+    aid: HabState;
+}
+
+interface PreparedWallet extends ReadyWallet {
+    evidence: ParticipantEvidence;
+}
+
+export interface PendingWorkflowEvent extends SavedGroupEvent {
+    eventKind: 'inception' | 'rotation';
+}
+
+export class UsageError extends Error {}
+
+/** Parse the strict named arguments accepted by one explicit action. */
+function parseArguments(
+    argv: string[],
+    allowedNames: readonly string[],
+    requiredNames: readonly string[]
+): Record<string, string> {
+    const allowed = new Set<string>(allowedNames);
+    const result: Record<string, string> = {};
+    if (argv.length % 2 !== 0) {
+        throw new UsageError(
+            'Arguments must use named --option value pairs'
+        );
+    }
+    for (let index = 0; index < argv.length; index += 2) {
+        const option = argv[index];
+        const value = argv[index + 1];
+        if (option?.startsWith('--') !== true || value === undefined) {
+            throw new UsageError(
+                'Arguments must use named --option value pairs'
+            );
+        }
+        const name = option.slice(2);
+        if (allowed.has(name) === false) {
+            throw new UsageError(
+                `Unknown argument --${name}`
+            );
+        }
+        if (result[name] !== undefined) {
+            throw new UsageError(`Duplicate argument --${name}`);
+        }
+        result[name] = value;
+    }
+    required(result, ...requiredNames);
+    return result;
+}
+
+/** Parse an action whose accepted arguments are all mandatory. */
+function parseExactArguments(
+    argv: string[],
+    ...names: string[]
+): Record<string, string> {
+    return parseArguments(argv, names, names);
+}
+
+/** Require the named options used by the selected phase action. */
+function required(
+    args: Record<string, string>,
+    ...names: string[]
+): void {
+    const missing = names.filter(
+        (name) =>
+            typeof args[name] !== 'string' || args[name].length === 0
+    );
+    if (missing.length > 0) {
+        throw new UsageError(
+            `Missing required argument(s): ${missing
+                .map((name) => `--${name}`)
+                .join(', ')}`
+        );
+    }
+}
+
+/** Parse an explicit comma-separated participant roster. */
+function parseRoles(
+    value: string | undefined,
+    description: string
+): ParticipantRole[] {
+    const roles = value?.split(',') ?? [];
+    const allowed: readonly ParticipantRole[] = [
+        'qar1',
+        'qar2',
+        'qar3',
+        'qar4',
+        'person',
+    ];
+    if (
+        roles.length === 0 ||
+        roles.some(
+            (role) =>
+                allowed.includes(role as ParticipantRole) === false
+        ) ||
+        new Set(roles).size !== roles.length
+    ) {
+        throw new UsageError(
+            `${description} must be a comma-separated unique participant roster`
+        );
+    }
+    return roles as ParticipantRole[];
+}
+
+/** Build the credential postcondition required by admission or assertion. */
+function expectedCredential(
+    args: Record<string, string>
+): ExpectedCredentialState {
+    required(
+        args,
+        'credential-said',
+        'issuer-prefix',
+        'schema',
+        'issuee-prefix',
+        'status-sequence'
+    );
+    return {
+        credentialSaid: args['credential-said'],
+        issuerPrefix: args['issuer-prefix'],
+        schema: args.schema,
+        issueePrefix: args['issuee-prefix'],
+        statusSequence: args['status-sequence'],
+    };
+}
+
+/** Persist one exclusive pending event for the KLI delegation boundary. */
+async function writePendingArtifact(
+    path: string,
+    event: unknown
+): Promise<void> {
+    await fs.writeFile(path, `${JSON.stringify(event)}\n`, {
+        flag: 'wx',
+    });
+}
+
+/** Convert one live group result into the exact persisted resume handle. */
+function saveGroupEvent(
+    eventKind: 'inception' | 'rotation',
+    submission: GroupEventSubmission
+): PendingWorkflowEvent {
+    return {
+        eventKind,
+        groupPrefix: submission.groupPrefix,
+        eventSaid: submission.eventSaid,
+        eventSequence: submission.eventSequence,
+        signingMembers: submission.signingMembers,
+        rotationMembers: submission.rotationMembers,
+        members: submission.members.map((member) => ({
+            memberPrefix: member.memberPrefix,
+            operationName:
+                typeof member.operation === 'string'
+                    ? member.operation
+                    : member.operation.name,
+            notificationIds: member.notifications.flatMap(
+                (notification) =>
+                    notificationReference(notification).notificationIds
+            ),
+        })),
+    };
+}
+
+/** Return whether a JSON value is a non-null object. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+/** Require a nonempty string at the persisted JSON boundary. */
+function persistedString(value: unknown, description: string): string {
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new Error(`${description} must be a nonempty string`);
+    }
+    return value;
+}
+
+/** Require a unique persisted string array with the expected length. */
+function persistedStrings(
+    value: unknown,
+    description: string,
+    expectedLength?: number
+): string[] {
+    if (
+        Array.isArray(value) === false ||
+        (expectedLength !== undefined &&
+            value.length !== expectedLength) ||
+        value.some(
+            (entry) =>
+                typeof entry !== 'string' || entry.length === 0
+        )
+    ) {
+        throw new Error(
+            `${description} must contain ${
+                expectedLength ?? 'only'
+            } nonempty strings`
+        );
+    }
+    const values = value as string[];
+    if (new Set(values).size !== values.length) {
+        throw new Error(`${description} contains duplicate values`);
+    }
+    return [...values];
+}
+
+/** Reject extra persisted fields so the KLI boundary remains intentional. */
+function requireExactFields(
+    value: Record<string, unknown>,
+    expected: readonly string[],
+    description: string
+): void {
+    const actual = Object.keys(value).sort();
+    const requiredFields = [...expected].sort();
+    if (JSON.stringify(actual) !== JSON.stringify(requiredFields)) {
+        throw new Error(`${description} has incompatible fields`);
+    }
+}
+
+/**
+ * Read and fully validate the one JSON value that crosses TypeScript to KLI
+ * and back. In-process multisig values remain ordinarily typed.
+ */
+export async function readPendingWorkflowEvent(
+    path: string
+): Promise<PendingWorkflowEvent> {
+    const value = JSON.parse(await fs.readFile(path, 'utf8')) as unknown;
+    if (isRecord(value) === false) {
+        throw new Error('Pending workflow event must be an object');
+    }
+    requireExactFields(
+        value,
+        [
+            'eventKind',
+            'groupPrefix',
+            'eventSaid',
+            'eventSequence',
+            'signingMembers',
+            'rotationMembers',
+            'members',
+        ],
+        'Pending workflow event'
+    );
+    const eventKind = value.eventKind;
+    if (eventKind !== 'inception' && eventKind !== 'rotation') {
+        throw new Error('Pending workflow event has an unknown event kind');
+    }
+    if (Array.isArray(value.members) === false || value.members.length !== 3) {
+        throw new Error(
+            'Pending workflow event requires exactly three member operations'
+        );
+    }
+    const members = value.members.map((member, index) => {
+        if (isRecord(member) === false) {
+            throw new Error(`Pending member ${index} must be an object`);
+        }
+        requireExactFields(
+            member,
+            ['memberPrefix', 'operationName', 'notificationIds'],
+            `Pending member ${index}`
+        );
+        return {
+            memberPrefix: persistedString(
+                member.memberPrefix,
+                `Pending member ${index} prefix`
+            ),
+            operationName: persistedString(
+                member.operationName,
+                `Pending member ${index} operation`
+            ),
+            notificationIds: persistedStrings(
+                member.notificationIds,
+                `Pending member ${index} notification identifiers`
+            ),
+        };
+    });
+    const memberPrefixes = members.map(({memberPrefix}) => memberPrefix);
+    if (new Set(memberPrefixes).size !== memberPrefixes.length) {
+        throw new Error('Pending member prefixes must be unique');
+    }
+    return {
+        eventKind,
+        groupPrefix: persistedString(
+            value.groupPrefix,
+            'Pending group prefix'
+        ),
+        eventSaid: persistedString(value.eventSaid, 'Pending event SAID'),
+        eventSequence: persistedString(
+            value.eventSequence,
+            'Pending event sequence'
+        ),
+        signingMembers: persistedStrings(
+            value.signingMembers,
+            'Pending signing roster',
+            3
+        ),
+        rotationMembers: persistedStrings(
+            value.rotationMembers,
+            'Pending rotation roster',
+            3
+        ),
+        members,
+    };
+}
+
+/** Complete one delegated event, assert convergence, then remove its handle. */
+async function completeAndAssert(
+    config: WorkflowConfig,
+    args: Record<string, string>,
+    eventKind: 'inception' | 'rotation'
+) {
+    required(
+        args,
+        'delegator-prefix',
+        'artifact',
+        'expected-sequence',
+        'signing-roles',
+        'rotation-roles'
+    );
+    const signingRoles = parseRoles(
+        args['signing-roles'],
+        'Signing roles'
+    );
+    const rotationRoles = parseRoles(
+        args['rotation-roles'],
+        'Rotation roles'
+    );
+    const event = await readPendingWorkflowEvent(args.artifact);
+    if (
+        event.eventKind !== eventKind ||
+        event.eventSequence !== args['expected-sequence']
+    ) {
+        throw new Error(
+            `Expected ${eventKind} sequence ${args['expected-sequence']}; found ${event.eventKind} sequence ${event.eventSequence}`
+        );
+    }
+    await completeSavedGroupEvent(config, {
+        delegatorPrefix: args['delegator-prefix'],
+        expectedSigningRoles: signingRoles,
+        expectedRotationRoles: rotationRoles,
+        event,
+    });
+    const state = await assertGroupConvergence(config, {
+        groupPrefix: event.groupPrefix,
+        delegatorPrefix: args['delegator-prefix'],
+        sequence: event.eventSequence,
+        observerRoles: [...signingRoles],
+        signingRoles: [...signingRoles],
+        rotationRoles: [...rotationRoles],
+        eventSaid: event.eventSaid,
+    });
+    await fs.unlink(args.artifact);
+    return {status: 'completed', event, state};
+}
+
+/** Perform one challenge response or verification with exact result checks. */
+async function challenge(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    required(args, 'participant', 'action', 'peer-prefix', 'words');
+    const role = args.participant as ParticipantRole;
+    if (
+        ['qar1', 'qar2', 'qar3', 'qar4', 'person'].includes(role) ===
+        false
+    ) {
+        throw new UsageError(`Unknown participant ${args.participant}`);
+    }
+    const words = args.words.trim().split(/\s+/);
+    if (words.length !== 12) {
+        throw new UsageError('Challenge must contain exactly 12 words');
+    }
+    const client = await connectClient(config.participants[role]);
+    if (args.action === 'respond') {
+        const exchange = await client
+            .challenges()
+            .respond(
+                config.participants[role].name,
+                args['peer-prefix'],
+                words
+            );
+        if (typeof exchange.d !== 'string' || exchange.d.length === 0) {
+            throw new Error('Challenge response returned no EXN SAID');
+        }
+        return {status: 'responded'};
+    }
+    if (args.action !== 'verify') {
+        throw new UsageError(`Unknown challenge action ${args.action}`);
+    }
+    const completed = await waitOperation(
+        client,
+        await client
+            .challenges()
+            .verify(args['peer-prefix'], words)
+    );
+    const response = completed.response as {
+        exn?: {d?: unknown};
+    };
+    const exchangeSaid = response.exn?.d;
+    if (typeof exchangeSaid !== 'string' || exchangeSaid.length === 0) {
+        throw new Error(
+            'Challenge verification returned an incompatible response'
+        );
+    }
+    const accepted = await client
+        .challenges()
+        .responded(args['peer-prefix'], exchangeSaid);
+    if (accepted.ok !== true) {
+        throw new Error('Challenge response was not accepted');
+    }
+    return {status: 'verified'};
+}
+
+/** Resolve an explicit external OOBI list from every generated participant. */
+async function resolveExternalOobis(
+    config: WorkflowConfig,
+    value: string
+) {
+    const entries = value.split(',').map((entry) => {
+        const separator = entry.indexOf('|');
+        if (separator <= 0 || separator === entry.length - 1) {
+            throw new UsageError(`Invalid OOBI entry ${entry}`);
+        }
+        return {
+            alias: entry.slice(0, separator),
+            oobi: requireHttpUrl(
+                entry.slice(separator + 1),
+                `${entry.slice(0, separator)} OOBI`
+            ),
+        };
+    });
+    const roles: ParticipantRole[] = [
+        'qar1',
+        'qar2',
+        'qar3',
+        'qar4',
+        'person',
+    ];
+    const clients = await connectParticipants(config, roles);
+    await Promise.all(
+        roles.flatMap((role) =>
+            entries.map(({alias, oobi}) =>
+                resolveOobi(clients.get(role)!, oobi, alias)
+            )
+        )
+    );
+    return {status: 'resolved', count: roles.length * entries.length};
+}
+
+/** Boot each configured wallet exactly once. */
+async function bootSetupWallets(
+    config: WorkflowConfig
+): Promise<SetupWallet[]> {
+    return await Promise.all(
+        SETUP_ROLES.map(async (role) => ({
+            role,
+            client: await bootClient(config.participants[role]),
+        }))
+    );
+}
+
+/** Resolve all configured witness AIDs in each fresh wallet. */
+async function resolveSetupWitnesses(
+    config: WorkflowConfig,
+    wallets: SetupWallet[]
+): Promise<void> {
+    const oobis = config.services.witnesses.map(
+        ({id, url}, index) =>
+            `${url}/oobi/${id}/controller?name=Witness${index + 1}&tag=witness`
+    );
+    await Promise.all(
+        wallets.flatMap(({client}) =>
+            oobis.map((oobi) => resolveAidOobi(client, oobi))
+        )
+    );
+}
+
+/** Create each participant AID with its explicitly selected witness. */
+async function createSetupAids(
+    config: WorkflowConfig,
+    wallets: SetupWallet[]
+): Promise<ReadyWallet[]> {
+    return await Promise.all(
+        wallets.map(async (wallet) => {
+            const participant = config.participants[wallet.role];
+            const witness =
+                wallet.role === 'person'
+                    ? config.services.witnesses[2]
+                    : config.services.witnesses[1];
+            return {
+                ...wallet,
+                aid: await createAid(
+                    wallet.client,
+                    participant.name,
+                    {toad: 1, wits: [witness.id]}
+                ),
+            };
+        })
+    );
+}
+
+/** Read the public endpoint evidence produced for each participant. */
+async function readSetupEvidence(
+    config: WorkflowConfig,
+    wallets: ReadyWallet[]
+): Promise<PreparedWallet[]> {
+    return await Promise.all(
+        wallets.map(async (wallet) => ({
+            ...wallet,
+            evidence: await readParticipantEvidence(
+                wallet.client,
+                config.participants[wallet.role],
+                wallet.aid
+            ),
+        }))
+    );
+}
+
+/** Resolve every other participant's agent OOBI in each wallet. */
+async function resolveSetupPeers(
+    config: WorkflowConfig,
+    wallets: PreparedWallet[]
+): Promise<void> {
+    await Promise.all(
+        wallets.flatMap((observer) =>
+            wallets
+                .filter(({role}) => role !== observer.role)
+                .map((subject) =>
+                    resolveAidOobi(
+                        observer.client,
+                        subject.evidence.agentOobi,
+                        config.participants[subject.role].name
+                    )
+                )
+        )
+    );
+}
+
+/** Resolve every credential schema in each prepared wallet. */
+async function resolveSetupSchemas(
+    config: WorkflowConfig,
+    wallets: ReadyWallet[]
+): Promise<void> {
+    const oobis = SCHEMA_SAIDS.map(
+        (said) => `${config.services.vleiServerUrl}/oobi/${said}`
+    );
+    await Promise.all(
+        wallets.flatMap(({client}) =>
+            oobis.map((oobi) => resolveOobi(client, oobi))
+        )
+    );
+}
+
+/** Return setup evidence for one required participant role. */
+function setupEvidence(
+    wallets: PreparedWallet[],
+    role: ParticipantRole
+): ParticipantEvidence {
+    const wallet = wallets.find((candidate) => candidate.role === role);
+    if (wallet === undefined) {
+        throw new Error(`Setup produced no wallet for ${role}`);
+    }
+    return wallet.evidence;
+}
+
+/** Run the explicit fresh-wallet setup sequence and return public evidence. */
+async function setupAction(config: WorkflowConfig) {
+    assertSignifyVersion();
+    const wallets = await bootSetupWallets(config);
+    await resolveSetupWitnesses(config, wallets);
+    const readyWallets = await createSetupAids(config, wallets);
+    const preparedWallets = await readSetupEvidence(
+        config,
+        readyWallets
+    );
+    await resolveSetupPeers(config, preparedWallets);
+    await resolveSetupSchemas(config, preparedWallets);
+    return {
+        status: 'ready',
+        participants: {
+            QAR1: setupEvidence(preparedWallets, 'qar1'),
+            QAR2: setupEvidence(preparedWallets, 'qar2'),
+            QAR3: setupEvidence(preparedWallets, 'qar3'),
+            QAR4: setupEvidence(preparedWallets, 'qar4'),
+            PERSON: setupEvidence(preparedWallets, 'person'),
+        },
+    };
+}
+
+/** Resolve one OOBI from the exact participant roles named by Bash. */
+async function resolveOobiAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const roles = parseRoles(args.roles, 'Resolution roles');
+    const clients = await connectParticipants(config, roles);
+    await Promise.all(
+        roles.map((role) =>
+            resolveAidOobi(
+                clients.get(role)!,
+                args.oobi,
+                args.alias
+            )
+        )
+    );
+    return {status: 'resolved', roles};
+}
+
+/** Refresh one delegator state from the exact participant roles named by Bash. */
+async function refreshDelegatorAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const roles = parseRoles(args.roles, 'Refresh roles');
+    const clients = await connectParticipants(config, roles);
+    await Promise.all(
+        roles.map(async (role) => {
+            const client = clients.get(role)!;
+            await waitOperation(
+                client,
+                await client.keyStates().query(args['delegator-prefix'])
+            );
+        })
+    );
+    return {status: 'refreshed', roles};
+}
+
+/** Submit group inception and persist its typed cross-process handle. */
+async function submitInceptionAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const event = saveGroupEvent(
+        'inception',
+        await submitGroupInception(config, {
+            groupName: config.qvi.name,
+            delegatorPrefix: args['delegator-prefix'],
+            memberRoles: parseRoles(
+                args['member-roles'],
+                'Inception member roles'
+            ),
+            signingThreshold: config.qvi.signingThreshold,
+            nextThreshold: config.qvi.nextThreshold,
+            witnessId: config.services.witnesses[1].id,
+        })
+    );
+    await writePendingArtifact(args.artifact, event);
+    return {status: 'submitted', event};
+}
+
+/** Submit an ordinary rotation for explicit current and next rosters. */
+async function submitRotationAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const event = saveGroupEvent(
+        'rotation',
+        await submitGroupRotation(config, {
+            groupName: config.qvi.name,
+            signingRoles: parseRoles(
+                args['signing-roles'],
+                'Signing roles'
+            ),
+            rotationRoles: parseRoles(
+                args['rotation-roles'],
+                'Rotation roles'
+            ),
+        })
+    );
+    await writePendingArtifact(args.artifact, event);
+    return {status: 'submitted', event};
+}
+
+/** Submit a rotation in which one explicit member joins the group. */
+async function submitJoiningRotationAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const joiningRoles = parseRoles(
+        args['joining-role'],
+        'Joining role'
+    );
+    if (joiningRoles.length !== 1) {
+        throw new UsageError(
+            'Joining role must contain exactly one participant'
+        );
+    }
+    const event = saveGroupEvent(
+        'rotation',
+        await submitJoiningMemberRotation(config, {
+            groupName: config.qvi.name,
+            existingRoles: parseRoles(
+                args['existing-roles'],
+                'Existing roles'
+            ),
+            joiningRole: joiningRoles[0],
+            signingRoles: parseRoles(
+                args['signing-roles'],
+                'Signing roles'
+            ),
+            rotationRoles: parseRoles(
+                args['rotation-roles'],
+                'Rotation roles'
+            ),
+        })
+    );
+    await writePendingArtifact(args.artifact, event);
+    return {status: 'submitted', event};
+}
+
+/** Authorize the exact final QVI member-agent endpoint set once. */
+async function authorizeAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    return {
+        status: 'authorized',
+        ...(await authorizeAgentEndRoles({
+            config: config,
+            groupName: config.qvi.name,
+            dataDir: args['data-dir'],
+        })),
+    };
+}
+
+/** Resolve the validated QVI OOBI from the holder client. */
+async function resolvePersonOobiAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const value = JSON.parse(
+        readFileSync(args['oobi-file'], 'utf8')
+    ) as {qviPrefix?: unknown; multisigOobi?: unknown};
+    if (
+        typeof value.qviPrefix !== 'string' ||
+        typeof value.multisigOobi !== 'string'
+    ) {
+        throw new Error('QVI OOBI artifact is malformed');
+    }
+    const client = await connectClient(config.participants.person);
+    const state = await resolveAidOobi(
+        client,
+        value.multisigOobi,
+        config.qvi.name
+    );
+    if (state.i !== value.qviPrefix) {
+        throw new Error('Person resolved the wrong QVI prefix');
+    }
+    return {status: 'resolved', qviPrefix: state.i};
+}
+
+/** Create the post-rotation QVI credential registry. */
+async function registryAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    return {
+        status: 'created',
+        ...(await createQviRegistry(
+            config,
+            config.qvi.name,
+            args['registry-name']
+        )),
+    };
+}
+
+/** Issue and grant one consolidated LE, OOR, or ECR credential kind. */
+async function issueAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const options = {
+        config: config,
+        groupName: config.qvi.name,
+        dataDir: args['data-dir'],
+        issueePrefix: args['issuee-prefix'],
+    };
+    const snapshot =
+        args.kind === 'le'
+            ? await createLeCredential(options)
+            : args.kind === 'oor'
+              ? await createOorCredential(options)
+              : args.kind === 'ecr'
+                ? await createEcrCredential(options)
+                : undefined;
+    if (snapshot === undefined) {
+        throw new UsageError(`Unknown credential kind ${args.kind}`);
+    }
+    return {
+        status: 'issued',
+        credentialSaid: snapshot.said,
+        registryId: snapshot.registry,
+        telDigest: snapshot.currentTelDigest,
+    };
+}
+
+/** Admit one credential and require the actor's immediate postcondition. */
+async function admitAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const expected = expectedCredential(args);
+    if (args.actor === 'qvi') {
+        await admitCredentialQvi(
+            config,
+            config.qvi.name,
+            expected.issuerPrefix,
+            expected.credentialSaid
+        );
+        return {
+            status: 'admitted',
+            state: await assertQviCredentialConvergence(config, expected),
+        };
+    }
+    if (args.actor === 'person') {
+        await admitPersonCredential(
+            config,
+            expected.issuerPrefix,
+            expected.credentialSaid
+        );
+        return {
+            status: 'admitted',
+            state: await assertPersonCredentialState(config, expected),
+        };
+    }
+    throw new UsageError(`Unknown admission actor ${args.actor}`);
+}
+
+/** Present one credential from the explicitly selected actor. */
+async function presentAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    if (args.actor === 'qvi') {
+        return await presentCredential({
+            config: config,
+            groupName: config.qvi.name,
+            credentialSaid: args['credential-said'],
+            recipientPrefix: args['recipient-prefix'],
+        });
+    }
+    if (args.actor === 'person') {
+        return await presentPersonCredential({
+            config: config,
+            credentialSaid: args['credential-said'],
+            recipientPrefix: args['recipient-prefix'],
+        });
+    }
+    throw new UsageError(`Unknown presentation actor ${args.actor}`);
+}
+
+/** Revoke one QVI-issued credential and return its TEL evidence. */
+async function revokeAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    return await runRevocation({
+        config: config,
+        groupName: config.qvi.name,
+        credentialSaid: args['credential-said'],
+    });
+}
+
+/** Assert exact group convergence for Bash's explicit sequence and rosters. */
+async function assertGroupAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const signingRoles = parseRoles(
+        args['signing-roles'],
+        'Signing roles'
+    );
+    const rotationRoles = parseRoles(
+        args['rotation-roles'],
+        'Rotation roles'
+    );
+    return {
+        status: 'converged',
+        state: await assertGroupConvergence(config, {
+            groupPrefix: args['group-prefix'],
+            delegatorPrefix: args['delegator-prefix'],
+            sequence: args.sequence,
+            observerRoles: [...signingRoles],
+            signingRoles: [...signingRoles],
+            rotationRoles: [...rotationRoles],
+        }),
+    };
+}
+
+/** Assert exact credential and TEL state for the selected actor. */
+async function assertCredentialAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const expected = expectedCredential(args);
+    const state =
+        args.actor === 'person'
+            ? await assertPersonCredentialState(config, expected)
+            : args.actor === 'qvi'
+              ? await assertQviCredentialConvergence(config, expected)
+              : undefined;
+    if (state === undefined) {
+        throw new UsageError(`Unknown assertion actor ${args.actor}`);
+    }
+    return {status: 'converged', state};
+}
+
+/** Parse and dispatch one explicit qvi.ts action without hidden transitions. */
+export async function run(
+    argv: string[]
+): Promise<Record<string, unknown>> {
+    const action = argv[0];
+    const values = argv.slice(1);
+    let args: Record<string, string>;
+    let config: WorkflowConfig;
+
+    switch (action) {
+        case 'preflight': {
+            args = parseExactArguments(values, 'config');
+            readWorkflowConfig(args.config);
+            assertSignifyVersion();
+            return {status: 'compatible', signifyTs: '0.4.0'};
+        }
+        case 'ms-setup': {
+            args = parseExactArguments(values, 'config');
+            return await setupAction(readWorkflowConfig(args.config));
+        }
+        case 'ms-resolve-external': {
+            args = parseExactArguments(values, 'config', 'oobis');
+            return await resolveExternalOobis(
+                readWorkflowConfig(args.config),
+                args.oobis
+            );
+        }
+        case 'ms-resolve-oobi': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'alias',
+                'oobi',
+                'roles'
+            );
+            return await resolveOobiAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-refresh-delegator': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'delegator-prefix',
+                'roles'
+            );
+            return await refreshDelegatorAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-challenge': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'participant',
+                'action',
+                'peer-prefix',
+                'words'
+            );
+            return await challenge(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-incept-submit': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'delegator-prefix',
+                'artifact',
+                'member-roles'
+            );
+            return await submitInceptionAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-incept-complete':
+        case 'ms-rotate-complete': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'delegator-prefix',
+                'artifact',
+                'expected-sequence',
+                'signing-roles',
+                'rotation-roles'
+            );
+            config = readWorkflowConfig(args.config);
+            return await completeAndAssert(
+                config,
+                args,
+                action === 'ms-incept-complete'
+                    ? 'inception'
+                    : 'rotation'
+            );
+        }
+        case 'ms-rotate-submit': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'artifact',
+                'signing-roles',
+                'rotation-roles'
+            );
+            return await submitRotationAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-join-rotation-submit': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'artifact',
+                'existing-roles',
+                'joining-role',
+                'signing-roles',
+                'rotation-roles'
+            );
+            return await submitJoiningRotationAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-authorize': {
+            args = parseExactArguments(values, 'config', 'data-dir');
+            return await authorizeAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-resolve-person-oobi': {
+            args = parseExactArguments(values, 'config', 'oobi-file');
+            return await resolvePersonOobiAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-registry': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'registry-name'
+            );
+            return await registryAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-issue': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'kind',
+                'data-dir',
+                'issuee-prefix'
+            );
+            return await issueAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-admit':
+        case 'ms-assert-credential': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'actor',
+                'issuer-prefix',
+                'credential-said',
+                'schema',
+                'issuee-prefix',
+                'status-sequence'
+            );
+            config = readWorkflowConfig(args.config);
+            return action === 'ms-admit'
+                ? await admitAction(config, args)
+                : await assertCredentialAction(config, args);
+        }
+        case 'ms-present': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'actor',
+                'credential-said',
+                'recipient-prefix'
+            );
+            return await presentAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-revoke': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'credential-said'
+            );
+            return {
+                ...(await revokeAction(
+                    readWorkflowConfig(args.config),
+                    args
+                )),
+            };
+        }
+        case 'ms-assert-group': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'group-prefix',
+                'delegator-prefix',
+                'sequence',
+                'signing-roles',
+                'rotation-roles'
+            );
+            return await assertGroupAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        default:
+            throw new UsageError(
+                `Unknown or missing action ${String(action)}`
+            );
+    }
+}
+
+/** Execute one CLI action and return its single JSON response object. */
+export async function main(argv = process.argv.slice(2)): Promise<number> {
+    const originalLog = console.log;
+    const originalInfo = console.info;
+    console.log = (...values: unknown[]) => console.error(...values);
+    console.info = (...values: unknown[]) => console.error(...values);
+    try {
+        const result = await run(argv);
+        process.stdout.write(`${JSON.stringify({ok: true, ...result})}\n`);
+        return 0;
+    } catch (error: unknown) {
+        const usage = error instanceof UsageError;
+        const message =
+            error instanceof Error ? error.message : String(error);
+        const stack = error instanceof Error ? error.stack : undefined;
+        process.stderr.write(
+            `${JSON.stringify({
+                ok: false,
+                type: usage ? 'usage' : 'workflow',
+                error: message,
+                ...(stack === undefined ? {} : {stack}),
+            })}\n`
+        );
+        return usage ? 2 : 1;
+    } finally {
+        console.log = originalLog;
+        console.info = originalInfo;
+    }
+}
+
+const entrypoint = process.argv[1];
+if (
+    entrypoint !== undefined &&
+    pathToFileURL(resolvePath(entrypoint)).href === import.meta.url
+) {
+    process.exitCode = await main();
+}

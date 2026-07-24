@@ -3,7 +3,7 @@ import type {
     CredentialResult,
 } from 'signify-ts';
 
-import type {ParticipantConfig} from '../cli.ts';
+import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
     getIssuedCredential,
@@ -19,7 +19,7 @@ import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
 import {loadQviMembers} from './qvi-context.ts';
 
 export interface IssueAndGrantOptions {
-    config: ParticipantConfig;
+    config: WorkflowConfig;
     groupName: string;
     issueePrefix: string;
     credentialData: CredentialData;
@@ -30,6 +30,7 @@ export interface IssuedCredential {
     snapshot: CredentialSnapshot;
 }
 
+/** Issue and grant one credential through the final QVI roster. */
 export async function issueAndGrantCredential(
     options: IssueAndGrantOptions
 ): Promise<IssuedCredential[]> {

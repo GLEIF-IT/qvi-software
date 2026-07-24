@@ -34,6 +34,21 @@ export interface MultisigCoordinationOptions {
     coordinator?: string;
 }
 
+export interface EndRoleResult {
+    coordinatedOperations: Array<{
+        operation: Operation;
+        coordination: MatchedNotification[];
+    }>;
+}
+
+export interface MultisigEventResult {
+    operation: Operation;
+    coordination: MatchedNotification[];
+    groupPrefix: string;
+    eventSaid: string;
+    eventSequence: string;
+}
+
 function requireCoordinator(
     options: MultisigCoordinationOptions,
     participantIsFollower: boolean,
@@ -60,7 +75,7 @@ export async function createAIDMultisig(
     groupName: string,
     kargs: CreateIdentiferArgs,
     options: MultisigCoordinationOptions
-) {
+): Promise<MultisigEventResult> {
     const participantIsFollower = options.isInitiator !== true;
     const coordinator = requireCoordinator(
         options,
@@ -115,6 +130,9 @@ export async function createAIDMultisig(
         operation: op,
         coordination:
             coordination === undefined ? [] : [coordination],
+        groupPrefix: serder.pre,
+        eventSaid: serder.said,
+        eventSequence: String(serder.sn),
     };
 }
 
@@ -126,7 +144,7 @@ export async function addEndRoleMultisig(
     multisigAID: HabState,
     timestamp: string,
     options: MultisigCoordinationOptions
-) {
+): Promise<EndRoleResult> {
     const participantIsFollower = options.isInitiator !== true;
     const coordinator = requireCoordinator(
         options,

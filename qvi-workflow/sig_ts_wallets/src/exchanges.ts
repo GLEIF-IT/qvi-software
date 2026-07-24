@@ -49,6 +49,11 @@ export async function sendExchangeToEachRecipient(
     client: ExchangeClient | SignifyClient,
     options: SendExchangeOptions
 ): Promise<void> {
+    // Compatibility adapter for https://github.com/WebOfTrust/signify-ts/issues/310.
+    // Delete this only when the minimum supported *published npm package*
+    // passes this module's contract test: Exchanges.send() must build and
+    // transmit one recipient-bound EXN per recipient, call transport with only
+    // that recipient, and never return after the first recipient.
     const uniqueRecipients = [...new Set(options.recipients)];
     const hasRecipients = uniqueRecipients.length > 0;
     if (hasRecipients === false) {

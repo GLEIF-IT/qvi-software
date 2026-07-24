@@ -7,18 +7,14 @@ import {
     sortAids,
     sortOobis,
 } from '../canonical-order.ts';
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
+import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
-import {addEndRoleMultisig} from '../multisig-creation.ts';
 import {
-    completeCoordinatedOperations,
+    addEndRoleMultisig,
+    type EndRoleResult,
+} from '../multisig-creation.ts';
+import {
+    completeMultisigOps,
 } from '../coordinated-operation.ts';
 import {retry} from '../retry.ts';
 import {memberContexts} from '../multisig-coordinator.ts';
@@ -36,7 +32,7 @@ export interface QviMultisigOobi {
 }
 
 export interface AuthorizeEndRoleOptions {
-    config: ParticipantConfig;
+    config: WorkflowConfig;
     groupName: string;
     dataDir: string;
 }
@@ -300,6 +296,7 @@ export async function collectQviMultisigOobi(
     };
 }
 
+/** Authorize and verify the final QVI member-agent endpoint set. */
 export async function authorizeAgentEndRoles(
     options: AuthorizeEndRoleOptions
 ): Promise<QviMultisigOobi> {
@@ -312,109 +309,62 @@ export async function authorizeAgentEndRoles(
     const groupAids = members.map(({groupAid}) => groupAid);
     const qviPrefix = groupAids[0].prefix;
 
-    let qviOobi: QviMultisigOobi | undefined;
-    try {
-        qviOobi = await collectQviMultisigOobi(
-            clients,
-            options.groupName,
-            qviPrefix
+    const existing = await Promise.all(
+        clients.map((client) =>
+            client.oobis().endroles(qviPrefix, 'agent')
+        )
+    );
+    if (existing.some((roles) => roles.length > 0)) {
+        throw new Error(
+            'QVI agent roles already exist; authorization is a one-shot phase'
         );
-    } catch {
-        const responses = await Promise.all(
-            clients.map((client) =>
-                client.oobis().get(options.groupName, 'agent')
-            )
-        );
-        const noAgentOobisExist = responses.every(
-            (response) => response.oobis.length === 0
-        );
-        if (noAgentOobisExist === false) {
-            throw new Error(
-                'QVI agent end-role state is partial or contains unexpected OOBIs'
-            );
-        }
     }
 
-    if (qviOobi === undefined) {
-        const timestamp = createTimestamp();
-        const coordinationResults: Array<
-            Awaited<ReturnType<typeof addEndRoleMultisig>>
-        > = [];
-        const contexts = memberContexts(
-            members.map(({client, memberAid}) => ({
-                client,
-                aid: memberAid,
+    const timestamp = createTimestamp();
+    const coordinationResults: EndRoleResult[] = [];
+    const contexts = memberContexts(
+        members.map(({client, memberAid}) => ({
+            client,
+            aid: memberAid,
+        }))
+    );
+    for (let index = 0; index < contexts.length; index++) {
+        const context = contexts[index];
+        coordinationResults.push(
+            await addEndRoleMultisig(
+                context.client,
+                options.groupName,
+                context.aid,
+                context.otherMembers,
+                groupAids[index],
+                timestamp,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            )
+        );
+    }
+    await completeMultisigOps(
+        coordinationResults.flatMap((result, clientIndex) =>
+            result.coordinatedOperations.map((operation) => ({
+                client: clients[clientIndex],
+                result: operation,
             }))
-        );
-        for (let index = 0; index < contexts.length; index++) {
-            const context = contexts[index];
-            coordinationResults.push(
-                await addEndRoleMultisig(
-                    context.client,
-                    options.groupName,
-                    context.aid,
-                    context.otherMembers,
-                    groupAids[index],
-                    timestamp,
-                    {
-                        isInitiator: context.isInitiator,
-                        coordinator: context.coordinatorPrefix,
-                    }
-                )
-            );
-        }
-        await completeCoordinatedOperations(
-            coordinationResults.flatMap((result, clientIndex) =>
-                result.coordinatedOperations.map((operation) => ({
-                    client: clients[clientIndex],
-                    result: operation,
-                }))
+        )
+    );
+    const qviOobi = await retry(
+        () =>
+            collectQviMultisigOobi(
+                clients,
+                options.groupName,
+                qviPrefix
             )
-        );
-
-        qviOobi = await retry(
-            () =>
-                collectQviMultisigOobi(
-                    clients,
-                    options.groupName,
-                    qviPrefix
-                )
-        );
-    }
+    );
 
     await fs.writeFile(
         `${options.dataDir}/qvi-oobi.json`,
         JSON.stringify(qviOobi)
     );
     return qviOobi;
-}
-
-function parseAuthorizeArguments(
-    argv: string[]
-): AuthorizeEndRoleOptions {
-    const args = parseNamedArguments(argv, [
-        'config',
-        'environment',
-        'participant-source',
-        'group-name',
-        'data-dir',
-    ]);
-    requireNamedArguments(args, [
-        'group-name',
-        'data-dir',
-    ]);
-    return {
-        config: participantConfigFromArguments(args),
-        groupName: args['group-name'],
-        dataDir: args['data-dir'],
-    };
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const options = parseAuthorizeArguments(
-            process.argv.slice(2)
-        );
-        return authorizeAgentEndRoles(options);
-    });
 }

@@ -1,11 +1,4 @@
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
+import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
     credentialSnapshot,
@@ -17,7 +10,7 @@ import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
 import {loadQviMembers} from './qvi-context.ts';
 
 export interface RevokeCredentialOptions {
-    config: ParticipantConfig;
+    config: WorkflowConfig;
     groupName: string;
     credentialSaid: string;
 }
@@ -30,6 +23,7 @@ export interface RevocationResult {
     revocationTimestamp: string;
 }
 
+/** Require one value to agree across all QVI members. */
 function commonValue(
     values: string[],
     description: string
@@ -46,6 +40,7 @@ function commonValue(
     return first;
 }
 
+/** Require one credential status sequence across all QVI members. */
 function commonCredentialStatus(
     snapshots: CredentialSnapshot[]
 ): string {
@@ -55,6 +50,7 @@ function commonCredentialStatus(
     );
 }
 
+/** Revoke one credential and require the new TEL state to converge. */
 export async function runRevocation(
     options: RevokeCredentialOptions
 ): Promise<RevocationResult> {
@@ -144,25 +140,4 @@ export async function runRevocation(
         ),
         revocationTimestamp: timestamp,
     };
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'group-name',
-            'credential-said',
-        ]);
-        requireNamedArguments(args, [
-            'group-name',
-            'credential-said',
-        ]);
-        return runRevocation({
-            config: participantConfigFromArguments(args),
-            groupName: args['group-name'],
-            credentialSaid: args['credential-said'],
-        });
-    });
 }

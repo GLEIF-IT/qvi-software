@@ -5,14 +5,7 @@ import type {
     CredentialSubject,
 } from 'signify-ts';
 
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
+import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {issueAndGrantCredential} from './issue-and-grant.ts';
 import {loadQviMembers} from './qvi-context.ts';
@@ -20,12 +13,14 @@ import {loadQviMembers} from './qvi-context.ts';
 export const LE_SCHEMA_SAID =
     'ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY';
 
+/** Read one workflow credential fragment from disk. */
 async function jsonFile(path: string) {
     return JSON.parse(await fs.promises.readFile(path, 'utf8'));
 }
 
+/** Build, issue, and grant the legal-entity credential. */
 export async function createLeCredential(options: {
-    config: ParticipantConfig;
+    config: WorkflowConfig;
     groupName: string;
     dataDir: string;
     issueePrefix: string;
@@ -68,46 +63,4 @@ export async function createLeCredential(options: {
         credentialData: data,
     });
     return issued[0].snapshot;
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'group-name',
-            'data-dir',
-            'issuee-prefix',
-            'artifact-dir',
-        ]);
-        requireNamedArguments(args, [
-            'group-name',
-            'data-dir',
-            'issuee-prefix',
-            'artifact-dir',
-        ]);
-        const snapshot = await createLeCredential({
-            config: participantConfigFromArguments(args),
-            groupName: args['group-name'],
-            dataDir: args['data-dir'],
-            issueePrefix: args['issuee-prefix'],
-        });
-        const artifact = {
-            leCredSAID: snapshot.said,
-            leCredIssuer: snapshot.issuer,
-            leCredIssuee: snapshot.issuee,
-        };
-        await fs.promises.writeFile(
-            `${args['artifact-dir']}/le-cred-info.json`,
-            JSON.stringify(artifact)
-        );
-        return {
-            status: 'issued',
-            credential: artifact,
-            credentialSaid: snapshot.said,
-            registryId: snapshot.registry,
-            telDigest: snapshot.currentTelDigest,
-        };
-    });
 }

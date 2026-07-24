@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
 import {
-    parsePendingMultisigOperation,
     memberContexts,
+    submitMemberContributions,
 } from '../src/multisig-coordinator.ts';
 
 describe('multisig coordinator', () => {
@@ -52,34 +52,52 @@ describe('multisig coordinator', () => {
         );
     });
 
-    it('parses the minimal delegated-operation handle', () => {
-        const pending = parsePendingMultisigOperation({
-            route: '/multisig/icp',
-            groupPrefix: 'EQvi',
-            members: ['1', '2', '3'].map((suffix) => ({
-                memberPrefix: `EQar${suffix}`,
-                operationName: 'group.EQvi',
-                notificationIds:
-                    suffix === '1' ? [] : [`N${suffix}`],
+    it('returns live contributions in protocol order', async () => {
+        const members = ['EQar1', 'EQar2', 'EQar3'].map(
+            (prefix, index) => ({
+                aid: {prefix, name: `qar${index + 1}`} as never,
+                client: {} as never,
+            })
+        );
+        const executionOrder: string[] = [];
+        const submissions = await submitMemberContributions(
+            members,
+            async (context) => {
+                executionOrder.push(context.aid.prefix);
+                return {
+                    operation: `op-${context.aid.prefix}`,
+                    coordination: [],
+                };
+            }
+        );
+
+        assert.deepEqual(executionOrder, ['EQar1', 'EQar2', 'EQar3']);
+        assert.deepEqual(
+            submissions.map(({memberPrefix, operation}) => ({
+                memberPrefix,
+                operation,
             })),
-        });
-        assert.equal(pending.members.length, 3);
-        assert.equal(pending.groupPrefix, 'EQvi');
+            [
+                {memberPrefix: 'EQar1', operation: 'op-EQar1'},
+                {memberPrefix: 'EQar2', operation: 'op-EQar2'},
+                {memberPrefix: 'EQar3', operation: 'op-EQar3'},
+            ]
+        );
     });
 
-    it('rejects malformed or duplicate member handles', () => {
+    it('rejects duplicate member prefixes', () => {
         assert.throws(
             () =>
-                parsePendingMultisigOperation({
-                    route: '/multisig/icp',
-                    groupPrefix: 'EQvi',
-                    members: ['1', '1', '3'].map((suffix) => ({
-                        memberPrefix: `EQar${suffix}`,
-                        operationName: 'group.EQvi',
-                        notificationIds: [],
-                    })),
-                }),
-            /three unique members/
+                memberContexts(
+                    ['1', '1', '3'].map((suffix) => ({
+                        aid: {
+                            prefix: `EQar${suffix}`,
+                            name: `qar${suffix}`,
+                        } as never,
+                        client: {} as never,
+                    }))
+                ),
+            /prefixes must be unique/
         );
     });
 });
