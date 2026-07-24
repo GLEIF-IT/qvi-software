@@ -67,27 +67,32 @@ challenge digest, verification time, and the response EXN SAID when KERIA
 exposes it. Success requires the exact unique set above; a counter cannot prove
 that set.
 
-## QVI agent OOBIs
+## QVI multisig OOBI
 
-KERIA 0.4.0 does not provide a safe broad multisig-agent OOBI for this story.
-It also enumerates only the first group agent even after all three endpoint
-roles converge. The workflow therefore requires every QAR to report:
+The workflow requires every QAR to report:
 
 - the same three authorized group agent EIDs; and
 - the same endpoint location for each signing member's agent.
 
-It combines those two KERIA observations into the three canonical qualified
-URLs:
+Those observations prove that all three expected agent endpoint roles exist.
+KERIA supplies an endpoint-qualified OOBI:
 
 ```text
 /oobi/<qvi-prefix>/agent/<qar-agent-eid>
 ```
 
-Any OOBI that KERIA does enumerate must match that exact set. The OOBI artifact
-contains the QVI prefix and three `{eid, oobi}` records. The workflow rejects
-missing, duplicate, extra, divergent, or mismatched endpoint evidence.
-External KLI and Signify consumers resolve all three URLs. A fabricated broad
-group URL or a URL with its `/agent/<eid>` suffix removed is invalid evidence.
+Any OOBI that KERIA enumerates must match the authorized endpoint evidence.
+The workflow strips `/agent/<eid>` from one such URL to produce the canonical
+multisig OOBI:
+
+```text
+/oobi/<qvi-prefix>
+```
+
+The OOBI artifact contains that one URL plus the three `{eid, url}` endpoint
+records used to validate its origin. The workflow rejects missing, duplicate,
+extra, divergent, or mismatched endpoint evidence. Each external KLI and
+Signify consumer resolves the canonical multisig OOBI once.
 
 Subsequent multisig coordination must reach both non-initiators. Multisig EXNs
 are recipient-bound: the sender creates one EXN for each unique recipient and

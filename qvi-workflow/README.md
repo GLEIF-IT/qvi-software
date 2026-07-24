@@ -27,7 +27,7 @@ The default `keria_docker` workflow proves:
   relationships;
 - convergence of the three-member delegated QVI and its thresholds, member
   sets, and establishment state;
-- discovery and resolution of all three endpoint-qualified QVI agent OOBIs;
+- derivation and resolution of one canonical QVI multisig OOBI;
 - exact identity and TEL convergence for the QVI-issued OOR and ECR leaves;
 - active QVI, LE, and OOR callbacks from Sally;
 - both Sally's rejection and its structured revocation report for the revoked

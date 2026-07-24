@@ -36,8 +36,8 @@ cd qvi-workflow/keria_kli
     - `keria start --config-dir scripts --config-file keria --loglevel INFO`
 
 The workflow keeps Signify participant material in the mode-`0600`
-`qvi_data/participants.json` file and resolves all three endpoint-qualified
-QVI agent OOBIs produced by the shared Signify runner.
+`qvi_data/participants.json` file and resolves the single canonical QVI
+multisig OOBI produced by the shared Signify runner.
 
 This local hybrid workflow does not produce the hardened proof manifest
 described by `keria_docker/HARDENED-PROOF.md`.

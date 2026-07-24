@@ -641,9 +641,8 @@ function authorize_qvi_multisig_agent_endpoint_role(){
       --config "${PARTICIPANT_CONFIG}" \
       --group-name "${QVI_NAME}" \
       --data-dir "${QVI_DATA_DIR}"
-    QVI_OOBI=$(jq -er '.agentOobis[0].oobi' "${QVI_DATA_DIR}/qvi-oobi.json")
-    print_green "QVI Agent OOBIs:"
-    jq -r '.agentOobis[] | "  \(.eid): \(.oobi)"' "${QVI_DATA_DIR}/qvi-oobi.json"
+    QVI_OOBI=$(jq -er '.multisigOobi' "${QVI_DATA_DIR}/qvi-oobi.json")
+    print_green "QVI multisig OOBI: ${QVI_OOBI}"
 }
 
 # Delegated multisig rotation
@@ -780,13 +779,11 @@ function resolve_qvi_oobi() {
     fi
 
     echo
-    print_yellow "Resolving all three endpoint-qualified QVI agent OOBIs for GEDA and LE"
-    while IFS= read -r qvi_agent_oobi; do
-      kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${qvi_agent_oobi}"
-      kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${qvi_agent_oobi}"
-      kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${qvi_agent_oobi}"
-      kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${qvi_agent_oobi}"
-    done < <(jq -er '.agentOobis[].oobi' "${QVI_DATA_DIR}/qvi-oobi.json")
+    print_yellow "Resolving the canonical QVI multisig OOBI for GEDA and LE"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${QVI_OOBI}"
 
     print_yellow "Resolving QVI OOBI for Person"
     tsx "${SIG_TS_WALLETS_DIR}/person-resolve-qvi-oobi.ts" \

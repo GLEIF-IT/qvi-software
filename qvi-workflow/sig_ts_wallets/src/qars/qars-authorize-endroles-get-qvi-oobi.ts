@@ -25,17 +25,18 @@ import {
 } from '../coordinated-operation.ts';
 import {retry} from '../retry.ts';
 
-export interface AgentOobi {
+export interface AgentEndpoint {
     eid: string;
-    oobi: string;
+    url: string;
 }
 
-export interface QviAgentOobis {
+export interface QviMultisigOobi {
     qviPrefix: string;
-    agentOobis: AgentOobi[];
+    multisigOobi: string;
+    agentEndpoints: AgentEndpoint[];
 }
 
-export interface QviAgentProof extends QviAgentOobis {
+export interface QviAgentProof extends QviMultisigOobi {
     groupState: GroupStateSnapshot;
     groupObservations: Array<{
         observerAid: string;
@@ -55,11 +56,6 @@ export interface AuthorizeEndRoleOptions {
     configPath: string;
     groupName: string;
     dataDir: string;
-}
-
-interface AgentEndpoint {
-    eid: string;
-    url: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -225,19 +221,27 @@ async function assertCommonAuthorizedAgentEids(
 function qualifiedAgentOobi(
     endpoint: AgentEndpoint,
     qviPrefix: string
-): AgentOobi {
-    const oobi = new URL(
+): string {
+    return new URL(
         `/oobi/${qviPrefix}/agent/${endpoint.eid}`,
         endpoint.url
     ).toString();
-    return {eid: endpoint.eid, oobi};
 }
 
-export async function collectQviAgentOobis(
+function stripAgentSuffix(
+    qualifiedOobi: string,
+    qviPrefix: string
+): string {
+    const oobi = new URL(qualifiedOobi);
+    oobi.pathname = `/oobi/${qviPrefix}`;
+    return oobi.toString();
+}
+
+export async function collectQviMultisigOobi(
     clients: SignifyClient[],
     groupName: string,
     qviPrefix: string
-): Promise<QviAgentOobis> {
+): Promise<QviMultisigOobi> {
     const expectedEids = clients.map((client) => client.agent?.pre);
     const agentIsMissing = expectedEids.some(
         (eid) => typeof eid !== 'string' || eid.length === 0
@@ -264,17 +268,14 @@ export async function collectQviAgentOobis(
         groupName,
         concreteEids
     );
-    const agentOobis = endpoints.map((endpoint) =>
-        qualifiedAgentOobi(endpoint, qviPrefix)
-    );
+    const qualifiedAgentOobis = endpoints.map((endpoint) => ({
+        eid: endpoint.eid,
+        oobi: qualifiedAgentOobi(endpoint, qviPrefix),
+    }));
     const expectedOobis = new Map(
-        agentOobis.map(({eid, oobi}) => [oobi, eid])
+        qualifiedAgentOobis.map(({eid, oobi}) => [oobi, eid])
     );
 
-    // KERIA 0.4.0 enumerates only the first group agent even after all
-    // endpoint roles converge. Treat that response as corroborating evidence,
-    // while deriving each qualified URL from the common member endpoint and
-    // exact group end-role state reported by every QAR.
     const responses = await Promise.all(
         clients.map((client) =>
             client.oobis().get(groupName, 'agent')
@@ -282,7 +283,13 @@ export async function collectQviAgentOobis(
     );
     const enumeratedOobis = [
         ...new Set(responses.flatMap((result) => result.oobis)),
-    ];
+    ].sort();
+    const enumeratedOobiIsMissing = enumeratedOobis.length === 0;
+    if (enumeratedOobiIsMissing) {
+        throw new Error(
+            'KERIA returned no qualified QVI agent OOBI to canonicalize'
+        );
+    }
     for (const oobi of enumeratedOobis) {
         const eid = expectedOobis.get(oobi);
         const enumeratedOobiIsUnexpected = eid === undefined;
@@ -293,10 +300,15 @@ export async function collectQviAgentOobis(
         }
     }
 
-    agentOobis.sort((left, right) =>
-        left.eid.localeCompare(right.eid)
+    const multisigOobi = stripAgentSuffix(
+        enumeratedOobis[0],
+        qviPrefix
     );
-    return {qviPrefix, agentOobis};
+    return {
+        qviPrefix,
+        multisigOobi,
+        agentEndpoints: endpoints,
+    };
 }
 
 export async function authorizeAgentEndRoles(
@@ -344,9 +356,9 @@ export async function authorizeAgentEndRoles(
         (observation) => observation.group
     );
 
-    let agentOobis: QviAgentOobis | undefined;
+    let qviOobi: QviMultisigOobi | undefined;
     try {
-        agentOobis = await collectQviAgentOobis(
+        qviOobi = await collectQviMultisigOobi(
             clients,
             options.groupName,
             groupState.prefix
@@ -372,7 +384,7 @@ export async function authorizeAgentEndRoles(
         result: Awaited<ReturnType<typeof addEndRoleMultisig>>;
     }> = [];
     let operationEvidence: OperationEvidence[] = [];
-    if (agentOobis === undefined) {
+    if (qviOobi === undefined) {
         const timestamp = createTimestamp();
         for (let index = 0; index < clients.length; index++) {
             const otherMembers = memberAids.filter(
@@ -404,9 +416,9 @@ export async function authorizeAgentEndRoles(
             )
         );
 
-        agentOobis = await retry(
+        qviOobi = await retry(
             () =>
-                collectQviAgentOobis(
+                collectQviMultisigOobi(
                     clients,
                     options.groupName,
                     groupState.prefix
@@ -415,7 +427,7 @@ export async function authorizeAgentEndRoles(
     }
 
     const proof = {
-        ...agentOobis,
+        ...qviOobi,
         groupState,
         groupObservations: observations.map(
             ({observerAid, snapshot}) => ({
@@ -436,7 +448,8 @@ export async function authorizeAgentEndRoles(
     };
     const artifact: Omit<QviAgentProof, 'operationEvidence'> = {
         qviPrefix: proof.qviPrefix,
-        agentOobis: proof.agentOobis,
+        multisigOobi: proof.multisigOobi,
+        agentEndpoints: proof.agentEndpoints,
         groupState: proof.groupState,
         groupObservations: proof.groupObservations,
         operationNames: proof.operationNames,

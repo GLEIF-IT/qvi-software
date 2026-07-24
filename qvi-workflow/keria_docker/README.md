@@ -76,10 +76,10 @@ must be treated as sensitive until it is removed. There is no
   directions.
 - The three QARs agree on the delegated QVI's prefix, delegator, members,
   sequence, establishment digest, and current and next thresholds.
-- All consumers resolve exactly three endpoint-qualified
-  `/oobi/<qvi-prefix>/agent/<eid>` URLs, built only after all QARs agree on the
-  three authorized group EIDs and their member-agent endpoint locations. The
-  workflow neither strips their suffixes nor fabricates a broad group URL.
+- All QARs must agree on the three authorized group agent EIDs and their
+  member-agent endpoint locations. The workflow then strips `/agent/<eid>`
+  from one KERIA-provided qualified OOBI and each consumer resolves that one
+  canonical `/oobi/<qvi-prefix>` multisig OOBI.
 - Only the QVI-issued OOR and ECR leaves are revoked. LE-issued OOR-Auth and
   ECR-Auth credentials remain active.
 - Active QVI, LE, and OOR presentations require exact structured Sally

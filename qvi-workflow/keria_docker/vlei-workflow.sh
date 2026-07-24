@@ -1599,13 +1599,11 @@ function create_qvi_multisig() {
     print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 }
 
-# QVI: Perform endpoint role authorizations and collect the three
-# endpoint-qualified agent OOBIs for QVI consumers.
-QVI_AGENT_OOBIS=()
+# QVI: Authorize all agent endpoint roles and derive one multisig OOBI.
+QVI_OOBI=""
 function authorize_qvi_multisig_agent_endpoint_role(){
     local oobi_artifact="${LOCAL_QVI_DATA_DIR}/qvi-oobi.json"
     local oobi_artifact_is_valid=false
-    local oobi_index
     local authorization_result=""
     local authorization_failed=false
     local authorization_result_is_exact=false
@@ -1633,19 +1631,20 @@ function authorize_qvi_multisig_agent_endpoint_role(){
       '
         . as $root |
         .qviPrefix == $qviPrefix and
-        (.agentOobis | length == 3) and
-        ([.agentOobis[].eid] | unique | length == 3) and
-        ([.agentOobis[].oobi] | unique | length == 3) and
-        ([.agentOobis[].eid] | sort) == ([$eid1, $eid2, $eid3] | sort) and
+        (
+          .multisigOobi |
+          capture(
+            "^https?://[^/]+(?<path>/[^?#]*)(?:[?#].*)?$"
+          ).path
+        ) == "/oobi/\($qviPrefix)" and
+        (.agentEndpoints | length == 3) and
+        ([.agentEndpoints[].eid] | unique | length == 3) and
+        ([.agentEndpoints[].url] | unique | length == 3) and
+        ([.agentEndpoints[].eid] | sort) ==
+          ([$eid1, $eid2, $eid3] | sort) and
         all(
-          .agentOobis[];
-          . as $entry |
-          (
-            $entry.oobi |
-            capture(
-              "^https?://[^/]+(?<path>/[^?#]*)(?:[?#].*)?$"
-            ).path
-          ) == "/oobi/\($qviPrefix)/agent/\($entry.eid)"
+          .agentEndpoints[];
+          (.url | test("^https?://"))
         ) and
         .groupState.prefix == $qviPrefix and
         .groupState.delegator == $delegator and
@@ -1737,17 +1736,12 @@ function authorize_qvi_multisig_agent_endpoint_role(){
         fail_workflow "QVI endpoint-role authorization did not retain nine terminal operation results"
     fi
 
-    QVI_AGENT_OOBIS=()
-    for oobi_index in 0 1 2; do
-        QVI_AGENT_OOBIS[${#QVI_AGENT_OOBIS[@]}]=$(jq -er \
-            ".agentOobis[${oobi_index}].oobi" \
-            "${oobi_artifact}")
-    done
+    QVI_OOBI=$(jq -er '.multisigOobi' "${oobi_artifact}")
 
     append_proof_record "$(jq -c '{type: "qvi-state"} + .' "${oobi_artifact}")"
     append_proof_record "$(printf '%s\n' "${authorization_result}" |
         jq -c '{type:"qvi-operation",operation:"authorize-agent-endroles"} + .')"
-    print_green "Collected three qualified agent OOBIs and common QVI group state"
+    print_green "Collected one canonical multisig OOBI and common QVI group state"
 }
 
 # Create Legal Entity Multisig
@@ -1816,18 +1810,14 @@ function qars_resolve_le_oobi() {
 
 # GEDA and LE: Resolve QVI OOBI
 function resolve_qvi_oobi() {
-    local qvi_agent_oobi
-
     echo
-    print_yellow "Resolving all qualified QVI agent OOBIs for GEDA and LE"
-    for qvi_agent_oobi in "${QVI_AGENT_OOBIS[@]}"; do
-        kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${qvi_agent_oobi}"
-        kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${qvi_agent_oobi}"
-        kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${qvi_agent_oobi}"
-        kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${qvi_agent_oobi}"
-    done
+    print_yellow "Resolving the canonical QVI multisig OOBI for GEDA and LE"
+    kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${QVI_OOBI}"
+    kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${QVI_OOBI}"
 
-    print_yellow "Resolving all qualified QVI agent OOBIs for Person"
+    print_yellow "Resolving the canonical QVI multisig OOBI for Person"
     sig_tsx "${QVI_SIGNIFY_DIR}/person-resolve-qvi-oobi.ts" \
       --config /run/qvi/participants.json \
       --group-name "${QVI_NAME}" \
