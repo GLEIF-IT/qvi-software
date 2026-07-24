@@ -1,14 +1,44 @@
+import {
+    isMainModule,
+    parseNamedArguments,
+    requireNamedArguments,
+    runJsonCli,
+    singleSigParticipantInvocationFromArguments,
+} from '../cli.ts';
 import {checkReceivedCredentialSingleSig} from "./qvi-operations-single-sig.ts";
 
-/*
-Checks the specified multisig with the first QAR to see if a credential has been received
- */
+export async function checkQviReceivedCredential(options: {
+    participantSource: string;
+    credentialSaid: string;
+    environment: Parameters<
+        typeof checkReceivedCredentialSingleSig
+    >[2];
+}) {
+    return checkReceivedCredentialSingleSig(
+        options.participantSource,
+        options.credentialSaid,
+        options.environment
+    );
+}
 
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1]
-const credSAID = args[2]
-
-const exists: string = await checkReceivedCredentialSingleSig(aidInfoArg, credSAID, env);
-console.log(exists);
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedArguments(
+            process.argv.slice(2),
+            [
+                'config',
+                'environment',
+                'participant-source',
+                'credential-said',
+            ]
+        );
+        requireNamedArguments(parsed, ['credential-said']);
+        const invocation =
+            singleSigParticipantInvocationFromArguments(parsed);
+        return checkQviReceivedCredential({
+            participantSource: invocation.participantSource,
+            credentialSaid: parsed['credential-said'],
+            environment: invocation.environment,
+        });
+    });
+}

@@ -1,18 +1,19 @@
 import {TestEnvironmentPreset} from "../resolve-env.ts";
-import {createTimestamp, parseAidInfo, parseAidInfoSingleSig} from "../create-aid.ts";
+import {createTimestamp, parseAidInfoSingleSig} from "../create-aid.ts";
 import {getOrCreateClient} from "../keystore-creation.ts";
-import {getIssuedCredential, getReceivedCredBySchemaAndIssuer} from "../credentials.ts";
+import {getReceivedCredBySchemaAndIssuer} from "../credentials.ts";
 import {Serder} from "signify-ts";
-import {waitOperation} from "../operations.ts";
-
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1]
-const schemaSAID = args[2]
-const issuerPrefix = args[3]
-const issueePrefix = args[4]
-const recipientPrefix = args[5]
+import {
+    requireOperationResponse,
+    waitOperation,
+} from "../operations.ts";
+import {
+    isMainModule,
+    parseNamedArguments,
+    requireNamedArguments,
+    runJsonCli,
+    singleSigParticipantInvocationFromArguments,
+} from '../cli.ts';
 
 /**
  * Grants a credential from the QVI multisig AID to a recipient
@@ -27,28 +28,23 @@ const recipientPrefix = args[5]
  */
 export async function grantCredential(
     aidInfo: string, schemaSAID: string, issuerPrefix: string,
-    issueePrefix: string, recipientPrefix: string, environment: TestEnvironmentPreset): Promise<string> {
+    issueePrefix: string, recipientPrefix: string, environment: TestEnvironmentPreset) {
     // get QAR Clients
     const {QVI} = parseAidInfoSingleSig(aidInfo);
     const QVIClient = await getOrCreateClient(QVI.salt, environment, 1);
 
     // Check to see if the credential exists
-    let receivedCred = await getReceivedCredBySchemaAndIssuer(
+    const receivedCred = await getReceivedCredBySchemaAndIssuer(
         QVIClient,
         schemaSAID,
         issuerPrefix
     )
-    if (!receivedCred) {
-        return "false-credential-not-found"
+    const credentialIsMissing = receivedCred === undefined;
+    if (credentialIsMissing) {
+        throw new Error(
+            `Credential from issuer ${issuerPrefix} with schema ${schemaSAID} was not found`
+        );
     }
-
-    // grant credential
-    const cred = await getIssuedCredential(
-        QVIClient,
-        issuerPrefix,
-        issueePrefix,
-        schemaSAID
-    );
 
     const grantTime = createTimestamp();
     console.log(`[QVI] QVI IPEX Granting credential to ${recipientPrefix}...`);
@@ -57,7 +53,7 @@ export async function grantCredential(
         acdc: new Serder(receivedCred.sad),
         anc: new Serder(receivedCred.anc),
         iss: new Serder(receivedCred.iss),
-        ancAttachment: receivedCred.ancAttachment,
+        ancAttachment: receivedCred.ancatc,
         recipient: recipientPrefix,
         datetime: grantTime,
     });
@@ -67,10 +63,52 @@ export async function grantCredential(
         .submitGrant(QVI.name, grant, gsigs, gend, [
             recipientPrefix,
         ]);
-    await waitOperation(QVIClient, op);
+    const completed = await waitOperation(QVIClient, op);
+    const response = requireOperationResponse(
+        completed,
+        (value): value is {said: string} =>
+            typeof value === 'object' &&
+            value !== null &&
+            typeof (value as {said?: unknown}).said === 'string',
+        'QVI IPEX grant'
+    );
 
-    return op.response;
+    return {
+        status: 'granted' as const,
+        credentialSaid: receivedCred.sad.d,
+        exchangeSaid: response.said,
+    };
 }
 
-const granted: string = await grantCredential(aidInfoArg, schemaSAID, issuerPrefix, issueePrefix, recipientPrefix, env);
-console.log(granted);
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedArguments(
+            process.argv.slice(2),
+            [
+                'config',
+                'environment',
+                'participant-source',
+                'schema-said',
+                'issuer-prefix',
+                'issuee-prefix',
+                'recipient-prefix',
+            ]
+        );
+        requireNamedArguments(parsed, [
+            'schema-said',
+            'issuer-prefix',
+            'issuee-prefix',
+            'recipient-prefix',
+        ]);
+        const invocation =
+            singleSigParticipantInvocationFromArguments(parsed);
+        return grantCredential(
+            invocation.participantSource,
+            parsed['schema-said'],
+            parsed['issuer-prefix'],
+            parsed['issuee-prefix'],
+            parsed['recipient-prefix'],
+            invocation.environment
+        );
+    });
+}

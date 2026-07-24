@@ -1,97 +1,93 @@
-import {createTimestamp, parseAidInfo} from "../create-aid";
-import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
-import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
-import {admitMultisig, getReceivedCredential, waitForCredential} from "../credentials";
+import {
+    isMainModule,
+    parseNamedArguments,
+    participantConfigFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+    type ParticipantConfig,
+} from '../cli.ts';
+import {createTimestamp} from '../create-aid.ts';
+import {
+    admitMultisig,
+    waitForCredential,
+} from '../credentials.ts';
+import {credentialSnapshot} from '../credential-state.ts';
+import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
+import {loadQviMembers} from './qvi-context.ts';
 
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1]
-const aidInfoArg = args[2]
-const issuerPrefix = args[3]
-const credSAID = args[4]
-
-// resolve witness IDs for QVI multisig AID configuration
-const {witnessIds} = resolveEnvironment(env);
-
-
-/**
- * Uses QAR1, QAR2, and QAR3 to create a delegated multisig AID for the QVI delegated from the AID specified by delpre.
- * 
- * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param issuerPrefix identifier of the issuer AID who issued the credential to admit by the QARs for the QVI multisig
- * @param witnessIds list of witness IDs for the QVI multisig AID configuration
- * @param credSAID the SAID of the credential to admit
- * @param environment the runtime environment to use for resolving environment variables
- * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
- */
-async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerPrefix: string, witnessIds: Array<string>, credSAID: string, environment: TestEnvironmentPreset) {
-    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
-
-    // get Clients
-    const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
-    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
-    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
-    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
-
-    // get AIDs
-    const aidConfigQARs = {
-        toad: 1,
-        wits: [WIL],
-    };
-    const [
-            QAR1Id,
-            QAR2Id,
-            QAR3Id,
-    ] = await Promise.all([
-        getOrCreateAID(QAR1Client, QAR1.name, aidConfigQARs),
-        getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
-        getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
-    ]);
-
-    // Get the QVI multisig AID
-    const qar1Ms = await QAR1Client.identifiers().get(multisigName);
-    // Skip if a QVI AID has already been incepted.
-    
-    let credByQAR1 = await getReceivedCredential(QAR1Client, credSAID);
-    let credByQAR2 = await getReceivedCredential(QAR2Client, credSAID);
-    let credByQAR3 = await getReceivedCredential(QAR3Client, credSAID);
-    const credentialIsMissing =
-        !credByQAR1 || !credByQAR2 || !credByQAR3;
-    if (credentialIsMissing) {
-        const admitTime = createTimestamp();
-        await admitMultisig(
-            QAR1Client,
-            QAR1Id,
-            [QAR2Id, QAR3Id],
-            qar1Ms,
-            issuerPrefix,
-            admitTime
-        );
-        await admitMultisig(
-            QAR2Client,
-            QAR2Id,
-            [QAR1Id, QAR3Id],
-            qar1Ms,
-            issuerPrefix,
-            admitTime
-        );
-        await admitMultisig(
-            QAR3Client,
-            QAR3Id,
-            [QAR1Id, QAR2Id],
-            qar1Ms,
-            issuerPrefix,
-            admitTime
-        );
-        [credByQAR1, credByQAR2, credByQAR3] = await Promise.all([
-            waitForCredential(QAR1Client, credSAID, 30),
-            waitForCredential(QAR2Client, credSAID, 30),
-            waitForCredential(QAR3Client, credSAID, 30),
-        ]);
-    }
-    
+export async function admitCredentialQvi(
+    config: ParticipantConfig,
+    groupName: string,
+    issuerPrefix: string,
+    credentialSaid: string
+) {
+    const members = await loadQviMembers(config, groupName);
+    const timestamp = createTimestamp();
+    await coordinateMultisigOperation(
+        members.map(({client, memberAid}) => ({
+            client,
+            aid: memberAid,
+        })),
+        (context) => {
+            const member = members.find(
+                ({memberAid}) =>
+                    memberAid.prefix === context.aid.prefix
+            );
+            if (member === undefined) {
+                throw new Error(
+                    `Missing QVI member ${context.aid.prefix}`
+                );
+            }
+            return admitMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                member.groupAid,
+                issuerPrefix,
+                credentialSaid,
+                timestamp,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            );
+        }
+    );
+    return Promise.all(
+        members.map(async ({client, memberAid}) =>
+            credentialSnapshot(
+                await waitForCredential(client, credentialSaid),
+                memberAid.prefix
+            )
+        )
+    );
 }
-const admitResult: any = await admitCredentialQvi(multisigName, aidInfoArg, issuerPrefix, witnessIds, credSAID, env);
 
-console.log(`credential ${credSAID} admitted`);
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const args = parseNamedArguments(process.argv.slice(2), [
+            'config',
+            'environment',
+            'participant-source',
+            'group-name',
+            'issuer-prefix',
+            'credential-said',
+        ]);
+        requireNamedArguments(args, [
+            'group-name',
+            'issuer-prefix',
+            'credential-said',
+        ]);
+        const snapshots = await admitCredentialQvi(
+            participantConfigFromArguments(args),
+            args['group-name'],
+            args['issuer-prefix'],
+            args['credential-said']
+        );
+        return {
+            status: 'admitted',
+            credentialSaid: args['credential-said'],
+            observations: snapshots,
+        };
+    });
+}

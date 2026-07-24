@@ -1,5 +1,25 @@
 export type TestEnvironmentPreset = 'local' | 'local-single-keria' | 'docker' | 'docker-tsx' | 'single-sig-docker';
 
+const ENVIRONMENT_PRESETS: readonly TestEnvironmentPreset[] = [
+    'local',
+    'local-single-keria',
+    'docker',
+    'docker-tsx',
+    'single-sig-docker',
+];
+
+export function parseEnvironmentPreset(
+    value: unknown
+): TestEnvironmentPreset {
+    const presetIsValid =
+        typeof value === 'string' &&
+        ENVIRONMENT_PRESETS.includes(value as TestEnvironmentPreset);
+    if (presetIsValid === false) {
+        throw new Error(`Unknown test environment preset '${String(value)}'`);
+    }
+    return value as TestEnvironmentPreset;
+}
+
 export interface TestEnvironment {
     preset: TestEnvironmentPreset;
     adminUrl1: string;
@@ -13,18 +33,17 @@ export interface TestEnvironment {
     witnessIds: string[];
 }
 
-// All six demo witnesses
+// Demo witnesses used by QVI participants
 const WAN = 'BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha';
 const WIL = 'BLskRTInXnMxWaGqcpSyMgo0nYbalW99cGZESrz3zapM';
 const WES = 'BIKKuvBwpmDVA4Ds-EpL5bt9OqPzWPja2LigFYZN2YfX';
-const WIT = 'BM35JN8XeJSEfpxopjn5jr7tAHCE5749f0OobhMLCorE';
-const WUB = 'BIj15u5V11bkbtAxMA7gcNJZcax-7TgaBMLsQnMHpYHP';
-const WYZ = 'BF2rZTW79z4IXocYRQnjjsOuvFUQv-ptCf8Yltd7PfsM';
 
 export function resolveEnvironment(
     input?: TestEnvironmentPreset
 ): TestEnvironment {
-    const preset = input ?? process.env.TEST_ENVIRONMENT ?? 'docker';
+    const preset = parseEnvironmentPreset(
+        input ?? process.env.TEST_ENVIRONMENT ?? 'docker'
+    );
     const host = 'http://127.0.0.1'
     switch (preset) {
         case 'local':    
@@ -41,7 +60,6 @@ export function resolveEnvironment(
                     'http://gar-witnesses:5642',    // wan
                     'http://qar-witnesses:5643',    // wil
                     'http://person-witnesses:5644', // wes
-                    'http://sally-witnesses:5645'   // wit
                 ],
                 witnessIds: [WAN, WIL, WES],
             };
@@ -85,9 +103,8 @@ export function resolveEnvironment(
                     'http://gar-witnesses:5642',    // wan
                     'http://qar-witnesses:5643',    // wil
                     'http://person-witnesses:5644', // wes
-                    'http://sally-witnesses:5645'   // wit
                 ],
-                witnessIds: [WAN, WIL, WES, WIT],
+                witnessIds: [WAN, WIL, WES],
                 vleiServerUrl: 'http://vlei-server:7723',
             };
         case 'single-sig-docker':
@@ -100,9 +117,8 @@ export function resolveEnvironment(
                     'http://gar-witnesses:5642',    // wan
                     'http://qar-witnesses:5643',    // wil
                     'http://person-witnesses:5644', // wes
-                    'http://sally-witnesses:5645'   // wit
                 ],
-                witnessIds: [WAN, WIL, WES, WIT],
+                witnessIds: [WAN, WIL, WES],
                 vleiServerUrl: 'http://vlei-server:7723',
             };
         default:

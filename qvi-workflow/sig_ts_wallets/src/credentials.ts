@@ -1,5 +1,21 @@
-import signify, { CredentialData, HabState, Serder, SignifyClient } from "signify-ts";
-import { waitAndRemoveNotification } from "./notifications";
+import signify, {
+    type CredentialData,
+    type CredentialResult,
+    type ExchangeOperation,
+    type HabState,
+    Serder,
+    type SignifyClient,
+} from 'signify-ts';
+
+import {sendExchangeToEachRecipient} from './exchanges.ts';
+import {requireCoordinatedEventDigest} from './multisig-coordination.ts';
+import {
+    consumeNotification,
+    waitForMatchingNotification,
+    type MatchedNotification,
+} from './notifications.ts';
+import {waitOperation} from './operations.ts';
+import {retry} from './retry.ts';
 
 /**
  * Creates a multisig registry by name for a set of single sig participants.
@@ -19,13 +35,14 @@ export async function createRegistryMultisig(
     multisigAID: HabState,
     registryName: string,
     nonce: string,
-    isInitiator: boolean = false
+    options: MultisigOperationOptions
 ) {
-    const participantIsFollower = isInitiator === false;
-    if (participantIsFollower) {
-        await waitAndRemoveNotification(client, '/multisig/vcp');
-    }
-
+    const participantIsFollower = options.isInitiator !== true;
+    const coordinator = requireCoordinator(
+        options,
+        participantIsFollower,
+        '/multisig/vcp'
+    );
     const vcpResult = await client.registries().create({
         name: multisigAID.name,
         registryName: registryName,
@@ -45,19 +62,41 @@ export async function createRegistryMultisig(
     };
     const recp = otherMembersAIDs.map((aid) => aid.prefix);
 
-    await client
-        .exchanges()
-        .send(
-            aid.name,
-            'registry',
-            aid,
-            '/multisig/vcp',
-            { gid: multisigAID.prefix },
-            regbeds,
-            recp
-        );
+    let coordination: MatchedNotification | undefined;
+    if (participantIsFollower) {
+        coordination = await waitForMatchingNotification(client, {
+            notificationRoute: '/multisig/vcp',
+            exchangeRoute: '/multisig/vcp',
+            sender: coordinator,
+            recipient: aid.prefix,
+            groupPrefix: multisigAID.prefix,
+            embeddedDigest: serder.said,
+        });
+    }
 
-    return op;
+    if (coordination !== undefined) {
+        requireCoordinatedEventDigest(
+            coordination.exchange,
+            '/multisig/vcp',
+            serder.said
+        );
+    }
+
+    await sendExchangeToEachRecipient(client, {
+        name: aid.name,
+        topic: 'registry',
+        sender: aid,
+        route: '/multisig/vcp',
+        payload: {gid: multisigAID.prefix},
+        embeds: regbeds,
+        recipients: recp,
+    });
+
+    return {
+        operation: op,
+        coordination:
+            coordination === undefined ? [] : [coordination],
+    };
 }
 
 /**
@@ -72,6 +111,28 @@ export async function createRegistryMultisig(
  */
 export interface MultisigIssueOptions {
     isInitiator?: boolean;
+    coordinator?: string;
+}
+
+export type MultisigOperationOptions = MultisigIssueOptions;
+
+function requireCoordinator(
+    options: MultisigOperationOptions,
+    participantIsFollower: boolean,
+    route: string
+): string | undefined {
+    if (participantIsFollower === false) {
+        return undefined;
+    }
+    const coordinatorIsMissing =
+        typeof options.coordinator !== 'string' ||
+        options.coordinator.length === 0;
+    if (coordinatorIsMissing) {
+        throw new Error(
+            `${route} follower requires an explicit coordinator prefix`
+        );
+    }
+    return options.coordinator;
 }
 
 export async function issueCredentialMultisig(
@@ -83,23 +144,17 @@ export async function issueCredentialMultisig(
     options: MultisigIssueOptions = {}
 ) {
     const participantIsFollower = options.isInitiator !== true;
-    if (participantIsFollower) {
-        await waitAndRemoveNotification(
-            client,
-            '/multisig/iss',
-            {timeout: 30000}
-        );
-        console.log(
-            `/multisig/iss notification consumed for ${aid.name} : ${aid.prefix}`
-        );
-    }
-
+    const coordinator = requireCoordinator(
+        options,
+        participantIsFollower,
+        '/multisig/iss'
+    );
+    const multisigAID = await client.identifiers().get(multisigAIDName);
     const credResult = await client
         .credentials()
         .issue(multisigAIDName, kargsIss);
     const op = credResult.op;
 
-    const multisigAID = await client.identifiers().get(multisigAIDName);
     const keeper = client.manager!.get(multisigAID);
     const sigs = await keeper.sign(signify.b(credResult.anc.raw));
     const sigers = sigs.map((sig: string) => new signify.Siger({ qb64: sig }));
@@ -112,19 +167,48 @@ export async function issueCredentialMultisig(
     };
     const recp = otherMembersAIDs.map((aid) => aid.prefix);
 
-    await client
-        .exchanges()
-        .send(
-            aid.name,
-            'multisig',
-            aid,
-            '/multisig/iss',
-            { gid: multisigAID.prefix },
-            embeds,
-            recp
+    let coordination: MatchedNotification | undefined;
+    if (participantIsFollower) {
+        coordination = await waitForMatchingNotification(
+            client,
+            {
+                notificationRoute: '/multisig/iss',
+                exchangeRoute: '/multisig/iss',
+                sender: coordinator,
+                recipient: aid.prefix,
+                groupPrefix: multisigAID.prefix,
+                credentialSaid: credResult.acdc.said,
+                embeddedDigest: credResult.iss.said,
+            }
         );
+    }
 
-    return op;
+    if (coordination !== undefined) {
+        requireCoordinatedEventDigest(
+            coordination.exchange,
+            '/multisig/iss',
+            credResult.iss.said
+        );
+    }
+
+    await sendExchangeToEachRecipient(client, {
+        name: aid.name,
+        topic: 'multisig',
+        sender: aid,
+        route: '/multisig/iss',
+        payload: {
+            gid: multisigAID.prefix,
+            said: credResult.acdc.said,
+        },
+        embeds,
+        recipients: recp,
+    });
+
+    return {
+        operation: op,
+        coordination:
+            coordination === undefined ? [] : [coordination],
+    };
 }
 
 /**
@@ -137,21 +221,18 @@ export async function revokeCredentialMultisig(
     multisigAIDName: string,
     credentialSaid: string,
     timestamp: string,
-    isInitiator: boolean = false
+    options: MultisigOperationOptions
 ) {
-    const participantIsFollower = isInitiator === false;
-    if (participantIsFollower) {
-        await waitAndRemoveNotification(
-            client,
-            '/multisig/rev',
-            {timeout: 30000}
-        );
-    }
-
+    const participantIsFollower = options.isInitiator !== true;
+    const coordinator = requireCoordinator(
+        options,
+        participantIsFollower,
+        '/multisig/rev'
+    );
+    const multisigAID = await client.identifiers().get(multisigAIDName);
     const result = await client
         .credentials()
         .revoke(multisigAIDName, credentialSaid, timestamp);
-    const multisigAID = await client.identifiers().get(multisigAIDName);
     const keeper = client.manager!.get(multisigAID);
     const sigs = await keeper.sign(signify.b(result.anc.raw));
     const sigers = sigs.map((sig: string) => new signify.Siger({ qb64: sig }));
@@ -163,22 +244,49 @@ export async function revokeCredentialMultisig(
     };
     const recipients = otherMembersAIDs.map((member) => member.prefix);
 
-    await client
-        .exchanges()
-        .send(
-            aid.name,
-            'multisig',
-            aid,
-            '/multisig/rev',
+    let coordination: MatchedNotification | undefined;
+    if (participantIsFollower) {
+        coordination = await waitForMatchingNotification(
+            client,
             {
-                gid: multisigAID.prefix,
-                said: credentialSaid,
-            },
-            embeds,
-            recipients
+                notificationRoute: '/multisig/rev',
+                exchangeRoute: '/multisig/rev',
+                sender: coordinator,
+                recipient: aid.prefix,
+                groupPrefix: multisigAID.prefix,
+                credentialSaid,
+                embeddedDigest: result.rev.said,
+            }
         );
+    }
 
-    return result.op;
+    if (coordination !== undefined) {
+        requireCoordinatedEventDigest(
+            coordination.exchange,
+            '/multisig/rev',
+            result.rev.said
+        );
+    }
+
+    await sendExchangeToEachRecipient(client, {
+        name: aid.name,
+        topic: 'multisig',
+        sender: aid,
+        route: '/multisig/rev',
+        payload: {
+            gid: multisigAID.prefix,
+            said: credentialSaid,
+        },
+        embeds,
+        recipients,
+    });
+
+    return {
+        ...result,
+        operation: result.op,
+        coordination:
+            coordination === undefined ? [] : [coordination],
+    };
 }
 
 /**
@@ -192,10 +300,10 @@ export async function revokeCredentialMultisig(
  */
 export async function getIssuedCredential(
     issuerClient: SignifyClient,
-    issuerPrefix: String,
-    recipientPrefix: String,
+    issuerPrefix: string,
+    recipientPrefix: string,
     schemaSAID: string
-) {
+): Promise<CredentialResult | undefined> {
     const credentialList = await issuerClient.credentials().list({
         filter: {
             '-i': issuerPrefix,
@@ -203,7 +311,24 @@ export async function getIssuedCredential(
             '-a-i': recipientPrefix,
         },
     });
+    const resultIsAmbiguous = credentialList.length > 1;
+    if (resultIsAmbiguous) {
+        throw new Error(
+            `Expected at most one credential for issuer ${issuerPrefix}, schema ${schemaSAID}, issuee ${recipientPrefix}; found ${credentialList.length}`
+        );
+    }
     return credentialList[0];
+}
+
+export function requireCredential(
+    credential: CredentialResult | undefined,
+    description: string
+): CredentialResult {
+    const credentialIsMissing = credential === undefined;
+    if (credentialIsMissing) {
+        throw new Error(`${description} was not found`);
+    }
+    return credential;
 }
 
 /**
@@ -215,61 +340,56 @@ export async function getIssuedCredential(
 export async function getReceivedCredential(
     client: SignifyClient,
     credId: string
-): Promise<any> {
+): Promise<CredentialResult | undefined> {
     const credentialList = await client.credentials().list({
         filter: {
             '-d': credId,
         },
     });
-    let credential: any;
-    if (credentialList.length > 0) {
-        credential = credentialList[0];
+    const resultIsAmbiguous = credentialList.length > 1;
+    if (resultIsAmbiguous) {
+        throw new Error(
+            `Expected at most one received credential ${credId}; found ${credentialList.length}`
+        );
     }
-    return credential;
+    return credentialList[0];
 }
 
 export async function getReceivedCredBySchemaAndIssuer(
     client: SignifyClient,
     schemaSAID: string,
     issuerPrefix: string
-): Promise<any> {
+): Promise<CredentialResult | undefined> {
     const credentialList = await client.credentials().list({
         filter: {
             '-s': schemaSAID,
             '-i': issuerPrefix
         },
     });
-    let credential: any;
-    if (credentialList.length > 0) {
-        credential = credentialList[0];
+    const resultIsAmbiguous = credentialList.length > 1;
+    if (resultIsAmbiguous) {
+        throw new Error(
+            `Expected at most one received credential for issuer ${issuerPrefix} and schema ${schemaSAID}; found ${credentialList.length}`
+        );
     }
-    return credential;
+    return credentialList[0];
 }
 
-/**
- * Wait up to MAX_RETRIES * 1 second for a credential to be received.
- * @param client SignifyClient of the identifier waiting for the credential
- * @param credSAID the identifier for the credential to be received
- * @param MAX_RETRIES maximum number of retries of one second each
- * @returns 
- */
+/** Wait for one exact credential under the workflow's configured deadline. */
 export async function waitForCredential(
     client: SignifyClient,
-    credSAID: string,
-    MAX_RETRIES: number = 10
-) {
-    let retryCount = 0;
-    while (retryCount < MAX_RETRIES) {
+    credSAID: string
+): Promise<CredentialResult> {
+    return retry(async () => {
         const cred = await getReceivedCredential(client, credSAID);
-        if (cred) {
-            return cred;
+        const credentialIsMissing = cred === undefined;
+        if (credentialIsMissing) {
+            throw new Error(
+                `Credential ${credSAID} has not been received`
+            );
         }
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        console.log(`waitForCredential retry-${retryCount} of ${MAX_RETRIES} for ${credSAID}: Credential not yet received...`);
-        retryCount = retryCount + 1;
-    }
-    throw Error('Credential SAID: ' + credSAID + ' has not been received');
+        return cred;
+    });
 }
 
 /**
@@ -289,10 +409,16 @@ export async function grantMultisig(
     otherMembersAIDs: HabState[],
     multisigAID: HabState,
     recipientPrefix: string,
-    credential: any,
+    credential: CredentialResult,
     timestamp: string,
-    isInitiator: boolean = false
-) {
+    options: MultisigOperationOptions
+): Promise<MultisigIpexResult> {
+    const participantIsFollower = options.isInitiator !== true;
+    const coordinator = requireCoordinator(
+        options,
+        participantIsFollower,
+        '/multisig/exn'
+    );
 
     const [grant, sigs, end] = await client.ipex().grant({
         senderName: multisigAID.name,
@@ -303,7 +429,25 @@ export async function grantMultisig(
         datetime: timestamp,
     });
 
-    await client
+    let coordination: MatchedNotification | undefined;
+    if (participantIsFollower) {
+        coordination = await waitForMatchingNotification(client, {
+            notificationRoute: '/multisig/exn',
+            exchangeRoute: '/multisig/exn',
+            sender: coordinator,
+            recipient: aid.prefix,
+            groupPrefix: multisigAID.prefix,
+            credentialSaid: credential.sad.d,
+            embeddedDigest: grant.said,
+        });
+        requireCoordinatedEventDigest(
+            coordination.exchange,
+            '/multisig/exn',
+            grant.said
+        );
+    }
+
+    const operation = await client
         .ipex()
         .submitGrant(multisigAID.name, grant, sigs, end, [recipientPrefix]);
 
@@ -321,17 +465,28 @@ export async function grantMultisig(
     };
     const recp = otherMembersAIDs.map((aid) => aid.prefix);
 
-    await client
-        .exchanges()
-        .send(
-            aid.name,
-            'multisig',
-            aid,
-            '/multisig/exn',
-            { gid: multisigAID.prefix },
-            gembeds,
-            recp
-        );
+    await sendExchangeToEachRecipient(client, {
+        name: aid.name,
+        topic: 'multisig',
+        sender: aid,
+        route: '/multisig/exn',
+        payload: {
+            gid: multisigAID.prefix,
+            credentialSaid: credential.sad.d,
+        },
+        embeds: gembeds,
+        recipients: recp,
+    });
+    return {
+        operation,
+        coordination:
+            coordination === undefined ? [] : [coordination],
+    };
+}
+
+export interface MultisigIpexResult {
+    operation: ExchangeOperation;
+    coordination: MatchedNotification[];
 }
 
 /**
@@ -343,24 +498,38 @@ export async function grantMultisig(
 export async function admitSinglesig(
     client: SignifyClient,
     aidName: string,
-    recipientPrefix: string
-) {
-    const grantMsgSaid = await waitAndRemoveNotification(
+    recipientPrefix: string,
+    credentialSaid: string
+): Promise<CredentialResult> {
+    const aid = await client.identifiers().get(aidName);
+    const grantNotification = await waitForMatchingNotification(
         client,
-        '/exn/ipex/grant',
-        {timeout: 30000}
+        {
+            notificationRoute: '/exn/ipex/grant',
+            exchangeRoute: '/ipex/grant',
+            sender: recipientPrefix,
+            recipient: aid.prefix,
+            credentialSaid,
+        }
     );
 
     const [admit, sigs, aend] = await client.ipex().admit({
         senderName: aidName,
         recipient: recipientPrefix,
         message: '',
-        grantSaid: grantMsgSaid,
+        grantSaid: grantNotification.exchangeSaid,
     });
 
-    await client
+    const operation = await client
         .ipex()
         .submitAdmit(aidName, admit, sigs, aend, [recipientPrefix]);
+    await waitOperation(client, operation);
+    const credential = await waitForCredential(
+        client,
+        credentialSaid
+    );
+    await consumeNotification(client, grantNotification);
+    return credential;
 }
 
 /**
@@ -379,22 +548,54 @@ export async function admitMultisig(
     otherMembersAIDs: HabState[],
     multisigAID: HabState,
     recipientPrefix: string,
-    timestamp: string
-) {
-    const grantMsgSaid = await waitAndRemoveNotification(
-        client,
-        '/exn/ipex/grant'
+    credentialSaid: string,
+    timestamp: string,
+    options: MultisigOperationOptions
+): Promise<MultisigIpexResult> {
+    const participantIsFollower = options.isInitiator !== true;
+    const coordinator = requireCoordinator(
+        options,
+        participantIsFollower,
+        '/multisig/exn'
     );
+    const grantNotification = await waitForMatchingNotification(client, {
+        notificationRoute: '/exn/ipex/grant',
+        exchangeRoute: '/ipex/grant',
+        sender: recipientPrefix,
+        recipient: multisigAID.prefix,
+        credentialSaid,
+    });
 
     const [admit, sigs, end] = await client.ipex().admit({
         senderName: multisigAID.name,
         message: '',
-        grantSaid: grantMsgSaid,
+        grantSaid: grantNotification.exchangeSaid,
         recipient: recipientPrefix,
         datetime: timestamp,
     });
 
-    await client
+    let coordination: MatchedNotification | undefined;
+    if (participantIsFollower) {
+        coordination = await waitForMatchingNotification(client, {
+            notificationRoute: '/multisig/exn',
+            exchangeRoute: '/multisig/exn',
+            sender: coordinator,
+            recipient: aid.prefix,
+            groupPrefix: multisigAID.prefix,
+            payloadFields: {
+                grantSaid: grantNotification.exchangeSaid,
+            },
+            credentialSaid,
+            embeddedDigest: admit.said,
+        });
+        requireCoordinatedEventDigest(
+            coordination.exchange,
+            '/multisig/exn',
+            admit.said
+        );
+    }
+
+    const operation = await client
         .ipex()
         .submitAdmit(multisigAID.name, admit, sigs, end, [recipientPrefix]);
 
@@ -412,15 +613,24 @@ export async function admitMultisig(
     };
     const recp = otherMembersAIDs.map((aid) => aid.prefix);
 
-    await client
-        .exchanges()
-        .send(
-            aid.name,
-            'multisig',
-            aid,
-            '/multisig/exn',
-            { gid: multisigAID.prefix },
-            gembeds,
-            recp
-        );
+    await sendExchangeToEachRecipient(client, {
+        name: aid.name,
+        topic: 'multisig',
+        sender: aid,
+        route: '/multisig/exn',
+        payload: {
+            gid: multisigAID.prefix,
+            credentialSaid,
+            grantSaid: grantNotification.exchangeSaid,
+        },
+        embeds: gembeds,
+        recipients: recp,
+    });
+    return {
+        operation,
+        coordination:
+            coordination === undefined
+                ? [grantNotification]
+                : [grantNotification, coordination],
+    };
 }

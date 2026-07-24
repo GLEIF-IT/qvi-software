@@ -1,10 +1,25 @@
-import signify, { CreateIdentiferArgs, HabState, SignifyClient } from "signify-ts";
-import { waitAndRemoveNotification } from "./notifications";
+import signify, {
+    type CreateIdentiferArgs,
+    type HabState,
+    type Operation,
+    type SignifyClient,
+} from 'signify-ts';
+
+import {
+    sendExchangeToEachRecipient,
+} from './exchanges.ts';
+import {requireCoordinatedEventDigest} from './multisig-coordination.ts';
+import {
+    waitForMatchingNotification,
+    type MatchedNotification,
+} from './notifications.ts';
 
 /**
  * Creates a multisig group with the given delegate member AID and other delegate member AIDs.
- * If not the initiator, waits for a "/multisig/icp" exchange (exn) notification to be received and
- * marked prior to sending out exn messages for the multisig inception event.
+ * If not the initiator, waits for a "/multisig/icp" exchange (exn)
+ * notification before sending the member's coordination messages. The
+ * notification remains unread until the caller proves terminal inception
+ * success.
  * Each member sends exn messages to each of the other participants.
  *
  * @param client The SignifyClient instance of the Controller AID making this request
@@ -12,21 +27,46 @@ import { waitAndRemoveNotification } from "./notifications";
  * @param otherMembersAIDs The other delegate member AIDs participating in the multisig group
  * @param groupName The name label of the multisig group. Should be the same across all multisig participants.
  * @param kargs The arguments for creating the identifier
- * @param isInitiator whether or not this is the initiator of the multisig group operation
+ * @param options coordination role and designated initiator
  */
+export interface MultisigCoordinationOptions {
+    isInitiator?: boolean;
+    coordinator?: string;
+}
+
+function requireCoordinator(
+    options: MultisigCoordinationOptions,
+    participantIsFollower: boolean,
+    route: string
+): string | undefined {
+    if (participantIsFollower === false) {
+        return undefined;
+    }
+    const coordinatorIsMissing =
+        typeof options.coordinator !== 'string' ||
+        options.coordinator.length === 0;
+    if (coordinatorIsMissing) {
+        throw new Error(
+            `${route} follower requires an explicit coordinator prefix`
+        );
+    }
+    return options.coordinator;
+}
+
 export async function createAIDMultisig(
     client: SignifyClient,
     aid: HabState,
     otherMembersAIDs: HabState[],
     groupName: string,
     kargs: CreateIdentiferArgs,
-    isInitiator: boolean = false
+    options: MultisigCoordinationOptions
 ) {
-    const participantIsFollower = isInitiator === false;
-    if (participantIsFollower) {
-        await waitAndRemoveNotification(client, '/multisig/icp');
-    }
-
+    const participantIsFollower = options.isInitiator !== true;
+    const coordinator = requireCoordinator(
+        options,
+        participantIsFollower,
+        '/multisig/icp'
+    );
     const icpResult = await client.identifiers().create(groupName, kargs);
     const op = await icpResult.op();
 
@@ -41,19 +81,41 @@ export async function createAIDMultisig(
     const smids = kargs.states?.map((state) => state['i']);
     const recp = otherMembersAIDs.map((aid) => aid.prefix);
 
-    await client
-        .exchanges()
-        .send(
-            aid.name,
-            'multisig',
-            aid,
-            '/multisig/icp',
-            { gid: serder.pre, smids: smids, rmids: smids },
-            embeds,
-            recp
-        );
+    let coordination: MatchedNotification | undefined;
+    if (participantIsFollower) {
+        coordination = await waitForMatchingNotification(client, {
+            notificationRoute: '/multisig/icp',
+            exchangeRoute: '/multisig/icp',
+            sender: coordinator,
+            recipient: aid.prefix,
+            groupPrefix: serder.pre,
+            embeddedDigest: serder.said,
+        });
+    }
 
-    return op;
+    if (coordination !== undefined) {
+        requireCoordinatedEventDigest(
+            coordination.exchange,
+            '/multisig/icp',
+            serder.said
+        );
+    }
+
+    await sendExchangeToEachRecipient(client, {
+        name: aid.name,
+        topic: 'multisig',
+        sender: aid,
+        route: '/multisig/icp',
+        payload: {gid: serder.pre, smids, rmids: smids},
+        embeds,
+        recipients: recp,
+    });
+
+    return {
+        operation: op,
+        coordination:
+            coordination === undefined ? [] : [coordination],
+    };
 }
 
 export async function addEndRoleMultisig(
@@ -63,25 +125,42 @@ export async function addEndRoleMultisig(
     otherMembersAIDs: HabState[],
     multisigAID: HabState,
     timestamp: string,
-    isInitiator: boolean = false
+    options: MultisigCoordinationOptions
 ) {
-    const participantIsFollower = isInitiator === false;
-    if (participantIsFollower) {
-        await waitAndRemoveNotification(client, '/multisig/rpy');
-    }
+    const participantIsFollower = options.isInitiator !== true;
+    const coordinator = requireCoordinator(
+        options,
+        participantIsFollower,
+        '/multisig/rpy'
+    );
 
-    const opList: any[] = [];
+    const coordinatedOperations: Array<{
+        operation: Operation;
+        coordination: MatchedNotification[];
+    }> = [];
     const members = await client.identifiers().members(multisigAID.name);
     const signings = members['signing'];
 
     for (const signing of signings) {
-        const eid = Object.keys(signing.ends.agent)[0];
+        const agentEnds = signing.ends.agent;
+        const agentEndsAreMissing = agentEnds === null;
+        if (agentEndsAreMissing) {
+            throw new Error(
+                `Signing member ${signing.aid} has no agent end role`
+            );
+        }
+        const eid = Object.keys(agentEnds)[0];
+        const endpointIsMissing = eid === undefined;
+        if (endpointIsMissing) {
+            throw new Error(
+                `Signing member ${signing.aid} has an empty agent end-role map`
+            );
+        }
+
         const endRoleResult = await client
             .identifiers()
             .addEndRole(multisigAID.name, 'agent', eid, timestamp);
         const op = await endRoleResult.op();
-        opList.push(op);
-
         const rpy = endRoleResult.serder;
         const sigs = endRoleResult.sigs;
         const ghabState1 = multisigAID.state;
@@ -104,18 +183,43 @@ export async function addEndRoleMultisig(
             rpy: [rpy, atc],
         };
         const recp = otherMembersAIDs.map((aid) => aid.prefix);
-        await client
-            .exchanges()
-            .send(
-                aid.name,
-                'multisig',
-                aid,
+        let coordination: MatchedNotification | undefined;
+        if (participantIsFollower) {
+            coordination = await waitForMatchingNotification(client, {
+                notificationRoute: '/multisig/rpy',
+                exchangeRoute: '/multisig/rpy',
+                sender: coordinator,
+                recipient: aid.prefix,
+                groupPrefix: multisigAID.prefix,
+                payloadFields: {eid},
+                embeddedDigest: rpy.said,
+            });
+        }
+        if (coordination !== undefined) {
+            requireCoordinatedEventDigest(
+                coordination.exchange,
                 '/multisig/rpy',
-                { gid: multisigAID.prefix },
-                roleembeds,
-                recp
+                rpy.said
             );
+        }
+        await sendExchangeToEachRecipient(client, {
+            name: aid.name,
+            topic: 'multisig',
+            sender: aid,
+            route: '/multisig/rpy',
+            payload: {gid: multisigAID.prefix, eid},
+            embeds: roleembeds,
+            recipients: recp,
+        });
+
+        coordinatedOperations.push({
+            operation: op,
+            coordination:
+                coordination === undefined ? [] : [coordination],
+        });
     }
 
-    return opList;
+    return {
+        coordinatedOperations,
+    };
 }

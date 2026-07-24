@@ -1,132 +1,420 @@
-import { SignifyClient } from "signify-ts";
-import { createTimestamp, parseAidInfo } from "../create-aid";
-import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
-import { addEndRoleMultisig } from "../multisig-creation";
-import { waitAndRemoveNotification } from "../notifications";
-import { waitOperation } from "../operations";
-import { resolveEnvironment, TestEnvironmentPreset } from "../resolve-env";
-import fs from 'fs';
+import {promises as fs} from 'node:fs';
 
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1]
-const dataDir = args[2];
-const aidInfoArg = args[3]
+import type {SignifyClient} from 'signify-ts';
 
-// resolve witness IDs for QVI multisig AID configuration
-const {witnessIds} = resolveEnvironment(env);
+import {
+    sortAgentEndpointsByEid,
+    sortAids,
+    sortOobis,
+} from '../canonical-order.ts';
+import {
+    isMainModule,
+    parseNamedArguments,
+    participantConfigFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+    type ParticipantConfig,
+} from '../cli.ts';
+import {createTimestamp} from '../create-aid.ts';
+import {addEndRoleMultisig} from '../multisig-creation.ts';
+import {
+    completeCoordinatedOperations,
+} from '../coordinated-operation.ts';
+import {retry} from '../retry.ts';
+import {memberContexts} from '../multisig-coordinator.ts';
+import {loadQviMembers} from './qvi-context.ts';
 
-/**
- * Authorizes the 'agent' role to each of the three agents used by each of the three SignifyTS participants in the QVI Multisig AID.
- * 
- * @param aidInfo Comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param witnessIds the set of witnesses to use for the QVI multisig AID configuration
- * @param environment runtime environment to use for resolving environment variables
- * @returns the three QAR SignifyClient instances
- */
-async function authorizeAgentEndRoleForQVI(multisigName: string, aidInfo: string, witnessIds: Array<string>, environment: TestEnvironmentPreset) {
-    const [WAN, WIL, WES, WIT] = witnessIds; // QARs use WIL, Person uses WES
+export interface AgentEndpoint {
+    eid: string;
+    url: string;
+}
 
-    // get Clients
-    const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
-    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
-    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
-    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
-    // get AIDs
-    const aidConfigQARs = {
-        toad: 1,
-        wits: [WIL],
+export interface QviMultisigOobi {
+    qviPrefix: string;
+    multisigOobi: string;
+    agentEndpoints: AgentEndpoint[];
+}
+
+export interface AuthorizeEndRoleOptions {
+    config: ParticipantConfig;
+    groupName: string;
+    dataDir: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+function readEndpointUrl(value: unknown, eid: string): string {
+    let endpoint: unknown = value;
+    if (isRecord(value)) {
+        endpoint = value.http ?? value.https;
+    }
+    const endpointIsMissing =
+        typeof endpoint !== 'string' || endpoint.length === 0;
+    if (endpointIsMissing) {
+        throw new Error(
+            `QVI member agent ${eid} has no HTTP or HTTPS endpoint`
+        );
+    }
+    const endpointUrl = endpoint as string;
+
+    let url: URL;
+    try {
+        url = new URL(endpointUrl);
+    } catch (error: unknown) {
+        throw new Error(
+            `QVI member agent ${eid} has an invalid endpoint URL`,
+            {cause: error}
+        );
+    }
+    const schemeIsSupported =
+        url.protocol === 'http:' || url.protocol === 'https:';
+    if (schemeIsSupported === false) {
+        throw new Error(
+            `QVI member agent ${eid} uses unsupported endpoint scheme ${url.protocol}`
+        );
+    }
+    return url.toString();
+}
+
+function readSigningMemberAgentEndpoint(member: unknown): AgentEndpoint {
+    const memberIsAnObject = isRecord(member);
+    const memberEnds = memberIsAnObject ? member.ends : undefined;
+    const endsAreAnObject = isRecord(memberEnds);
+    const agentEnds = endsAreAnObject ? memberEnds.agent : undefined;
+    const memberIsInvalid = isRecord(agentEnds) === false;
+    if (memberIsInvalid) {
+        throw new Error(
+            'A QVI signing member has no agent endpoint data'
+        );
+    }
+
+    const concreteAgentEnds = agentEnds as Record<string, unknown>;
+    const agentEntries = Object.entries(concreteAgentEnds);
+    const hasExactlyOneAgent = agentEntries.length === 1;
+    if (hasExactlyOneAgent === false) {
+        throw new Error(
+            'Each QVI signing member must expose exactly one agent endpoint'
+        );
+    }
+
+    const [eid, endpoint] = agentEntries[0];
+    return {
+        eid,
+        url: readEndpointUrl(endpoint, eid),
     };
-    const [
-            QAR1Id,
-            QAR2Id,
-            QAR3Id,
-    ] = await Promise.all([
-        getOrCreateAID(QAR1Client, QAR1.name, aidConfigQARs),
-        getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
-        getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
-    ]);
+}
 
-    const qviMultisigAid = await QAR1Client.identifiers().get(multisigName);
+function readMemberAgentEndpoints(
+    members: unknown,
+    expectedEids: string[]
+): AgentEndpoint[] {
+    const membersAreAnObject = isRecord(members);
+    const signingMembers = membersAreAnObject
+        ? members.signing
+        : undefined;
+    const membersAreInvalid =
+        Array.isArray(signingMembers) === false;
+    if (membersAreInvalid) {
+        throw new Error('QVI group member data has no signing members');
+    }
+    const concreteSigningMembers = signingMembers as unknown[];
 
-    // Skip if they have already been authorized.
-    let [oobiQVIbyQAR1, oobiQVIbyQAR2, oobiQVIbyQAR3] = await Promise.all([
-        QAR1Client.oobis().get(multisigName, 'agent'),
-        QAR2Client.oobis().get(multisigName, 'agent'),
-        QAR3Client.oobis().get(multisigName, 'agent'),
-    ]);
-    if (
-        oobiQVIbyQAR1.oobis.length == 0 ||
-        oobiQVIbyQAR2.oobis.length == 0 ||
-        oobiQVIbyQAR3.oobis.length == 0
-    ) {
-        const timestamp = createTimestamp();
-        const opList1 = await addEndRoleMultisig(
-            QAR1Client,
-            multisigName,
-            QAR1Id,
-            [QAR2Id, QAR3Id],
-            qviMultisigAid,
-            timestamp,
-            true
+    const endpoints = sortAgentEndpointsByEid(
+        concreteSigningMembers.map(readSigningMemberAgentEndpoint)
+    );
+
+    const observedEids = endpoints.map(({eid}) => eid);
+    const endpointUrls = endpoints.map(({url}) => url);
+    const endpointUrlsAreUnique =
+        new Set(endpointUrls).size === endpointUrls.length;
+    if (endpointUrlsAreUnique === false) {
+        throw new Error(
+            'QVI member agents must expose three distinct endpoint URLs'
         );
-        const opList2 = await addEndRoleMultisig(
-            QAR2Client,
-            multisigName,
-            QAR2Id,
-            [QAR1Id, QAR3Id],
-            qviMultisigAid,
-            timestamp
+    }
+    const expectedEidsInCanonicalOrder = sortAids(expectedEids);
+    const endpointEidsAreExact =
+        JSON.stringify(observedEids) ===
+        JSON.stringify(expectedEidsInCanonicalOrder);
+    if (endpointEidsAreExact === false) {
+        throw new Error(
+            'QVI member endpoint data does not cover the expected agent EIDs'
         );
-        const opList3 = await addEndRoleMultisig(
-            QAR3Client,
-            multisigName,
-            QAR3Id,
-            [QAR1Id, QAR2Id],
-            qviMultisigAid,
-            timestamp
+    }
+    return endpoints;
+}
+
+async function observeCommonMemberAgentEndpoints(
+    clients: SignifyClient[],
+    groupName: string,
+    expectedEids: string[]
+): Promise<AgentEndpoint[]> {
+    const observations = await Promise.all(
+        clients.map(async (client) =>
+            readMemberAgentEndpoints(
+                await client.identifiers().members(groupName),
+                expectedEids
+            )
+        )
+    );
+    const expectedObservation = JSON.stringify(observations[0]);
+    const everyClientAgrees = observations.every(
+        (observation) =>
+            JSON.stringify(observation) === expectedObservation
+    );
+    if (everyClientAgrees === false) {
+        throw new Error(
+            'QARs disagree on QVI member agent endpoint locations'
         );
+    }
+    return observations[0];
+}
 
-        await Promise.all(opList1.map((op) => waitOperation(QAR1Client, op)));
-        await Promise.all(opList2.map((op) => waitOperation(QAR2Client, op)));
-        await Promise.all(opList3.map((op) => waitOperation(QAR3Client, op)));
-
-        await waitAndRemoveNotification(QAR1Client, '/multisig/rpy');
-        // await waitAndRemoveNotification(QAR2Client, '/multisig/rpy');
-        // await waitAndRemoveNotification(QAR3Client, '/multisig/rpy');
-        // need it for client 3?
-
-        [oobiQVIbyQAR1, oobiQVIbyQAR2, oobiQVIbyQAR3] = await Promise.all([
-            QAR1Client.oobis().get(multisigName, 'agent'),
-            QAR2Client.oobis().get(multisigName, 'agent'),
-            QAR3Client.oobis().get(multisigName, 'agent'),
+async function requireCommonAuthorizedAgentEids(
+    clients: SignifyClient[],
+    qviPrefix: string,
+    expectedEids: string[]
+): Promise<void> {
+    const expectedEidsInCanonicalOrder = sortAids(expectedEids);
+    const observations = await Promise.all(
+        clients.map((client) =>
+            client.oobis().endroles(qviPrefix, 'agent')
+        )
+    );
+    const everyClientObservesExactRoles = observations.every((roles) => {
+        const entriesAreScoped = roles.every(
+            (role) =>
+                role.cid === qviPrefix &&
+                role.role === 'agent' &&
+                typeof role.eid === 'string' &&
+                role.eid.length > 0
+        );
+        const observedEids = sortAids([
+            ...new Set(roles.map(({eid}) => eid)),
         ]);
-
-        const oobiData = await getQVIMultisigOobi(QAR1Client);
-        await fs.promises.writeFile(`${dataDir}/qvi-oobi.json`, JSON.stringify(oobiData));
-        console.log('QVI multisig oobi has been authorized and generated');
-    }
-    else {
-        const oobiData = await getQVIMultisigOobi(QAR1Client);
-        await fs.promises.writeFile(`${dataDir}/qvi-oobi.json`, JSON.stringify(oobiData));
-        console.log("QVI multisig oobi has already been authorized and generated");
+        return (
+            entriesAreScoped &&
+            JSON.stringify(observedEids) ===
+                JSON.stringify(expectedEidsInCanonicalOrder)
+        );
+    });
+    if (everyClientObservesExactRoles === false) {
+        throw new Error(
+            'QARs do not observe the exact authorized QVI agent EIDs'
+        );
     }
 }
 
-/**
- * Writes the agent OOBI to the file qvi-oobi.json.
- * The agent OOBI strips off the final AID prefix that is specific to the participant so that messages sent to this OOBI
- * are sent to all multisig participants rather t han the participant identified by the last AID prefix on the agent OOBI.
- * @param QAR1Client SignifyClient for QAR1
- * @param QAR2Client SignifyClient for QAR2
- * @param QAR3Client SignifyClient for QAR3
- * @returns 
- */
-async function getQVIMultisigOobi(QAR1Client: SignifyClient) {
-    const msOobiResp = await QAR1Client.oobis().get(multisigName, 'agent')
-    const oobi=msOobiResp.oobis[0].split('/agent/')[0];
-    return {oobi: oobi}
+function qualifiedAgentOobi(
+    endpoint: AgentEndpoint,
+    qviPrefix: string
+): string {
+    return new URL(
+        `/oobi/${qviPrefix}/agent/${endpoint.eid}`,
+        endpoint.url
+    ).toString();
 }
-await authorizeAgentEndRoleForQVI(multisigName, aidInfoArg, witnessIds, env);
 
+function stripAgentSuffix(
+    qualifiedOobi: string,
+    qviPrefix: string
+): string {
+    const oobi = new URL(qualifiedOobi);
+    oobi.pathname = `/oobi/${qviPrefix}`;
+    return oobi.toString();
+}
+
+export async function collectQviMultisigOobi(
+    clients: SignifyClient[],
+    groupName: string,
+    qviPrefix: string
+): Promise<QviMultisigOobi> {
+    const expectedEids = clients.map((client) => client.agent?.pre);
+    const agentIsMissing = expectedEids.some(
+        (eid) => typeof eid !== 'string' || eid.length === 0
+    );
+    if (agentIsMissing) {
+        throw new Error('A QAR Signify client has no connected agent AID');
+    }
+    const concreteEids = expectedEids as string[];
+    const agentEidsAreDuplicated =
+        new Set(concreteEids).size !== concreteEids.length;
+    if (agentEidsAreDuplicated) {
+        throw new Error(
+            `QAR agent EIDs are not unique: ${concreteEids.join(',')}`
+        );
+    }
+
+    await requireCommonAuthorizedAgentEids(
+        clients,
+        qviPrefix,
+        concreteEids
+    );
+    const endpoints = await observeCommonMemberAgentEndpoints(
+        clients,
+        groupName,
+        concreteEids
+    );
+    const qualifiedAgentOobis = endpoints.map((endpoint) => ({
+        eid: endpoint.eid,
+        oobi: qualifiedAgentOobi(endpoint, qviPrefix),
+    }));
+    const expectedOobis = new Map(
+        qualifiedAgentOobis.map(({eid, oobi}) => [oobi, eid])
+    );
+
+    const responses = await Promise.all(
+        clients.map((client) =>
+            client.oobis().get(groupName, 'agent')
+        )
+    );
+    const enumeratedOobis = sortOobis([
+        ...new Set(responses.flatMap((result) => result.oobis)),
+    ]);
+    const enumeratedOobiIsMissing = enumeratedOobis.length === 0;
+    if (enumeratedOobiIsMissing) {
+        throw new Error(
+            'KERIA returned no qualified QVI agent OOBI to canonicalize'
+        );
+    }
+    for (const oobi of enumeratedOobis) {
+        const eid = expectedOobis.get(oobi);
+        const enumeratedOobiIsUnexpected = eid === undefined;
+        if (enumeratedOobiIsUnexpected) {
+            throw new Error(
+                `KERIA enumerated an unexpected QVI agent OOBI: ${oobi}`
+            );
+        }
+    }
+
+    const multisigOobi = stripAgentSuffix(
+        enumeratedOobis[0],
+        qviPrefix
+    );
+    return {
+        qviPrefix,
+        multisigOobi,
+        agentEndpoints: endpoints,
+    };
+}
+
+export async function authorizeAgentEndRoles(
+    options: AuthorizeEndRoleOptions
+): Promise<QviMultisigOobi> {
+    const members = await loadQviMembers(
+        options.config,
+        options.groupName
+    );
+    const clients = members.map(({client}) => client);
+    const memberAids = members.map(({memberAid}) => memberAid);
+    const groupAids = members.map(({groupAid}) => groupAid);
+    const qviPrefix = groupAids[0].prefix;
+
+    let qviOobi: QviMultisigOobi | undefined;
+    try {
+        qviOobi = await collectQviMultisigOobi(
+            clients,
+            options.groupName,
+            qviPrefix
+        );
+    } catch {
+        const responses = await Promise.all(
+            clients.map((client) =>
+                client.oobis().get(options.groupName, 'agent')
+            )
+        );
+        const noAgentOobisExist = responses.every(
+            (response) => response.oobis.length === 0
+        );
+        if (noAgentOobisExist === false) {
+            throw new Error(
+                'QVI agent end-role state is partial or contains unexpected OOBIs'
+            );
+        }
+    }
+
+    if (qviOobi === undefined) {
+        const timestamp = createTimestamp();
+        const coordinationResults: Array<
+            Awaited<ReturnType<typeof addEndRoleMultisig>>
+        > = [];
+        const contexts = memberContexts(
+            members.map(({client, memberAid}) => ({
+                client,
+                aid: memberAid,
+            }))
+        );
+        for (let index = 0; index < contexts.length; index++) {
+            const context = contexts[index];
+            coordinationResults.push(
+                await addEndRoleMultisig(
+                    context.client,
+                    options.groupName,
+                    context.aid,
+                    context.otherMembers,
+                    groupAids[index],
+                    timestamp,
+                    {
+                        isInitiator: context.isInitiator,
+                        coordinator: context.coordinatorPrefix,
+                    }
+                )
+            );
+        }
+        await completeCoordinatedOperations(
+            coordinationResults.flatMap((result, clientIndex) =>
+                result.coordinatedOperations.map((operation) => ({
+                    client: clients[clientIndex],
+                    result: operation,
+                }))
+            )
+        );
+
+        qviOobi = await retry(
+            () =>
+                collectQviMultisigOobi(
+                    clients,
+                    options.groupName,
+                    qviPrefix
+                )
+        );
+    }
+
+    await fs.writeFile(
+        `${options.dataDir}/qvi-oobi.json`,
+        JSON.stringify(qviOobi)
+    );
+    return qviOobi;
+}
+
+function parseAuthorizeArguments(
+    argv: string[]
+): AuthorizeEndRoleOptions {
+    const args = parseNamedArguments(argv, [
+        'config',
+        'environment',
+        'participant-source',
+        'group-name',
+        'data-dir',
+    ]);
+    requireNamedArguments(args, [
+        'group-name',
+        'data-dir',
+    ]);
+    return {
+        config: participantConfigFromArguments(args),
+        groupName: args['group-name'],
+        dataDir: args['data-dir'],
+    };
+}
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const options = parseAuthorizeArguments(
+            process.argv.slice(2)
+        );
+        return authorizeAgentEndRoles(options);
+    });
+}

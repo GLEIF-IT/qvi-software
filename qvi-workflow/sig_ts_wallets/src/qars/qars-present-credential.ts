@@ -1,136 +1,94 @@
-import {TestEnvironmentPreset} from "../resolve-env.ts";
-import {createTimestamp, parseAidInfo} from "../create-aid.ts";
-import {getOrCreateClient} from "../keystore-creation.ts";
 import {
-    getIssuedCredential,
-    getReceivedCredBySchemaAndIssuer,
-    grantMultisig
-} from "../credentials.ts";
-import {waitAndRemoveNotification} from "../notifications.ts";
+    isMainModule,
+    parseNamedArguments,
+    participantConfigFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+    type ParticipantConfig,
+} from '../cli.ts';
+import {createTimestamp} from '../create-aid.ts';
+import {grantMultisig} from '../credentials.ts';
+import {getCredential} from '../credential-state.ts';
+import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
+import {loadQviMembers} from './qvi-context.ts';
 
-// process arguments
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1]
-const aidInfoArg = args[2]
-const schemaSAID = args[3]
-const issuerPrefix = args[4]
-const issueePrefix = args[5]
-const recipientPrefix = args[6]
-
-/**
- * Grants a credential from the QVI multisig AID to a recipient
- *
- * @param multisigName name of the multisig AID
- * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param schemaSAID The schema SAID of the type of credential issuance to check for.
- * @param issuerPrefix identifier of the issuer AID who issued the credential
- * @param issueePrefix identifier of the original issuee of the credential being presented
- * @param recipientPrefix identifier of the recipient AID who will receive the credential presentation
- * @param environment the runtime environment to use for resolving environment variables
- * @returns {Promise<string>} String true/false if QVI credential exists or not for the QAR
- */
-export async function grantCredential(
-    multisigName: string, aidInfo: string, schemaSAID: string, issuerPrefix: string,
-    issueePrefix: string, recipientPrefix: string, environment: TestEnvironmentPreset): Promise<string> {
-    // get QAR Clients
-    const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
-    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
-    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
-    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
-
-    // get QVI participant AIDs
-    const QAR1Id = await QAR1Client.identifiers().get(QAR1.name);
-    const QAR2Id = await QAR2Client.identifiers().get(QAR2.name);
-    const QAR3Id = await QAR3Client.identifiers().get(QAR3.name);
-
-    // get multisig
-    const qviAID = await QAR1Client.identifiers().get(multisigName);
-
-    // Check to see if the credential exists
-    let receivedCred = await getReceivedCredBySchemaAndIssuer(
-        QAR1Client,
-        schemaSAID,
-        issuerPrefix
-    )
-    if (!receivedCred) {
-        return "false-credential-not-found"
-    }
-
-    // grant credential
-    const credbyQAR1 = await getIssuedCredential(
-        QAR1Client,
-        issuerPrefix,
-        issueePrefix,
-        schemaSAID
-    );
-    const credbyQAR2 = await getIssuedCredential(
-        QAR2Client,
-        issuerPrefix,
-        issueePrefix,
-        schemaSAID
-    );
-    const credbyQAR3 = await getIssuedCredential(
-        QAR3Client,
-        issuerPrefix,
-        issueePrefix,
-        schemaSAID
-    );
-
-    const grantTime = createTimestamp();
-    console.log(`[QVI] IPEX Granting credential to ${recipientPrefix}...`);
-    console.log(`[QVI] QAR1 IPEX Granting credential to ${recipientPrefix}...`);
-    await grantMultisig(
-        QAR1Client,
-        QAR1Id,
-        [QAR2Id, QAR3Id],
-        qviAID,
-        recipientPrefix,
-        credbyQAR1,
-        grantTime,
-        true
-    );
-    console.log(`[QVI] QAR2 IPEX Granting credential to ${recipientPrefix}...`);
-    await grantMultisig(
-        QAR2Client,
-        QAR2Id,
-        [QAR1Id, QAR3Id],
-        qviAID,
-        recipientPrefix,
-        credbyQAR2,
-        grantTime
-    );
-    console.log(`[QVI] QAR3 IPEX Granting credential to ${recipientPrefix}...`);
-    await grantMultisig(
-        QAR3Client,
-        QAR3Id,
-        [QAR1Id, QAR2Id],
-        qviAID,
-        recipientPrefix,
-        credbyQAR3,
-        grantTime
-    );
-    console.log(`[QVI] IPEX Granting credential to ${recipientPrefix}...done`);
-
-    console.log(`[QVI] consuming IPEX Grant notifications for all QARs...`);
-    try {
-        await waitAndRemoveNotification(QAR1Client, '/exn/ipex/grant');
-    } catch (e) {
-        console.log(`QAR1 did not have an /exn/ipex/grant notification to mark: ${e}`);
-    }
-    try {
-        await waitAndRemoveNotification(QAR2Client, '/exn/ipex/grant');
-    } catch (e) {
-        console.log(`QAR2 did not have an /exn/ipex/grant notification to mark: ${e}`);
-    }
-    try {
-        await waitAndRemoveNotification(QAR3Client, '/exn/ipex/grant');
-    } catch (e) {
-        console.log(`QAR3 did not have an /exn/ipex/grant notification to mark: ${e}`);
-    }
-
-    return "true";
+export interface PresentCredentialOptions {
+    config: ParticipantConfig;
+    groupName: string;
+    credentialSaid: string;
+    recipientPrefix: string;
 }
 
-const granted: string = await grantCredential(multisigName, aidInfoArg, schemaSAID, issuerPrefix, issueePrefix, recipientPrefix, env);
-console.log(granted);
+export async function presentCredential(
+    options: PresentCredentialOptions
+) {
+    const members = await loadQviMembers(
+        options.config,
+        options.groupName
+    );
+    const credentials = await Promise.all(
+        members.map(({client}) =>
+            getCredential(client, options.credentialSaid)
+        )
+    );
+    const timestamp = createTimestamp();
+    await coordinateMultisigOperation(
+        members.map(({client, memberAid}) => ({
+            client,
+            aid: memberAid,
+        })),
+        (context) => {
+            const memberIndex = members.findIndex(
+                ({memberAid}) =>
+                    memberAid.prefix === context.aid.prefix
+            );
+            if (memberIndex < 0) {
+                throw new Error(
+                    `Missing QVI member ${context.aid.prefix}`
+                );
+            }
+            return grantMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                members[memberIndex].groupAid,
+                options.recipientPrefix,
+                credentials[memberIndex],
+                timestamp,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            );
+        }
+    );
+    return {
+        status: 'presented' as const,
+        credentialSaid: options.credentialSaid,
+        recipientPrefix: options.recipientPrefix,
+    };
+}
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const args = parseNamedArguments(process.argv.slice(2), [
+            'config',
+            'environment',
+            'participant-source',
+            'group-name',
+            'credential-said',
+            'recipient-prefix',
+        ]);
+        requireNamedArguments(args, [
+            'group-name',
+            'credential-said',
+            'recipient-prefix',
+        ]);
+        return presentCredential({
+            config: participantConfigFromArguments(args),
+            groupName: args['group-name'],
+            credentialSaid: args['credential-said'],
+            recipientPrefix: args['recipient-prefix'],
+        });
+    });
+}

@@ -1,103 +1,31 @@
-#!/bin/bash
-##################################################################
-##                                                              ##
-##          KLI Commands proxied by Docker Containers           ##
-##                                                              ##
-##################################################################
+#!/usr/bin/env bash
 
-LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-export KLI_DATA_DIR="${LOCAL_DIR}/acdc-info"
-export KLI_CONFIG_DIR="${LOCAL_DIR}/config"
+# Compose-backed command adapters used by vlei-workflow.sh.
 
-KEYSTORE_DIR=${1:-./docker-keystores}
-ENVIRONMENT=${2:-docker-tsx}
-
-if [ ! -d "${KEYSTORE_DIR}" ]; then
-    echo "Creating Keystore directory ${KEYSTORE_DIR}"
-    mkdir -p "${KEYSTORE_DIR}"
-fi
-
-# Set current working directory for all scripts that must access files
-KLI1IMAGE="weboftrust/keri:1.1.32"
-KLI2IMAGE="gleif/keri:1.2.9"
-
-TSX_SIGNIFY_IMG="gleif/vlei-workflow-signify:1.0.0"
-
-# Separate function enables different version of KERIpy to be used for some identifiers.
-function kli() {
-  docker run -it --rm \
-    --network vlei \
-    -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}":/config \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI1IMAGE}" "$@"
+kli() {
+    workflow_compose run --rm --no-deps -T kli "$@"
 }
 
-export -f kli
-
-# Runs the KLI command in a detached container which is expected to be used in conjunction with
-# `docker wait` to wait for the container to finish before continuing with further steps.
-function klid() {
-  name=$1
-  # must pull first arg off to use as container name
-  shift 1
-  # pass remaining args to docker run
-  docker run -d \
-    --network vlei \
-    --name $name \
-    -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}":/config \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI1IMAGE}" "$@"
+klid() {
+    local logical_name=$1
+    shift
+    run_detached_compose_job kli "${logical_name}" "$@"
 }
 
-export -f klid
-
-# Separate function enables different version of KERIpy to be used for some identifiers.
-function kli2() {
-  docker run -it --rm \
-    --network vlei \
-    -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}":/config \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI2IMAGE}" "$@"
+kli2() {
+    workflow_compose run --rm --no-deps -T kli2 "$@"
 }
 
-export -f kli2
-
-# Runs the KLI command in a detached container which is expected to be used in conjunction with
-# `docker wait` to wait for the container to finish before continuing with further steps.
-function kli2d() {
-  name=$1
-  # must pull first arg off to use as container name
-  shift 1
-  # pass remaining args to docker run
-  docker run -d \
-    --network vlei \
-    --name $name \
-    -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}":/config \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI2IMAGE}" "$@"
+kli2d() {
+    local logical_name=$1
+    shift
+    run_detached_compose_job kli2 "${logical_name}" "$@"
 }
 
-export -f kli2d
-
-function sig_tsx() {
-  docker run -it --rm \
-    --network vlei \
-    -e ENVIRONMENT="${ENVIRONMENT}" \
-    -v "${LOCAL_DIR}/qvi_data":/vlei-workflow/qvi_data \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    "${TSX_SIGNIFY_IMG}" "tsx" "$@"
+sig_tsx() {
+    workflow_compose run --rm --no-deps -T signify "$@"
 }
 
-export -f sig_tsx
-
-echo "Keystore directory is ${KEYSTORE_DIR}"
-echo "Data directory is ${KLI_DATA_DIR}"
-echo "Config directory is ${KLI_CONFIG_DIR}"
+wait_kli_jobs() {
+    wait_for_compose_jobs "$@"
+}

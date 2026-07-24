@@ -1,28 +1,110 @@
-import { getOrCreateContact } from "./agent-contacts";
-import {getOrCreateClient} from "./keystore-creation";
-import { TestEnvironmentPreset } from "./resolve-env";
-import { parseAidInfo } from "./create-aid";
-import { OobiInfo } from "./qvi-data";
+import {readFileSync} from 'node:fs';
 
-// Pull in arguments from the command line and configuration
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const multisigName = args[1];
-const aidInfoArg = args[2];
-const qviOobiArg = args[3];
+import {getOrCreateContact} from './agent-contacts.ts';
+import {
+    isMainModule,
+    parseNamedArguments,
+    participantConfigFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+    type ParticipantConfig,
+} from './cli.ts';
+import {getOrCreateClient} from './keystore-creation.ts';
 
-/**
- * Resolves the QVI Multisig OOBI for the Person in preparation for receiving the ECR and OOR credentials
- * @param aidInfo A comma-separated list of AID information that is further separated by a pipe character for name, salt, and position
- * @param qviOobi The QVI multisig OOBI
- * @param environment the runtime environment to use for resolving environment variables
- */
-async function resolveQVIOobi(multisigName: string, aidInfo: string, qviOobi: string, environment: TestEnvironmentPreset) {
-    // create SignifyTS Clients
-    const {PERSON} = parseAidInfo(aidInfo);
-    // Create SignifyTS Clients
-    const personClient = await getOrCreateClient(PERSON.salt, environment, 1);
-    await getOrCreateContact(personClient, multisigName, qviOobi);
+export interface ResolveQviOobiOptions {
+    config: ParticipantConfig;
+    groupName: string;
+    oobiFile: string;
 }
-await resolveQVIOobi(multisigName, aidInfoArg, qviOobiArg, env);
-console.log('Person resolved QVI OOBI ' + qviOobiArg);
+
+interface QviOobiArtifact {
+    qviPrefix: string;
+    multisigOobi: string;
+}
+
+function readQviOobi(path: string): QviOobiArtifact {
+    const decoded = JSON.parse(
+        readFileSync(path, 'utf8')
+    ) as unknown;
+    const artifactIsInvalid =
+        typeof decoded !== 'object' ||
+        decoded === null ||
+        typeof (decoded as {qviPrefix?: unknown}).qviPrefix !==
+            'string' ||
+        typeof (decoded as {multisigOobi?: unknown}).multisigOobi !==
+            'string';
+    if (artifactIsInvalid) {
+        throw new Error(`Invalid QVI OOBI artifact ${path}`);
+    }
+
+    const artifact = decoded as QviOobiArtifact;
+    const expectedPath = `/oobi/${artifact.qviPrefix}`;
+    const pathMatches =
+        new URL(artifact.multisigOobi).pathname === expectedPath;
+    if (pathMatches === false) {
+        throw new Error(
+            `QVI OOBI ${artifact.multisigOobi} does not match ${expectedPath}`
+        );
+    }
+    return artifact;
+}
+
+export async function resolveQviOobiForPerson(
+    options: ResolveQviOobiOptions
+) {
+    const config = options.config;
+    const person = config.participants.person;
+    const client = await getOrCreateClient(
+        person.salt,
+        config.environment,
+        person.keriaHost
+    );
+    const artifact = readQviOobi(options.oobiFile);
+    const resolvedPrefix = await getOrCreateContact(
+        client,
+        options.groupName,
+        artifact.multisigOobi
+    );
+    const oobiResolvedToQvi =
+        resolvedPrefix === artifact.qviPrefix;
+    if (oobiResolvedToQvi === false) {
+        throw new Error(
+            `QVI multisig OOBI resolved to unexpected prefix ${resolvedPrefix}`
+        );
+    }
+
+    return {
+        status: 'resolved' as const,
+        qviPrefix: artifact.qviPrefix,
+    };
+}
+
+function parseResolveArguments(
+    argv: string[]
+): ResolveQviOobiOptions {
+    const args = parseNamedArguments(argv, [
+        'config',
+        'environment',
+        'participant-source',
+        'group-name',
+        'oobi-file',
+    ]);
+    requireNamedArguments(args, [
+        'group-name',
+        'oobi-file',
+    ]);
+    return {
+        config: participantConfigFromArguments(args),
+        groupName: args['group-name'],
+        oobiFile: args['oobi-file'],
+    };
+}
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const options = parseResolveArguments(
+            process.argv.slice(2)
+        );
+        return resolveQviOobiForPerson(options);
+    });
+}

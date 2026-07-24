@@ -1,7 +1,7 @@
 import {
     SignifyClient,
 } from 'signify-ts';
-import { waitOperation } from './operations';
+import {waitKeyStateOperation} from './operations.ts';
 
 /**
  * Get or resolve a Keri contact
@@ -26,7 +26,7 @@ export async function getOrCreateContact(
             return contact.id;
         }
     }
-    let op = await client.oobis().resolve(oobi, name);
-    op = await waitOperation(client, op);
-    return op.response.i;
+    const operation = await client.oobis().resolve(oobi, name);
+    const state = await waitKeyStateOperation(client, operation);
+    return state.i;
 }

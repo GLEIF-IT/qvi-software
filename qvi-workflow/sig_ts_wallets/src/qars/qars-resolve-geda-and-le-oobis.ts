@@ -3,12 +3,13 @@ import {getOrCreateClient} from "../keystore-creation";
 import { TestEnvironmentPreset } from "../resolve-env";
 import { parseAidInfo } from "../create-aid";
 import { OobiInfo } from "../qvi-data";
-
-// Pull in arguments from the command line and configuration
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1];
-const oobiInfoArg = args[2];
+import {
+    isMainModule,
+    parseNamedArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
 // parse the OOBIs for the GEDA and GIDA multisig AIDs needed for delegation and then LE credential issuance
 export function parseOobiInfo(oobiInfo: string) {
@@ -29,7 +30,11 @@ export function parseOobiInfo(oobiInfo: string) {
  * @param oobiInfo A comma-separated list of OOBIs for the GEDA and GIDA multisig AIDs
  * @param environment the runtime environment to use for resolving environment variables
  */
-async function resolveMultisigOobis(aidInfo: string, oobiInfo: string, environment: TestEnvironmentPreset) {
+export async function resolveMultisigOobis(
+    aidInfo: string,
+    oobiInfo: string,
+    environment: TestEnvironmentPreset
+) {
     // create SignifyTS Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
@@ -46,7 +51,22 @@ async function resolveMultisigOobis(aidInfo: string, oobiInfo: string, environme
 
         getOrCreateContact(QAR3Client, GEDA_NAME.position, GEDA_NAME.oobi),
         getOrCreateContact(QAR3Client, LE_NAME.position, LE_NAME.oobi),
-    ])
-    console.log('Resolved multisig OOBIs');
+    ]);
+    return {status: 'resolved' as const, contactCount: 6};
 }
-await resolveMultisigOobis(aidInfoArg, oobiInfoArg, env);
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedArguments(
+            process.argv.slice(2),
+            ['config', 'environment', 'participant-source', 'oobis']
+        );
+        requireNamedArguments(parsed, ['oobis']);
+        const invocation = participantInvocationFromArguments(parsed);
+        return resolveMultisigOobis(
+            invocation.participantSource,
+            parsed.oobis,
+            invocation.environment
+        );
+    });
+}

@@ -2,13 +2,13 @@ import {getOrCreateContact} from "../agent-contacts";
 import {getOrCreateClient} from "../keystore-creation";
 import {TestEnvironmentPreset} from "../resolve-env";
 import {parseAidInfo} from "../create-aid";
-
-// Pull in arguments from the command line and configuration
-const args = process.argv.slice(2);
-const env = args[0] as 'local' | 'docker';
-const aidInfoArg = args[1];
-const aliasArg = args[2];
-const oobiArg = args[3];
+import {
+    isMainModule,
+    parseNamedArguments,
+    participantInvocationFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+} from '../cli.ts';
 
 /**
  * Resolves an OOBI for the QVI Multisig participants.
@@ -18,7 +18,7 @@ const oobiArg = args[3];
  * @param oobi The QVI multisig OOBI
  * @param environment the runtime environment to use for resolving environment variables
  */
-async function resolveQVIOobi(aidInfo: string, alias: string, oobi: string, environment: TestEnvironmentPreset) {
+export async function resolveQVIOobi(aidInfo: string, alias: string, oobi: string, environment: TestEnvironmentPreset) {
     // create SignifyTS Clients
     const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfo);
     const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
@@ -29,5 +29,25 @@ async function resolveQVIOobi(aidInfo: string, alias: string, oobi: string, envi
     await getOrCreateContact(QAR2Client, alias, oobi);
     await getOrCreateContact(QAR3Client, alias, oobi);
 }
-await resolveQVIOobi(aidInfoArg, aliasArg, oobiArg, env);
-console.log(`QVI resolved OOBI ${aliasArg} ${oobiArg}`);
+
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const parsed = parseNamedArguments(
+            process.argv.slice(2),
+            ['config', 'environment', 'participant-source', 'alias', 'oobi']
+        );
+        requireNamedArguments(parsed, ['alias', 'oobi']);
+        const invocation = participantInvocationFromArguments(parsed);
+        await resolveQVIOobi(
+            invocation.participantSource,
+            parsed.alias,
+            parsed.oobi,
+            invocation.environment
+        );
+        return {
+            status: 'resolved',
+            alias: parsed.alias,
+            oobi: parsed.oobi,
+        };
+    });
+}

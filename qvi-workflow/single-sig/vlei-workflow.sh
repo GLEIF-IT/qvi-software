@@ -3,13 +3,14 @@
 # Runs the entire QVI issuance workflow end to end
 
 set -u  # undefined variable detection
+umask 077
 START_TIME=$(date +%s)
 
 # Load utility functions
 source color-printing.sh
 
 # NOTE: (used by resolve-env.ts)
-ENVIRONMENT=single-sig-docker # means separate witnesses for GARs, QARs + LARs, Person, and Sally
+ENVIRONMENT=single-sig-docker # separate witnesses for GARs, QARs + LARs, and Person
 KEYSTORE_DIR=./docker-keystores
 
 # Load kli commands
@@ -44,6 +45,12 @@ function cleanup() {
     docker compose -f $DOCKER_COMPOSE_FILE kill
     docker compose -f $DOCKER_COMPOSE_FILE down -v
     rm -rfv "${KEYSTORE_DIR:?}"/*
+    if [[ -n "${PARTICIPANT_CONFIG_HOST:-}" ]]; then
+        rm -f "${PARTICIPANT_CONFIG_HOST}"
+    fi
+    if [[ -n "${DOCKER_ENV_FILE:-}" ]]; then
+        rm -f "${DOCKER_ENV_FILE}"
+    fi
     END_TIME=$(date +%s)
     SCRIPT_TIME=$(($END_TIME - $START_TIME))
     print_lcyan "Script took ${SCRIPT_TIME} seconds to run"
@@ -52,7 +59,7 @@ function cleanup() {
 }
 
 function clear_containers() {
-    container_names=("gar" "lar" "qar" "person" "sally" "direct-sally")
+    container_names=("gar" "lar" "qar" "person" "direct-sally")
 
     for name in "${container_names[@]}"; do
     if docker ps -a | grep -q "$name"; then
@@ -80,6 +87,9 @@ function create_docker_containers() {
 QVI_SIGNIFY_DIR=/vlei-workflow/src
 QVI_DATA_DIR=/vlei-workflow/qvi_data
 LOCAL_QVI_DATA_DIR=$(dirname "$0")/qvi_data
+PARTICIPANT_CONFIG="${QVI_DATA_DIR}/participants.json"
+PARTICIPANT_CONFIG_HOST="${LOCAL_QVI_DATA_DIR}/participants.json"
+DOCKER_ENV_FILE=./keria-signify-docker.env
 
 SCHEMA_SERVER=http://vlei-server:7723
 
@@ -93,10 +103,6 @@ WIL_PRE=BLskRTInXnMxWaGqcpSyMgo0nYbalW99cGZESrz3zapM
 # Wes 5644
 WIT_HOST_PERSON=http://person-witnesses:5644
 WES_PRE=BIKKuvBwpmDVA4Ds-EpL5bt9OqPzWPja2LigFYZN2YfX
-# Wit 5645
-WIT_HOST_SALLY=http://sally-witnesses:5645
-WIT_PRE=BM35JN8XeJSEfpxopjn5jr7tAHCE5749f0OobhMLCorE
-
 # Container configuration (name of the config dir in docker containers kli*)
 CONT_CONFIG_DIR=/config
 
@@ -128,12 +134,6 @@ PERSON_OOR="Advisor"
 WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
 # exporting so available for child docker compose processes
 export WEBHOOK_HOST=http://hook:9923
-export INDIRECT_SALLY_HOST=http://sally:9723
-export INDIRECT_SALLY_KS_NAME=sally-indirect
-export INDIRECT_SALLY_ALIAS=sally-indirect
-export INDIRECT_SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
-export INDIRECT_SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-export INDIRECT_SALLY_PRE=EPxtqtYDHmhrCPLjYHQo4CF9ccHal1VgonSrVgmy6xYT # Different here because Sally uses witness Wit instead of Wan
 
 # Direct mode Sally
 export DIRECT_SALLY_HOST=http://direct-sally:9823
@@ -158,7 +158,7 @@ OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
 
 #### Write keria-signify-docker.env file with updated values ####
 function write_docker_env(){
-  print_bg_blue "[ADMIN] Writing prefixes, salts, passcodes, and schemas to keria-signfiy-docker.env"
+  print_bg_blue "[ADMIN] Writing protected workflow configuration"
   read -r -d '' DOCKER_ENV << EOM
 #### Identifier Information ####
 # GLEIF Authorized Representatives (GAR) AIDs
@@ -170,10 +170,6 @@ GAR_PASSCODE=$GAR_PASSCODE
 LAR=$LAR
 LAR_SALT=$LAR_SALT
 LAR_PASSCODE=$LAR_PASSCODE
-
-# Sally AID
-INDIRECT_SALLY_ALIAS=$INDIRECT_SALLY_ALIAS
-INDIRECT_SALLY_PRE=$INDIRECT_SALLY_PRE
 
 # Direct Sally AID
 DIRECT_SALLY_ALIAS=$DIRECT_SALLY_ALIAS
@@ -189,9 +185,9 @@ ECR_SCHEMA=$ECR_SCHEMA
 OOR_SCHEMA=$OOR_SCHEMA
 EOM
 
-  print_dark_gray "Writing keystore and identifier information to docker.env"
-  print_lcyan "${DOCKER_ENV}"
-  echo "${DOCKER_ENV}" > ./keria-signify-docker.env
+  printf '%s\n' "${DOCKER_ENV}" > "${DOCKER_ENV_FILE}"
+  chmod 600 "${DOCKER_ENV_FILE}"
+  print_dark_gray "Protected Docker environment written"
 }
 
 function start_docker_containers() {
@@ -208,7 +204,23 @@ function start_docker_containers() {
 # QVI Workflow with KERIpy, KERIA, and SignifyTS
 ################################################
 #### Prepare Salts and Passcodes ####
-export SIGTS_AIDS=""
+function require_generated_secret() {
+  local description=$1
+  local value=$2
+  local generation_status=$3
+  local secret_was_generated=false
+
+  if [[ ${generation_status} -eq 0 && -n "${value}" ]]; then
+    secret_was_generated=true
+  fi
+  if [[ "${secret_was_generated}" == false ]]; then
+    print_red "Failed to generate ${description}"
+    return 1
+  fi
+
+  print_lcyan "${description} generated"
+}
+
 function generate_salts_and_passcodes(){
   # salts and passcodes need to be new and dynamic on each run so that when presenting credentials to
   # other sally instances, not this one, that duplicity is not created by virtue of using the same
@@ -216,28 +228,61 @@ function generate_salts_and_passcodes(){
 
   # Does not include Sally because it is okay if sally stays the same.
 
-  print_green "Generating salts"
-  # Export these variables so they are available in the child docker compose processes
-  export GAR_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "GAR_SALT: ${GAR_SALT}"
-  export LAR_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "LAR_SALT: ${LAR_SALT}"
-  export QAR_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QAR_SALT: ${QAR_SALT}"
-  export QVI_SALT=$(kli salt | tr -d " \t\n\r" )   && print_lcyan "QVI_SALT: ${QVI_SALT}"
-  export PERSON_SALT=$(kli salt | tr -d " \t\n\r" ) && print_lcyan "PERSON_SALT: ${PERSON_SALT}"
+  print_green "Generating protected participant secrets"
+  local generation_status=0
 
-  export GAR_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "GAR_PASSCODE: ${GAR_PASSCODE}"
-  export LAR_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" )   && print_lcyan "LAR_PASSCODE: ${LAR_PASSCODE}"
-  export PERSON_PASSCODE=$(kli passcode generate | tr -d " \t\n\r" ) && print_lcyan "PERSON_PASSCODE: ${PERSON_PASSCODE}"
+  GAR_SALT=$(kli salt | tr -d " \t\n\r") || generation_status=$?
+  require_generated_secret "GAR salt" "${GAR_SALT}" "${generation_status}"
+
+  generation_status=0
+  LAR_SALT=$(kli salt | tr -d " \t\n\r") || generation_status=$?
+  require_generated_secret "LAR salt" "${LAR_SALT}" "${generation_status}"
+
+  generation_status=0
+  QAR_SALT=$(kli salt | tr -d " \t\n\r") || generation_status=$?
+  require_generated_secret "QAR salt" "${QAR_SALT}" "${generation_status}"
+
+  generation_status=0
+  QVI_SALT=$(kli salt | tr -d " \t\n\r") || generation_status=$?
+  require_generated_secret "QVI salt" "${QVI_SALT}" "${generation_status}"
+
+  generation_status=0
+  PERSON_SALT=$(kli salt | tr -d " \t\n\r") || generation_status=$?
+  require_generated_secret "Person salt" "${PERSON_SALT}" "${generation_status}"
+
+  generation_status=0
+  GAR_PASSCODE=$(kli passcode generate | tr -d " \t\n\r") || generation_status=$?
+  require_generated_secret "GAR passcode" "${GAR_PASSCODE}" "${generation_status}"
+
+  generation_status=0
+  LAR_PASSCODE=$(kli passcode generate | tr -d " \t\n\r") || generation_status=$?
+  require_generated_secret "LAR passcode" "${LAR_PASSCODE}" "${generation_status}"
 
   # Does not include Sally because it is okay if sally stays the same.
+}
 
-  # KERIA SignifyTS QVI cryptographic names and seeds to feed into SignifyTS as a bespoke, delimited data format
-  SIGTS_AIDS="qar|$QAR|$QAR_SALT,person|$PERSON|$PERSON_SALT,qvi|$QVI_NAME|$QVI_SALT"
+function write_participant_config() {
+  mkdir -p "${LOCAL_QVI_DATA_DIR}"
+  {
+    printf '{\n'
+    printf '  "environment": "%s",\n' "${ENVIRONMENT}"
+    printf '  "participants": {\n'
+    printf '    "qar": {"position":"qar","name":"%s","salt":"%s","keriaHost":1},\n' "${QAR}" "${QAR_SALT}"
+    printf '    "person": {"position":"person","name":"%s","salt":"%s","keriaHost":1},\n' "${PERSON}" "${PERSON_SALT}"
+    printf '    "qvi": {"position":"qvi","name":"%s","salt":"%s","keriaHost":1}\n' "${QVI_NAME}" "${QVI_SALT}"
+    printf '  }\n'
+    printf '}\n'
+  } > "${PARTICIPANT_CONFIG_HOST}"
+  chmod 600 "${PARTICIPANT_CONFIG_HOST}"
+  print_lcyan "Protected Signify participant configuration written"
 }
 
 function setup_keria_identifiers() {
   print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
 
-  sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/qar-and-person-setup.ts" "${ENVIRONMENT}" "${QVI_DATA_DIR}" "${SIGTS_AIDS}"
+  sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/qar-and-person-setup.ts" \
+    --config "${PARTICIPANT_CONFIG}" \
+    --artifact-dir "${QVI_DATA_DIR}"
 
   print_green "QVI and Person Identifiers from SignifyTS + KERIA are "
   # Extract prefixes from the SignifyTS output because they are dynamically generated and unique each run.
@@ -316,7 +361,6 @@ function resolve_oobis() {
         return
     fi
 
-    export INDIRECT_SALLY_OOBI="${WIT_HOST_SALLY}/oobi/${INDIRECT_SALLY_PRE}/witness/${WIT_PRE}" # indirect-mode sally
     export DIRECT_SALLY_OOBI="${DIRECT_SALLY_HOST}/oobi"
     export GAR_OOBI="${WIT_HOST_GAR}/oobi/${GAR_PRE}/witness/${WAN_PRE}"
     export LAR_OOBI="${WIT_HOST_QAR}/oobi/${LAR_PRE}/witness/${WIL_PRE}"
@@ -324,7 +368,9 @@ function resolve_oobis() {
 
     print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
 
-    sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/resolve-oobis-lar-gar-sally.ts" $ENVIRONMENT "${SIGTS_AIDS}" "${OOBIS_FOR_KERIA}"
+    sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/resolve-oobis-lar-gar-sally.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --oobis "${OOBIS_FOR_KERIA}"
 
     echo
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
@@ -333,14 +379,12 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR}" --oobi-alias "${LAR}"    --passcode "${GAR_PASSCODE}" --oobi "${LAR_OOBI}"
     kli oobi resolve --name "${GAR}" --oobi-alias "${QAR}"    --passcode "${GAR_PASSCODE}" --oobi "${QAR_OOBI}"
     kli oobi resolve --name "${GAR}" --oobi-alias "${PERSON}" --passcode "${GAR_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR}" --oobi-alias "${INDIRECT_SALLY_ALIAS}"        --passcode "${GAR_PASSCODE}" --oobi "${INDIRECT_SALLY_OOBI}"
     kli oobi resolve --name "${GAR}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${GAR_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 1"
     kli oobi resolve --name "${LAR}" --oobi-alias "${GAR}"    --passcode "${LAR_PASSCODE}" --oobi "${GAR_OOBI}"
     kli oobi resolve --name "${LAR}" --oobi-alias "${QAR}"    --passcode "${LAR_PASSCODE}" --oobi "${QAR_OOBI}"
     kli oobi resolve --name "${LAR}" --oobi-alias "${PERSON}" --passcode "${LAR_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR}" --oobi-alias "${INDIRECT_SALLY_ALIAS}"        --passcode "${LAR_PASSCODE}" --oobi "${INDIRECT_SALLY_OOBI}"
     kli oobi resolve --name "${LAR}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${LAR_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
     echo
@@ -374,11 +418,11 @@ function create_gar_reg() {
   echo
 }
 
-function recreate_sally_containers() {
-  # Recreate sally container with new GEDA prefix
+function recreate_sally_container() {
+  # Recreate direct Sally with the new GEDA prefix.
   export GEDA_PRE=${GAR_PRE}
-  print_yellow "Recreating Sally container with new GEDA prefix ${GEDA_PRE}"
-  docker compose -f $DOCKER_COMPOSE_FILE up -d sally direct-sally --wait
+  print_yellow "Recreating direct Sally with new GEDA prefix ${GEDA_PRE}"
+  docker compose -f $DOCKER_COMPOSE_FILE up -d direct-sally --wait
 }
 
 function create_qvi_delegate() {
@@ -387,12 +431,11 @@ function create_qvi_delegate() {
     local delegator_prefix="${GAR_PRE}"
     print_yellow "Delegator Prefix: ${delegator_prefix}"
     sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/create-qvi-delegate.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${OOBIS_FOR_KERIA}" \
-      "${delegator_prefix}" \
-      "${QVI_DATA_DIR}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --qvi-name "${QVI_NAME}" \
+      --oobis "${OOBIS_FOR_KERIA}" \
+      --delegator-prefix "${delegator_prefix}" \
+      --artifact-dir "${QVI_DATA_DIR}"
     local delegated_qvi_info
     delegated_qvi_info=$(cat "${LOCAL_QVI_DATA_DIR}"/qvi-delegate-info.json)
     print_yellow "Delegated QVI Info:"
@@ -414,12 +457,11 @@ function create_qvi_delegate() {
     print_yellow "[GEDA] Waiting 5s on delegated inception completion"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/delegation-completion-qvi.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${delegator_prefix}" \
-      "${icpOpName}" \
-      "${QVI_DATA_DIR}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --qvi-name "${QVI_NAME}" \
+      --delegator-prefix "${delegator_prefix}" \
+      --inception-operation "${icpOpName}" \
+      --artifact-dir "${QVI_DATA_DIR}"
 
     print_green "[QVI] AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 }
@@ -433,19 +475,17 @@ function resolve_qvi_oobi() {
 
     print_yellow "Resolving QVI OOBI for Person"
     sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/resolve-qvi-oobi-person.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${QVI_OOBI}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --qvi-name "${QVI_NAME}" \
+      --qvi-oobi "${QVI_OOBI}"
     echo
 }
 
 function qvi_resolve_schema_oobis() {
     print_yellow "Resolving credential schema OOBIs for QVI"
     sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/resolve-schema-oobis-qvi.ts" \
-      "${ENVIRONMENT}" \
-      "${SIGTS_AIDS}" \
-      "${OOBIS_FOR_KERIA}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --oobis "${OOBIS_FOR_KERIA}"
     echo
 }
 
@@ -537,12 +577,18 @@ function admit_qvi_credential() {
         --said \
         --schema "${QVI_SCHEMA}" | tr -d " \t\n\r")
     received=$(sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/qvi-check-received-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${QVI_NAME}" \
-      "${SIGTS_AIDS}" \
-      "${QVI_CRED_SAID}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --credential-said "${QVI_CRED_SAID}"
     )
-    if [[ "$received" == "true" ]]; then
+    credential_was_received=false
+    credential_lookup_status=0
+    printf '%s' "${received}" |
+      jq -e '.found == true and .credentialSaid != null' >/dev/null 2>&1 ||
+      credential_lookup_status=$?
+    if [[ ${credential_lookup_status} -eq 0 ]]; then
+      credential_was_received=true
+    fi
+    if [[ "${credential_was_received}" == true ]]; then
         print_dark_gray "[QVI] QVI Credential ${QVI_CRED_SAID} already admitted"
         return
     fi
@@ -551,37 +597,12 @@ function admit_qvi_credential() {
     print_yellow "[QVI] Admitting QVI Credential ${QVI_CRED_SAID} from GEDA"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/qvi-admit-credential.ts" \
-      "${ENVIRONMENT}" \
-      "${SIGTS_AIDS}" \
-      "${GAR_PRE}" \
-      "${QVI_CRED_SAID}"
+      --config "${PARTICIPANT_CONFIG}" \
+      --issuer-prefix "${GAR_PRE}" \
+      --credential-said "${QVI_CRED_SAID}"
 
     echo
     print_green "[QVI] Admitted QVI credential"
-    echo
-}
-
-function present_qvi_cred_to_sally_kli() {
-  print_yellow "Presenting QVI credential to Sally using KLI"
-  SAID=$(kli vc list \
-        --name "${GAR}" \
-        --passcode "${GAR_PASSCODE}" \
-        --alias "${GAR}" \
-        --issued \
-        --said \
-        --schema "${QVI_SCHEMA}" | tr -d '[:space:]')
-
-    echo
-    print_yellow $'[External] IPEX GRANTing QVI credential with\n\tSAID'" ${SAID}"$'\n\tto Sally'" ${INDIRECT_SALLY_PRE}"
-    kli ipex grant \
-        --name "${GAR}" \
-        --passcode "${GAR_PASSCODE}" \
-        --alias "${GAR}" \
-        --said "${SAID}" \
-        --recipient "${INDIRECT_SALLY_PRE}"
-
-    echo
-    print_green "[External] QVI Credential presented to Sally Indirect"
     echo
 }
 
@@ -591,19 +612,17 @@ function present_qvi_cred_to_sally_signify() {
 
 #  print_dark_gray "arguments sent to script:"
 #  print_lcyan "Environment: ${ENVIRONMENT}"
-#  print_lcyan "SIGTS_AIDS: ${SIGTS_AIDS}"
 #  print_lcyan "QVI_SCHEMA: ${QVI_SCHEMA}"
 #  print_lcyan "GAR_PRE: ${GAR_PRE}"
 #  print_lcyan "QVI_PRE: ${QVI_PRE}"
-#  print_lcyan "INDIRECT_SALLY_PRE: ${INDIRECT_SALLY_PRE}"
+#  print_lcyan "DIRECT_SALLY_PRE: ${DIRECT_SALLY_PRE}"
 
   sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/qvi-present-credential.ts" \
-    "${ENVIRONMENT}" \
-    "${SIGTS_AIDS}" \
-    "${QVI_SCHEMA}" \
-    "${GAR_PRE}" \
-    "${QVI_PRE}"\
-    "${INDIRECT_SALLY_PRE}"
+    --config "${PARTICIPANT_CONFIG}" \
+    --schema-said "${QVI_SCHEMA}" \
+    --issuer-prefix "${GAR_PRE}" \
+    --issuee-prefix "${QVI_PRE}" \
+    --recipient-prefix "${DIRECT_SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0
@@ -634,6 +653,7 @@ function setup() {
   create_docker_containers
   create_docker_network
   generate_salts_and_passcodes
+  write_participant_config
   write_docker_env
   start_docker_containers
 
@@ -648,7 +668,7 @@ function setup() {
 function gar_delegation_to_qvi() {
   print_lcyan "------------------------------GEDA Delegation to QVI------------------------------"
   create_gar_reg
-  recreate_sally_containers
+  recreate_sally_container
   create_qvi_delegate
   resolve_qvi_oobi
   qvi_resolve_schema_oobis
@@ -661,7 +681,6 @@ function qvi_credential() {
   create_qvi_credential
   grant_qvi_credential
   admit_qvi_credential
-#  present_qvi_cred_to_sally_kli
   pause "Press [ENTER] to present QVI to Sally"
   present_qvi_cred_to_sally_signify
   pause "Press [ENTER] to present QVI to Sally again"
@@ -777,6 +796,8 @@ function debug_workflow() {
 
 # Function to display usage
 usage() {
+    local usage_exit_status=${1:-1}
+
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -k, --keystore-dir DIR  Specify keystore directory directory (default: ./docker-keystores)"
@@ -790,7 +811,7 @@ usage() {
     echo "  -c, --clear             Clear all containers, keystores, and networks"
     echo "  -h, --help              Display this help message"
     echo "  --pause                 Enable pausing between steps"
-    exit 1
+    exit "${usage_exit_status}"
 }
 
 # Parse command-line options
@@ -853,11 +874,11 @@ while [[ $# -gt 0 ]]; do
             end_workflow
             ;;
         -h|--help)
-            usage
+            usage 0
             ;;
         *)
             echo "Unknown option: $1"
-            usage
+            usage 1
             ;;
     esac
 done

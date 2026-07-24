@@ -1,114 +1,168 @@
-import {createTimestamp, parseAidInfo} from '../create-aid.ts';
+import {
+    isMainModule,
+    parseNamedArguments,
+    participantConfigFromArguments,
+    requireNamedArguments,
+    runJsonCli,
+    type ParticipantConfig,
+} from '../cli.ts';
+import {createTimestamp} from '../create-aid.ts';
+import {
+    credentialSnapshot,
+    getCredential,
+    type CredentialSnapshot,
+} from '../credential-state.ts';
 import {revokeCredentialMultisig} from '../credentials.ts';
-import {getOrCreateClient} from '../keystore-creation.ts';
-import {waitOperation} from '../operations.ts';
-import {TestEnvironmentPreset} from '../resolve-env.ts';
+import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
+import {loadQviMembers} from './qvi-context.ts';
 
-const [env, multisigName, aidInfoArg, credentialSaid] = process.argv.slice(2);
-
-const requiredArgumentIsMissing =
-    !env || !multisigName || !aidInfoArg || !credentialSaid;
-if (requiredArgumentIsMissing) {
-    throw new Error(
-        'Usage: qars-revoke-credential.ts <environment> <QVI-name> <SIGTS_AIDS> <credential-SAID>'
-    );
+export interface RevokeCredentialOptions {
+    config: ParticipantConfig;
+    groupName: string;
+    credentialSaid: string;
 }
 
-const {QAR1, QAR2, QAR3} = parseAidInfo(aidInfoArg);
-const clients = await Promise.all([
-    getOrCreateClient(QAR1.salt, env as TestEnvironmentPreset, 1),
-    getOrCreateClient(QAR2.salt, env as TestEnvironmentPreset, 2),
-    getOrCreateClient(QAR3.salt, env as TestEnvironmentPreset, 3),
-]);
-const memberInfo = [QAR1, QAR2, QAR3];
-const memberAids = await Promise.all(
-    memberInfo.map((member, index) =>
-        clients[index].identifiers().get(member.name)
-    )
-);
-const groupAids = await Promise.all(
-    clients.map((client) => client.identifiers().get(multisigName))
-);
-const qviPrefixIsConsistent = groupAids.every(
-    (group) => group.prefix === groupAids[0].prefix
-);
-if (qviPrefixIsConsistent === false) {
-    throw new Error(
-        `QARs disagree on QVI ${multisigName}: ${groupAids.map((group) => group.prefix).join(',')}`
-    );
+export interface RevocationResult {
+    status: 'already-revoked' | 'revoked';
+    credentialSaid: string;
+    qviPrefix: string;
+    revocationTelDigest: string;
+    revocationTimestamp: string;
 }
 
-async function credentialStatus(index: number): Promise<string> {
-    try {
-        const credential = await clients[index]
-            .credentials()
-            .get(credentialSaid);
-        return credential.status?.s;
-    } catch (error) {
+function commonValue(
+    values: string[],
+    description: string
+): string {
+    const first = values[0];
+    const valuesAgree =
+        first !== undefined &&
+        values.every((value) => value === first);
+    if (valuesAgree === false) {
         throw new Error(
-            `${memberInfo[index].position} is missing credential ${credentialSaid}: ${error}`
+            `${description} diverged: ${values.join(', ')}`
         );
     }
+    return first;
 }
 
-const startingStatuses = await Promise.all(
-    clients.map((_, index) => credentialStatus(index))
-);
-const credentialIsRevokedOnEveryQar = startingStatuses.every(
-    (status) => status === '1'
-);
-if (credentialIsRevokedOnEveryQar) {
-    console.log(
-        `[revocation] ${credentialSaid} is already revoked on all three QARs`
-    );
-    process.exit(0);
-}
-const credentialIsIssuedOnEveryQar = startingStatuses.every(
-    (status) => status === '0'
-);
-if (credentialIsIssuedOnEveryQar === false) {
-    throw new Error(
-        `Credential ${credentialSaid} must start issued on all QARs; observed ${startingStatuses.join(',')}`
+function commonCredentialStatus(
+    snapshots: CredentialSnapshot[]
+): string {
+    return commonValue(
+        snapshots.map(({statusSequence}) => statusSequence),
+        'Credential status'
     );
 }
 
-const timestamp = createTimestamp();
-const operations = [];
-for (let index = 0; index < clients.length; index++) {
-    const otherMembers = memberAids.filter(
-        (_, memberIndex) => memberIndex !== index
+export async function runRevocation(
+    options: RevokeCredentialOptions
+): Promise<RevocationResult> {
+    const members = await loadQviMembers(
+        options.config,
+        options.groupName
     );
-    operations.push(
-        await revokeCredentialMultisig(
-            clients[index],
-            memberAids[index],
-            otherMembers,
-            multisigName,
-            credentialSaid,
-            timestamp,
-            index === 0
+    const qviPrefix = commonValue(
+        members.map(({groupAid}) => groupAid.prefix),
+        'QVI prefix'
+    );
+    const credentials = await Promise.all(
+        members.map(({client}) =>
+            getCredential(client, options.credentialSaid)
         )
     );
-}
-
-await Promise.all(
-    operations.map((operation, index) =>
-        waitOperation(clients[index], operation)
-    )
-);
-
-const finalStatuses = await Promise.all(
-    clients.map((_, index) => credentialStatus(index))
-);
-const revocationConverged = finalStatuses.every(
-    (status) => status === '1'
-);
-if (revocationConverged === false) {
-    throw new Error(
-        `Credential ${credentialSaid} revocation did not converge; observed ${finalStatuses.join(',')}`
+    const before = credentials.map((credential, index) =>
+        credentialSnapshot(
+            credential,
+            members[index].memberAid.prefix
+        )
     );
+    const beforeStatus = commonCredentialStatus(before);
+    if (beforeStatus === '1') {
+        return {
+            status: 'already-revoked',
+            credentialSaid: options.credentialSaid,
+            qviPrefix,
+            revocationTelDigest: commonValue(
+                before.map(({currentTelDigest}) => currentTelDigest),
+                'Revocation TEL digest'
+            ),
+            revocationTimestamp: credentials[0].status.dt,
+        };
+    }
+    if (beforeStatus !== '0') {
+        throw new Error(
+            `Credential ${options.credentialSaid} cannot be revoked from TEL sequence ${beforeStatus}`
+        );
+    }
+
+    const timestamp = createTimestamp();
+    await coordinateMultisigOperation(
+        members.map(({client, memberAid}) => ({
+            client,
+            aid: memberAid,
+        })),
+        (context) =>
+            revokeCredentialMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                options.groupName,
+                options.credentialSaid,
+                timestamp,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            )
+    );
+
+    const after = await Promise.all(
+        members.map(async ({client, memberAid}) =>
+            credentialSnapshot(
+                await getCredential(
+                    client,
+                    options.credentialSaid
+                ),
+                memberAid.prefix
+            )
+        )
+    );
+    const afterStatus = commonCredentialStatus(after);
+    if (afterStatus !== '1') {
+        throw new Error(
+            `Credential ${options.credentialSaid} reached TEL sequence ${afterStatus} after revocation`
+        );
+    }
+    return {
+        status: 'revoked',
+        credentialSaid: options.credentialSaid,
+        qviPrefix,
+        revocationTelDigest: commonValue(
+            after.map(({currentTelDigest}) => currentTelDigest),
+            'Revocation TEL digest'
+        ),
+        revocationTimestamp: timestamp,
+    };
 }
 
-console.log(
-    `[revocation] ${credentialSaid} converged at status sequence 1 on all three QARs`
-);
+if (isMainModule(import.meta.url)) {
+    await runJsonCli(async () => {
+        const args = parseNamedArguments(process.argv.slice(2), [
+            'config',
+            'environment',
+            'participant-source',
+            'group-name',
+            'credential-said',
+        ]);
+        requireNamedArguments(args, [
+            'group-name',
+            'credential-said',
+        ]);
+        return runRevocation({
+            config: participantConfigFromArguments(args),
+            groupName: args['group-name'],
+            credentialSaid: args['credential-said'],
+        });
+    });
+}
