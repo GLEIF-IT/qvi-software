@@ -1,11 +1,11 @@
 import {createTimestamp} from '../create-aid.ts';
-import {grantMultisig} from '../credentials.ts';
+import type {GroupMember} from '../client.ts';
+import {grantCredential} from '../credentials.ts';
 import {getCredential} from '../credential-state.ts';
-import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
-import type {QviMember} from './qvi-context.ts';
 
 export interface PresentCredentialOptions {
-    members: QviMember[];
+    members: GroupMember[];
+    initiatorPrefix: string;
     credentialSaid: string;
     recipientPrefix: string;
 }
@@ -20,38 +20,13 @@ export async function presentCredential(
             getCredential(client, options.credentialSaid)
         )
     );
-    const timestamp = createTimestamp();
-    await coordinateMultisigOperation(
-        members.map(({client, memberAid}) => ({
-            client,
-            aid: memberAid,
-        })),
-        members[0].memberAid.prefix,
-        (context) => {
-            const memberIndex = members.findIndex(
-                ({memberAid}) =>
-                    memberAid.prefix === context.aid.prefix
-            );
-            if (memberIndex < 0) {
-                throw new Error(
-                    `Missing QVI member ${context.aid.prefix}`
-                );
-            }
-            return grantMultisig(
-                context.client,
-                context.aid,
-                context.otherMembers,
-                members[memberIndex].groupAid,
-                options.recipientPrefix,
-                credentials[memberIndex],
-                timestamp,
-                {
-                    isInitiator: context.isInitiator,
-                    coordinator: context.coordinatorPrefix,
-                }
-            );
-        }
-    );
+    await grantCredential({
+        members,
+        initiatorPrefix: options.initiatorPrefix,
+        recipientPrefix: options.recipientPrefix,
+        credentials,
+        timestamp: createTimestamp(),
+    });
     return {
         status: 'presented' as const,
         credentialSaid: options.credentialSaid,

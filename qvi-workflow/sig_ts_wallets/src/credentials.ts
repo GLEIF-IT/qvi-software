@@ -3,11 +3,14 @@ import signify, {
     type CredentialResult,
     type ExchangeOperation,
     type HabState,
+    randomNonce,
     Serder,
     type SignifyClient,
 } from 'signify-ts';
 
+import type {GroupMember} from './client.ts';
 import {sendExchangeToEachRecipient} from './exchanges.ts';
+import {coordinateMultisigOperation} from './multisig-coordinator.ts';
 import {requireCoordinatedEventDigest} from './multisig-coordination.ts';
 import {
     consumeNotification,
@@ -23,6 +26,67 @@ export const ECR_SCHEMA_SAID =
     'EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw';
 import {waitOperation} from './operations.ts';
 import {retry} from './retry.ts';
+
+export interface RegistryRequest {
+    members: GroupMember[];
+    initiatorPrefix: string;
+    groupName: string;
+    registryName: string;
+}
+
+export interface IssueRequest {
+    members: GroupMember[];
+    initiatorPrefix: string;
+    groupName: string;
+    issueePrefix: string;
+    credentialData: CredentialData;
+}
+
+export interface GrantRequest {
+    members: GroupMember[];
+    initiatorPrefix: string;
+    recipientPrefix: string;
+    credentials: CredentialResult[];
+    timestamp: string;
+}
+
+export interface AdmitRequest {
+    members: GroupMember[];
+    initiatorPrefix: string;
+    issuerPrefix: string;
+    credentialSaid: string;
+    timestamp: string;
+}
+
+export interface RevokeRequest {
+    members: GroupMember[];
+    initiatorPrefix: string;
+    groupName: string;
+    credentialSaid: string;
+    timestamp: string;
+}
+
+/** Return the concrete group member matching one participant context. */
+function groupMember(
+    members: GroupMember[],
+    memberPrefix: string
+): GroupMember {
+    const member = members.find(
+        ({memberAid}) => memberAid.prefix === memberPrefix
+    );
+    if (member === undefined) {
+        throw new Error(`Missing group member ${memberPrefix}`);
+    }
+    return member;
+}
+
+/** Return the member wallets used by multisig operation coordination. */
+function memberWallets(members: GroupMember[]) {
+    return members.map(({client, memberAid}) => ({
+        client,
+        aid: memberAid,
+    }));
+}
 
 /**
  * Creates a multisig registry by name for a set of single sig participants.
@@ -140,6 +204,161 @@ function requireCoordinator(
         );
     }
     return options.coordinator;
+}
+
+/** Create one credential registry through concrete group members. */
+export async function createRegistry(
+    request: RegistryRequest
+): Promise<void> {
+    const nonce = randomNonce();
+    await coordinateMultisigOperation(
+        memberWallets(request.members),
+        request.initiatorPrefix,
+        (context) =>
+            createRegistryMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                groupMember(
+                    request.members,
+                    context.aid.prefix
+                ).groupAid,
+                request.registryName,
+                nonce,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            )
+    );
+}
+
+/** Issue one credential through concrete group members. */
+export async function issueCredential(
+    request: IssueRequest
+): Promise<CredentialResult[]> {
+    const schema = request.credentialData.s;
+    if (typeof schema !== 'string' || schema.length === 0) {
+        throw new Error('Credential issuance requires a schema SAID');
+    }
+    await coordinateMultisigOperation(
+        memberWallets(request.members),
+        request.initiatorPrefix,
+        (context) =>
+            issueCredentialMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                request.groupName,
+                request.credentialData,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            )
+    );
+    return await Promise.all(
+        request.members.map(async ({client, groupAid}, index) =>
+            requireCredential(
+                await getIssuedCredential(
+                    client,
+                    groupAid.prefix,
+                    request.issueePrefix,
+                    schema
+                ),
+                `Group member ${index + 1} issued credential`
+            )
+        )
+    );
+}
+
+/** Grant one credential through concrete group members. */
+export async function grantCredential(
+    request: GrantRequest
+): Promise<void> {
+    if (request.credentials.length !== request.members.length) {
+        throw new Error(
+            'Credential grants require one local credential per member'
+        );
+    }
+    await coordinateMultisigOperation(
+        memberWallets(request.members),
+        request.initiatorPrefix,
+        (context) => {
+            const memberIndex = request.members.findIndex(
+                ({memberAid}) =>
+                    memberAid.prefix === context.aid.prefix
+            );
+            if (memberIndex < 0) {
+                throw new Error(
+                    `Missing group member ${context.aid.prefix}`
+                );
+            }
+            return grantMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                request.members[memberIndex].groupAid,
+                request.recipientPrefix,
+                request.credentials[memberIndex],
+                request.timestamp,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            );
+        }
+    );
+}
+
+/** Admit one credential through concrete group members. */
+export async function admitCredential(
+    request: AdmitRequest
+): Promise<void> {
+    await coordinateMultisigOperation(
+        memberWallets(request.members),
+        request.initiatorPrefix,
+        (context) =>
+            admitMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                groupMember(
+                    request.members,
+                    context.aid.prefix
+                ).groupAid,
+                request.issuerPrefix,
+                request.credentialSaid,
+                request.timestamp,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            )
+    );
+}
+
+/** Revoke one credential through concrete group members. */
+export async function revokeCredential(
+    request: RevokeRequest
+): Promise<void> {
+    await coordinateMultisigOperation(
+        memberWallets(request.members),
+        request.initiatorPrefix,
+        (context) =>
+            revokeCredentialMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                request.groupName,
+                request.credentialSaid,
+                request.timestamp,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            )
+    );
 }
 
 export async function issueCredentialMultisig(

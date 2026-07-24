@@ -1,5 +1,6 @@
 import type {SignifyClient} from 'signify-ts';
 
+import type {GroupMember} from '../client.ts';
 import {
     sortAgentEndpointsByEid,
     sortAids,
@@ -15,7 +16,6 @@ import {
 } from '../coordinated-operation.ts';
 import {retry} from '../retry.ts';
 import {memberContexts} from '../multisig-coordinator.ts';
-import type {QviMember} from './qvi-context.ts';
 
 export interface AgentEndpoint {
     eid: string;
@@ -29,7 +29,7 @@ export interface QviMultisigOobi {
 }
 
 export interface AuthorizeEndRoleOptions {
-    members: QviMember[];
+    members: GroupMember[];
     groupName: string;
 }
 

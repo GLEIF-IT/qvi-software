@@ -7,12 +7,12 @@ import type {
 
 import {
     connectClient,
+    loadGroupMembers,
     type WorkflowConfig,
 } from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {LE_SCHEMA_SAID} from '../credentials.ts';
 import {issueAndGrantCredential} from './issue-and-grant.ts';
-import {loadGroupMembers} from './qvi-context.ts';
 
 /** Read one workflow credential fragment from disk. */
 async function jsonFile(path: string) {

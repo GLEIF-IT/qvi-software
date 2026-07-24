@@ -1,47 +1,23 @@
-import {randomNonce} from 'signify-ts';
-
-import {createRegistryMultisig} from '../credentials.ts';
-import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
+import type {GroupMember} from '../client.ts';
+import {createRegistry} from '../credentials.ts';
 import {retry} from '../retry.ts';
-import type {QviMember} from './qvi-context.ts';
 
 /** Create the QVI registry and require it to converge across all members. */
 export async function createQviRegistry(
-    members: QviMember[],
+    members: GroupMember[],
     groupName: string,
     registryName: string
 ) {
-    const nonce = randomNonce();
-    await coordinateMultisigOperation(
-        members.map(({client, memberAid}) => ({
-            client,
-            aid: memberAid,
-        })),
-        members[0].memberAid.prefix,
-        (context) => {
-            const member = members.find(
-                ({memberAid}) =>
-                    memberAid.prefix === context.aid.prefix
-            );
-            if (member === undefined) {
-                throw new Error(
-                    `Missing QVI member ${context.aid.prefix}`
-                );
-            }
-            return createRegistryMultisig(
-                context.client,
-                context.aid,
-                context.otherMembers,
-                member.groupAid,
-                registryName,
-                nonce,
-                {
-                    isInitiator: context.isInitiator,
-                    coordinator: context.coordinatorPrefix,
-                }
-            );
-        }
-    );
+    const initiator = members[0];
+    if (initiator === undefined) {
+        throw new Error('Registry creation requires group members');
+    }
+    await createRegistry({
+        members,
+        initiatorPrefix: initiator.memberAid.prefix,
+        groupName,
+        registryName,
+    });
     return retry(async () => {
         const registryLists = await Promise.all(
             members.map(({client}) =>

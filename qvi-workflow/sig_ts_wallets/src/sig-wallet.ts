@@ -16,12 +16,14 @@ import {
     connectClient,
     createAid,
     getAid,
+    loadGroupMembers,
     readWorkflowConfig,
     readParticipantEvidence,
     requireHttpUrl,
     resolveAidOobi,
     resolveOobi,
     type ParticipantEvidence,
+    type GroupMember,
     type WorkflowConfig,
     type ParticipantRole,
     waitOperation,
@@ -44,23 +46,26 @@ import {
 import {completeSavedMultisigOps} from './coordinated-operation.ts';
 import {notificationReference} from './notifications.ts';
 import {
+    admitCredential as admitGroupCredential,
+    createRegistry,
     ECR_SCHEMA_SAID,
+    grantCredential,
+    issueCredential,
     LE_SCHEMA_SAID,
     OOR_SCHEMA_SAID,
+    revokeCredential,
 } from './credentials.ts';
-import {createQviRegistry} from './qars/qars-registry-create.ts';
 import {createTimestamp} from './create-aid.ts';
-import {issueAndGrantCredential} from './qars/issue-and-grant.ts';
-import {admitCredentialQvi} from './qars/qars-admit-credential-qvi.ts';
 import {presentCredential} from './qars/qars-present-credential.ts';
-import {runRevocation} from './qars/qars-revoke-credential.ts';
 import {authorizeAgentEndRoles} from './qars/qars-authorize-endroles-get-qvi-oobi.ts';
-import {
-    loadGroupMembers,
-    type QviMember,
-} from './qars/qvi-context.ts';
 import {admitCredential as admitPersonCredential} from './person/person-admit-credential.ts';
 import {presentPersonCredential} from './person/person-grant-credential.ts';
+import {
+    credentialSnapshot,
+    getCredential,
+    type CredentialSnapshot,
+} from './credential-state.ts';
+import {retry} from './retry.ts';
 
 const SCHEMA_SAIDS = [
     'EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao',
@@ -154,7 +159,7 @@ function multisigMembers(wallets: ReadyWallet[]) {
 /** Load the concrete final QVI member and group identifiers. */
 async function loadFinalQviMembers(
     config: WorkflowConfig
-): Promise<QviMember[]> {
+): Promise<GroupMember[]> {
     const wallets = await loadWallets(
         config,
         config.qvi.finalMembers
@@ -164,6 +169,15 @@ async function loadFinalQviMembers(
         wallets.map(({aid}) => aid.name),
         config.qvi.name
     );
+}
+
+/** Return the explicitly ordered initiator for one group operation. */
+function firstGroupMember(members: GroupMember[]): GroupMember {
+    const member = members[0];
+    if (member === undefined) {
+        throw new Error('Group operation requires at least one member');
+    }
+    return member;
 }
 
 /** Load the concrete person wallet used by holder actions. */
@@ -1203,13 +1217,18 @@ async function registryAction(
     args: Record<string, string>
 ) {
     const members = await loadFinalQviMembers(config);
+    const initiator = firstGroupMember(members);
+    await createRegistry({
+        members,
+        initiatorPrefix: initiator.memberAid.prefix,
+        groupName: config.qvi.name,
+        registryName: args['registry-name'],
+    });
     return {
         status: 'created',
-        ...(await createQviRegistry(
-            members,
-            config.qvi.name,
-            args['registry-name']
-        )),
+        registryRegk: await retry(
+            () => loadQviRegistry(members, config.qvi.name)
+        ),
     };
 }
 
@@ -1220,7 +1239,7 @@ async function readCredentialJson(path: string) {
 
 /** Require the one QVI registry created by the outer workflow. */
 async function loadQviRegistry(
-    members: QviMember[],
+    members: GroupMember[],
     groupName: string
 ): Promise<string> {
     const registryLists = await Promise.all(
@@ -1246,11 +1265,12 @@ async function loadQviRegistry(
 
 /** Build one LE credential from explicit workflow inputs. */
 async function leCredentialData(
-    members: QviMember[],
+    members: GroupMember[],
     registryId: string,
     dataDir: string,
     issueePrefix: string
 ): Promise<CredentialData> {
+    const issuer = firstGroupMember(members);
     const subject: CredentialSubject = {
         i: issueePrefix,
         dt: createTimestamp(),
@@ -1259,7 +1279,7 @@ async function leCredentialData(
         )),
     };
     return {
-        i: members[0].groupAid.prefix,
+        i: issuer.groupAid.prefix,
         ri: registryId,
         s: LE_SCHEMA_SAID,
         a: subject,
@@ -1272,11 +1292,12 @@ async function leCredentialData(
 
 /** Build one OOR credential from explicit workflow inputs. */
 async function oorCredentialData(
-    members: QviMember[],
+    members: GroupMember[],
     registryId: string,
     dataDir: string,
     issueePrefix: string
 ): Promise<CredentialData> {
+    const issuer = firstGroupMember(members);
     const subject: CredentialSubject = {
         i: issueePrefix,
         dt: createTimestamp(),
@@ -1285,7 +1306,7 @@ async function oorCredentialData(
         )),
     };
     return {
-        i: members[0].groupAid.prefix,
+        i: issuer.groupAid.prefix,
         ri: registryId,
         s: OOR_SCHEMA_SAID,
         a: subject,
@@ -1300,11 +1321,12 @@ async function oorCredentialData(
 
 /** Build one ECR credential from explicit workflow inputs. */
 async function ecrCredentialData(
-    members: QviMember[],
+    members: GroupMember[],
     registryId: string,
     dataDir: string,
     issueePrefix: string
 ): Promise<CredentialData> {
+    const issuer = firstGroupMember(members);
     const subject: CredentialSubject = {
         i: issueePrefix,
         dt: createTimestamp(),
@@ -1315,7 +1337,7 @@ async function ecrCredentialData(
     };
     return {
         u: new Salter({}).qb64,
-        i: members[0].groupAid.prefix,
+        i: issuer.groupAid.prefix,
         ri: registryId,
         s: ECR_SCHEMA_SAID,
         a: subject,
@@ -1331,7 +1353,7 @@ async function ecrCredentialData(
 /** Build the credential kind selected explicitly by the workflow. */
 async function buildCredentialData(
     kind: string,
-    members: QviMember[],
+    members: GroupMember[],
     registryId: string,
     dataDir: string,
     issueePrefix: string
@@ -1363,7 +1385,39 @@ async function buildCredentialData(
     }
 }
 
-/** Issue and grant one consolidated LE, OOR, or ECR credential kind. */
+/** Assert one known credential state across the exact QVI observers. */
+async function assertKnownQviCredential(
+    members: GroupMember[],
+    credentialSaid: string,
+    statusSequence: string
+): Promise<CredentialSnapshot> {
+    const initiator = firstGroupMember(members);
+    const credential = await getCredential(
+        initiator.client,
+        credentialSaid
+    );
+    const snapshot = credentialSnapshot(
+        credential,
+        initiator.memberAid.prefix
+    );
+    return await retry(() =>
+        assertQviCredentialConvergence(
+            members.map(({client, memberAid}) => ({
+                client,
+                aid: memberAid,
+            })),
+            {
+                credentialSaid,
+                issuerPrefix: snapshot.issuer,
+                schema: snapshot.schema,
+                issueePrefix: snapshot.issuee,
+                statusSequence,
+            }
+        )
+    );
+}
+
+/** Issue, assert, and then grant one workflow-selected credential. */
 async function issueAction(
     config: WorkflowConfig,
     args: Record<string, string>
@@ -1380,13 +1434,37 @@ async function issueAction(
         args['data-dir'],
         args['issuee-prefix']
     );
-    const issued = await issueAndGrantCredential({
+    const initiator = firstGroupMember(members);
+    const credentials = await issueCredential({
         members,
+        initiatorPrefix: initiator.memberAid.prefix,
         groupName: config.qvi.name,
         issueePrefix: args['issuee-prefix'],
         credentialData,
     });
-    const snapshot = issued[0].snapshot;
+    const issued = credentials[0];
+    if (issued === undefined) {
+        throw new Error('Credential issuance returned no credential');
+    }
+    const credentialSaid = issued.sad.d;
+    if (
+        typeof credentialSaid !== 'string' ||
+        credentialSaid.length === 0
+    ) {
+        throw new Error('Issued credential has no SAID');
+    }
+    const snapshot = await assertKnownQviCredential(
+        members,
+        credentialSaid,
+        '0'
+    );
+    await grantCredential({
+        members,
+        initiatorPrefix: initiator.memberAid.prefix,
+        recipientPrefix: args['issuee-prefix'],
+        credentials,
+        timestamp: createTimestamp(),
+    });
     return {
         status: 'issued',
         credentialSaid: snapshot.said,
@@ -1403,19 +1481,24 @@ async function admitAction(
     const expected = expectedCredential(args);
     if (args.actor === 'qvi') {
         const members = await loadFinalQviMembers(config);
-        await admitCredentialQvi(
+        const initiator = firstGroupMember(members);
+        await admitGroupCredential({
             members,
-            expected.issuerPrefix,
-            expected.credentialSaid
-        );
+            initiatorPrefix: initiator.memberAid.prefix,
+            issuerPrefix: expected.issuerPrefix,
+            credentialSaid: expected.credentialSaid,
+            timestamp: createTimestamp(),
+        });
         return {
             status: 'admitted',
-            state: await assertQviCredentialConvergence(
-                members.map(({client, memberAid}) => ({
-                    client,
-                    aid: memberAid,
-                })),
-                expected
+            state: await retry(() =>
+                assertQviCredentialConvergence(
+                    members.map(({client, memberAid}) => ({
+                        client,
+                        aid: memberAid,
+                    })),
+                    expected
+                )
             ),
         };
     }
@@ -1444,8 +1527,11 @@ async function presentAction(
     args: Record<string, string>
 ) {
     if (args.actor === 'qvi') {
+        const members = await loadFinalQviMembers(config);
         return await presentCredential({
-            members: await loadFinalQviMembers(config),
+            members,
+            initiatorPrefix:
+                firstGroupMember(members).memberAid.prefix,
             credentialSaid: args['credential-said'],
             recipientPrefix: args['recipient-prefix'],
         });
@@ -1467,11 +1553,33 @@ async function revokeAction(
     config: WorkflowConfig,
     args: Record<string, string>
 ) {
-    return await runRevocation({
-        members: await loadFinalQviMembers(config),
+    const members = await loadFinalQviMembers(config);
+    const initiator = firstGroupMember(members);
+    await assertKnownQviCredential(
+        members,
+        args['credential-said'],
+        '0'
+    );
+    const timestamp = createTimestamp();
+    await revokeCredential({
+        members,
+        initiatorPrefix: initiator.memberAid.prefix,
         groupName: config.qvi.name,
         credentialSaid: args['credential-said'],
+        timestamp,
     });
+    const state = await assertKnownQviCredential(
+        members,
+        args['credential-said'],
+        '1'
+    );
+    return {
+        status: 'revoked' as const,
+        credentialSaid: state.said,
+        qviPrefix: state.issuer,
+        revocationTelDigest: state.currentTelDigest,
+        revocationTimestamp: timestamp,
+    };
 }
 
 /** Assert exact group convergence for Bash's explicit sequence and rosters. */

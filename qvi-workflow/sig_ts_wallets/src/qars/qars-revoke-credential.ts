@@ -1,15 +1,14 @@
 import {createTimestamp} from '../create-aid.ts';
+import type {GroupMember} from '../client.ts';
 import {
     credentialSnapshot,
     getCredential,
     type CredentialSnapshot,
 } from '../credential-state.ts';
-import {revokeCredentialMultisig} from '../credentials.ts';
-import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
-import type {QviMember} from './qvi-context.ts';
+import {revokeCredential} from '../credentials.ts';
 
 export interface RevokeCredentialOptions {
-    members: QviMember[];
+    members: GroupMember[];
     groupName: string;
     credentialSaid: string;
 }
@@ -88,27 +87,18 @@ export async function runRevocation(
         );
     }
 
+    const initiator = members[0];
+    if (initiator === undefined) {
+        throw new Error('Credential revocation requires group members');
+    }
     const timestamp = createTimestamp();
-    await coordinateMultisigOperation(
-        members.map(({client, memberAid}) => ({
-            client,
-            aid: memberAid,
-        })),
-        members[0].memberAid.prefix,
-        (context) =>
-            revokeCredentialMultisig(
-                context.client,
-                context.aid,
-                context.otherMembers,
-                options.groupName,
-                options.credentialSaid,
-                timestamp,
-                {
-                    isInitiator: context.isInitiator,
-                    coordinator: context.coordinatorPrefix,
-                }
-            )
-    );
+    await revokeCredential({
+        members,
+        initiatorPrefix: initiator.memberAid.prefix,
+        groupName: options.groupName,
+        credentialSaid: options.credentialSaid,
+        timestamp,
+    });
 
     const after = await Promise.all(
         members.map(async ({client, memberAid}) =>
