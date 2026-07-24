@@ -4,14 +4,15 @@ import {getOrCreateContact} from './agent-contacts.ts';
 import {
     isMainModule,
     parseNamedArguments,
-    readParticipantConfig,
+    participantConfigFromArguments,
     requireNamedArguments,
     runJsonCli,
+    type ParticipantConfig,
 } from './cli.ts';
 import {getOrCreateClient} from './keystore-creation.ts';
 
 export interface ResolveQviOobiOptions {
-    configPath: string;
+    config: ParticipantConfig;
     groupName: string;
     oobiFile: string;
 }
@@ -51,7 +52,7 @@ function readQviOobi(path: string): QviOobiArtifact {
 export async function resolveQviOobiForPerson(
     options: ResolveQviOobiOptions
 ) {
-    const config = readParticipantConfig(options.configPath);
+    const config = options.config;
     const person = config.participants.person;
     const client = await getOrCreateClient(
         person.salt,
@@ -83,16 +84,17 @@ function parseResolveArguments(
 ): ResolveQviOobiOptions {
     const args = parseNamedArguments(argv, [
         'config',
+        'environment',
+        'participant-source',
         'group-name',
         'oobi-file',
     ]);
     requireNamedArguments(args, [
-        'config',
         'group-name',
         'oobi-file',
     ]);
     return {
-        configPath: args.config,
+        config: participantConfigFromArguments(args),
         groupName: args['group-name'],
         oobiFile: args['oobi-file'],
     };

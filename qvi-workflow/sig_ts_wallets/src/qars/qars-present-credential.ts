@@ -7,9 +7,10 @@ import {
 import {
     isMainModule,
     parseNamedArguments,
-    readParticipantConfig,
+    participantConfigFromArguments,
     requireNamedArguments,
     runJsonCli,
+    type ParticipantConfig,
 } from '../cli.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
@@ -23,7 +24,7 @@ import {
 } from '../group-state.ts';
 
 export interface PresentCredentialOptions {
-    configPath: string;
+    config: ParticipantConfig;
     groupName: string;
     credentialSaid: string;
     expectedIssuer: string;
@@ -36,7 +37,7 @@ export interface PresentCredentialOptions {
 export async function presentCredential(
     options: PresentCredentialOptions
 ) {
-    const config = readParticipantConfig(options.configPath);
+    const config = options.config;
     const participants = [
         config.participants.qar1,
         config.participants.qar2,
@@ -143,10 +144,8 @@ export async function presentCredential(
 
     return {
         status: 'presented' as const,
-        credential: snapshots[0],
+        credentialSaid: snapshots[0].said,
         recipientPrefix: options.recipientPrefix,
-        credentialStatus: options.expectedStatus,
-        grantExchangeSaid: grants[0].innerExchangeSaid,
     };
 }
 
@@ -155,6 +154,8 @@ function parsePresentationArguments(
 ): PresentCredentialOptions {
     const args = parseNamedArguments(argv, [
         'config',
+        'environment',
+        'participant-source',
         'group-name',
         'credential-said',
         'expected-issuer',
@@ -164,7 +165,6 @@ function parsePresentationArguments(
         'expected-status',
     ]);
     requireNamedArguments(args, [
-        'config',
         'group-name',
         'credential-said',
         'expected-issuer',
@@ -183,7 +183,7 @@ function parsePresentationArguments(
         );
     }
     return {
-        configPath: args.config,
+        config: participantConfigFromArguments(args),
         groupName: args['group-name'],
         credentialSaid: args['credential-said'],
         expectedIssuer: args['expected-issuer'],

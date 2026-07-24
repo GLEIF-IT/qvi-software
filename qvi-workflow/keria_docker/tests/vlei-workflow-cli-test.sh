@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-umask 077
 
 TEST_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 SCRIPT_PATH="${TEST_DIR}/../vlei-workflow.sh"
@@ -22,13 +21,11 @@ run_and_capture_status() {
     local status_file=$1
     shift
     local command_status=0
-    local runtime_parent="${QVI_RUNTIME_PARENT_OVERRIDE:-${TEST_ROOT}/runtime}"
 
     (
         cd /
         PATH="${FAKE_BIN}:${PATH}" \
         DOCKER_CALLED_FILE="${DOCKER_CALLED_FILE}" \
-        QVI_RUNTIME_PARENT="${runtime_parent}" \
             bash "${SCRIPT_PATH}" "$@" >/dev/null 2>&1
     ) || command_status=$?
     printf '%s\n' "${command_status}" > "${status_file}"
@@ -75,32 +72,19 @@ run_and_capture_status "${TEST_ROOT}/oobi-without-alternate.status" \
 oobi_without_alternate_status=$(<"${TEST_ROOT}/oobi-without-alternate.status")
 [[ "${oobi_without_alternate_status}" -eq 2 ]]
 
-blocked_runtime_parent="${TEST_ROOT}/blocked-runtime-parent"
-printf 'not a directory\n' > "${blocked_runtime_parent}"
-QVI_RUNTIME_PARENT_OVERRIDE="${blocked_runtime_parent}"
-run_and_capture_status "${TEST_ROOT}/runtime-create-failure.status" --keep-runtime
-unset QVI_RUNTIME_PARENT_OVERRIDE
-runtime_create_failure_status=$(<"${TEST_ROOT}/runtime-create-failure.status")
-runtime_create_failure_was_preserved=false
-[[ "${runtime_create_failure_status}" -ne 0 ]] &&
-    runtime_create_failure_was_preserved=true
-if [[ "${runtime_create_failure_was_preserved}" == false ]]; then
-    printf 'FAIL: runtime creation failure was reported as success\n' >&2
-    exit 1
-fi
-
-runtime_was_created=false
-[[ -d "${TEST_ROOT}/runtime" ]] && runtime_was_created=true
-if [[ "${runtime_was_created}" == true ]]; then
-    printf 'FAIL: invalid/help-only CLI parsing created runtime state\n' >&2
-    exit 1
-fi
-
 docker_was_called=false
 [[ -e "${DOCKER_CALLED_FILE}" ]] && docker_was_called=true
 if [[ "${docker_was_called}" == true ]]; then
     printf 'FAIL: invalid/help-only CLI parsing invoked Docker\n' >&2
     exit 1
 fi
+
+custom_env="${TEST_ROOT}/custom.env"
+cp "${SCRIPT_PATH%/*}/keria-signify-docker.env" "${custom_env}"
+custom_help_status=0
+QVI_WORKFLOW_ENV_FILE="${custom_env}" \
+    bash "${SCRIPT_PATH}" --help >/dev/null ||
+    custom_help_status=$?
+[[ "${custom_help_status}" -eq 0 ]]
 
 printf 'vlei-workflow-cli-test: PASS\n'

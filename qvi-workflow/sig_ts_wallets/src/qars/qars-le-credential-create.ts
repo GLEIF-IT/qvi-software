@@ -13,11 +13,7 @@ import {
 import {
     assertIssuedCredentialConvergence,
     credentialSnapshot,
-    type CredentialSnapshot,
 } from '../credential-state.ts';
-import {
-    type OperationEvidence,
-} from '../operations.ts';
 import {
     completeCoordinatedOperations,
 } from '../coordinated-operation.ts';
@@ -28,11 +24,6 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
-import {
-    assertIssuanceContract,
-    canonicalObserverSnapshots,
-    canonicalOperationEvidence,
-} from '../workflow-contracts.ts';
 
 const LE_SCHEMA_SAID = 'ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY';
 
@@ -50,19 +41,10 @@ export interface LeCredentialArtifact {
     leCredIssuee: string;
 }
 
-export interface GrantCoordinationReceipt {
-    sender: string;
-    recipient: string;
-    exnSaid: string;
-    innerExchangeSaid: string;
-}
-
 export interface CreateLeCredentialResult {
     artifact: LeCredentialArtifact;
-    observations: CredentialSnapshot[];
-    operationEvidence: OperationEvidence[];
-    issuanceReceipts: GrantCoordinationReceipt[];
-    coordinationReceipts: GrantCoordinationReceipt[];
+    registryId: string;
+    telDigest: string;
 }
 
 /**
@@ -162,29 +144,15 @@ export async function createLeCredential(
             'LE credential'
         );
         console.log("LE credential already exists");
-        const result: CreateLeCredentialResult = {
+        return {
             artifact: {
                 leCredSAID: snapshots[0].said,
                 leCredIssuer: snapshots[0].issuer,
                 leCredIssuee: snapshots[0].issuee,
             },
-            observations:
-                canonicalObserverSnapshots(snapshots),
-            operationEvidence: [],
-            issuanceReceipts: [],
-            coordinationReceipts: [],
+            registryId: snapshots[0].registry,
+            telDigest: snapshots[0].currentTelDigest,
         };
-        assertIssuanceContract(
-            result,
-            memberPrefixes,
-            {
-                issuer: qviAID.prefix,
-                schema: LE_SCHEMA_SAID,
-                issuee: issueePrefix,
-            },
-            'LE credential'
-        );
-        return result;
     }
 
     const onlySomeQarsHaveCredential = noQarHasCredential === false;
@@ -261,7 +229,7 @@ export async function createLeCredential(
         {coordinator: QAR1Id.prefix}
     );
 
-    const operationEvidence = await completeCoordinatedOperations([
+    await completeCoordinatedOperations([
         {client: QAR1Client, result: IssOp1},
         {client: QAR2Client, result: IssOp2},
         {client: QAR3Client, result: IssOp3},
@@ -341,69 +309,15 @@ export async function createLeCredential(
         completeMultisigIpex(QAR3Client, grant3),
     ]);
 
-    const result: CreateLeCredentialResult = {
+    return {
         artifact: {
             leCredSAID: issuedSnapshots[0].said,
             leCredIssuer: issuedSnapshots[0].issuer,
             leCredIssuee: issuedSnapshots[0].issuee,
         },
-        observations: canonicalObserverSnapshots(issuedSnapshots),
-        operationEvidence:
-            canonicalOperationEvidence(operationEvidence),
-        issuanceReceipts: [
-            ...IssOp1.wrapperReceipts.map((receipt) => ({
-                sender: QAR1Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[0].currentTelDigest,
-            })),
-            ...IssOp2.wrapperReceipts.map((receipt) => ({
-                sender: QAR2Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[1].currentTelDigest,
-            })),
-            ...IssOp3.wrapperReceipts.map((receipt) => ({
-                sender: QAR3Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[2].currentTelDigest,
-            })),
-        ].sort((left, right) =>
-            `${left.sender}\u0000${left.recipient}`.localeCompare(
-                `${right.sender}\u0000${right.recipient}`
-            )
-        ),
-        coordinationReceipts: [
-            ...grant1.wrapperReceipts.map((receipt) => ({
-                sender: QAR1Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant1.innerExchangeSaid,
-            })),
-            ...grant2.wrapperReceipts.map((receipt) => ({
-                sender: QAR2Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant2.innerExchangeSaid,
-            })),
-            ...grant3.wrapperReceipts.map((receipt) => ({
-                sender: QAR3Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant3.innerExchangeSaid,
-            })),
-        ].sort((left, right) =>
-            `${left.sender}\u0000${left.recipient}`.localeCompare(
-                `${right.sender}\u0000${right.recipient}`
-            )
-        ),
+        registryId: issuedSnapshots[0].registry,
+        telDigest: issuedSnapshots[0].currentTelDigest,
     };
-    assertIssuanceContract(
-        result,
-        memberPrefixes,
-        {
-            issuer: qviAID.prefix,
-            schema: LE_SCHEMA_SAID,
-            issuee: issueePrefix,
-        },
-        'LE credential'
-    );
-    return result;
 }
 
 function parseLeCredentialArguments(
@@ -457,10 +371,9 @@ if (isMainModule(import.meta.url)) {
         return {
             status: 'converged',
             credential: result.artifact,
-            observations: result.observations,
-            operationEvidence: result.operationEvidence,
-            issuanceReceipts: result.issuanceReceipts,
-            coordinationReceipts: result.coordinationReceipts,
+            credentialSaid: result.artifact.leCredSAID,
+            registryId: result.registryId,
+            telDigest: result.telDigest,
         };
     });
 }

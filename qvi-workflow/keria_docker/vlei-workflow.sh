@@ -13,28 +13,36 @@
 # 2) This script starts up and tears down the necessary Docker Compose environment.
 # 3) This script uses the kli and kli2 commands as defined in ./kli-commands.sh to perform the QVI
 #    workflow steps.
-# 4) Each invocation owns a private, mode-0700 runtime and a unique Compose project.
+# 4) This is a one-run-at-a-time developer demonstration. Generated data lives
+#    in ./runtime and the next invocation replaces it.
 
 set -Eeuo pipefail
-umask 077
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-WORKFLOW_REPOSITORY_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd -P)
 DOCKER_COMPOSE_FILE="${SCRIPT_DIR}/docker-compose-keria_signify_qvi.yaml"
+WORKFLOW_ENV_FILE=${QVI_WORKFLOW_ENV_FILE:-"${SCRIPT_DIR}/keria-signify-docker.env"}
+
+if [[ ! -f "${WORKFLOW_ENV_FILE}" ]]; then
+    printf 'Workflow environment file does not exist: %s\n' \
+        "${WORKFLOW_ENV_FILE}" >&2
+    exit 2
+fi
+
+set -a
+# shellcheck source=./keria-signify-docker.env
+source "${WORKFLOW_ENV_FILE}"
+set +a
 
 # shellcheck source=./color-printing.sh
 source "${SCRIPT_DIR}/color-printing.sh"
 # shellcheck source=./lib/workflow-runtime.sh
 source "${SCRIPT_DIR}/lib/workflow-runtime.sh"
 
-# Used by resolve-env.ts. This driver deliberately supports only its local
-# Compose topology.
-ENVIRONMENT=docker-tsx
 QVI_SIGNIFY_DIR=/vlei-workflow/src
 QVI_DATA_DIR=/vlei-workflow/qvi_data
-PARTICIPANT_CONFIG_CONTAINER=/run/qvi/participants.json
 
-WORKFLOW_TIMEOUT_SECONDS=120
+: "${ENVIRONMENT:=docker-tsx}"
+: "${WORKFLOW_TIMEOUT_SECONDS:=120}"
 export WORKFLOW_TIMEOUT_SECONDS
 HTTP_CONNECT_TIMEOUT=5
 HTTP_REQUEST_TIMEOUT=15
@@ -87,203 +95,75 @@ run_signify_json() {
     printf '%s\n' "${normalized_result}"
 }
 
-run_sally_evidence() {
-    local evidence_output=""
-    local normalized_evidence=""
-    local evidence_status=0
-    local evidence_command_failed=false
-    local normalization_failed=false
+callback_was_recorded() {
+    local action=$1
+    local credential_said=$2
+    local action_fragment="\"action\":\"${action}\""
+    local credential_fragment="\"credential\":\"${credential_said}\""
+    local matching_line=""
 
-    evidence_output=$(workflow_compose exec -T hook \
-        python3 /app/evidence.py "$@" 2>&1) || evidence_status=$?
-    [[ "${evidence_status}" -ne 0 ]] && evidence_command_failed=true
-    if [[ "${evidence_command_failed}" == true ]]; then
-        printf '%s\n' "${evidence_output}"
-        return "${evidence_status}"
+    [[ -f "${SALLY_CALLBACK_FILE}" ]] || return 1
+    matching_line=$(grep -F "${action_fragment}" "${SALLY_CALLBACK_FILE}" |
+        grep -F "${credential_fragment}" |
+        tail -n 1) || return 1
+    printf '%s\n' "${matching_line}"
+}
+
+wait_for_sally_callback() {
+    local story_label=$1
+    local action=$2
+    local credential_said=$3
+    local callback_result=""
+    local callback_wait_failed=false
+
+    callback_result=$(wait_until \
+        "Sally ${action} callback for ${story_label} credential ${credential_said}" \
+        "${WORKFLOW_TIMEOUT_SECONDS}" \
+        callback_was_recorded \
+        "${action}" \
+        "${credential_said}") || callback_wait_failed=true
+    if [[ "${callback_wait_failed}" == true ]]; then
+        fail_workflow "Sally did not report the ${story_label} credential ${credential_said}"
     fi
 
-    normalized_evidence=$(printf '%s\n' "${evidence_output}" |
-        jq -c '.') || normalization_failed=true
-    if [[ "${normalization_failed}" == true ]]; then
-        printf 'Sally evidence validator returned invalid JSON: %s\n' \
-            "${evidence_output}"
-        return 1
-    fi
-
-    printf '%s\n' "${normalized_evidence}"
+    print_green "[Sally] ${story_label} callback received for ${credential_said}"
 }
 
-run_workflow_contract() {
-    workflow_compose exec -T hook \
-        python3 /app/workflow_contracts.py "$@"
-}
-
-record_sally_evidence() {
-    local evidence_result=$1
-    local story_label=$2
-    local proof_record
-
-    proof_record=$(printf '%s\n' "${evidence_result}" |
-        jq -c \
-            --arg story "${story_label}" \
-            '.evidence + {type:"sally-evidence", story:$story}')
-    append_proof_record "${proof_record}"
-}
-
-sally_active_evidence_is_ready() {
+revoked_oor_was_rejected_and_reported() {
     local submitted_after=$1
     local credential_said=$2
-    local schema=$3
-    local holder=$4
-    local issuer=$5
+    local sally_logs=""
+    local rejection_message="revoked credential ${credential_said} being presented"
+    local callback_found=false
+    local rejection_found=false
 
-    run_sally_evidence active \
-        --callbacks /proof/sally-callbacks.jsonl \
-        --after "${submitted_after}" \
-        --said "${credential_said}" \
-        --schema "${schema}" \
-        --holder "${holder}" \
-        --issuer "${issuer}"
-}
-
-wait_for_active_sally_evidence() {
-    local story_label=$1
-    local submitted_after=$2
-    local credential_said=$3
-    local schema=$4
-    local holder=$5
-    local issuer=$6
-    local evidence_result=""
-    local evidence_wait_failed=false
-
-    evidence_result=$(wait_until \
-        "Sally callback for ${story_label} credential ${credential_said}" \
-        "${WORKFLOW_TIMEOUT_SECONDS}" \
-        sally_active_evidence_is_ready \
-        "${submitted_after}" \
-        "${credential_said}" \
-        "${schema}" \
-        "${holder}" \
-        "${issuer}") || evidence_wait_failed=true
-    if [[ "${evidence_wait_failed}" == true ]]; then
-        fail_workflow "Sally did not prove the ${story_label} presentation"
-    fi
-
-    record_sally_evidence "${evidence_result}" "${story_label}"
-}
-
-capture_direct_sally_logs() {
-    local submitted_after=$1
-    local raw_log_file="${WORKFLOW_LOG_DIR}/direct-sally.raw.log"
-    local redacted_log_file="${DIRECT_SALLY_LOG_FILE}.tmp"
-    local log_capture_status=0
-    local log_capture_failed=false
-    local log_redaction_succeeded=false
-
-    workflow_compose logs \
+    callback_was_recorded rev "${credential_said}" >/dev/null &&
+        callback_found=true
+    sally_logs=$(workflow_compose logs \
         --no-color \
         --timestamps \
         --since "${submitted_after}" \
-        direct-sally > "${raw_log_file}" 2>&1 ||
-        log_capture_status=$?
-    [[ "${log_capture_status}" -ne 0 ]] && log_capture_failed=true
-    if [[ "${log_capture_failed}" == true ]]; then
-        rm -f "${raw_log_file}" "${redacted_log_file}"
-        return "${log_capture_status}"
+        direct-sally 2>&1) || return 1
+    [[ "${sally_logs}" == *"${rejection_message}"* ]] &&
+        rejection_found=true
+
+    if [[ "${callback_found}" == true &&
+          "${rejection_found}" == true ]]; then
+        printf 'Sally rejected and reported revoked OOR %s\n' \
+            "${credential_said}"
+        return 0
     fi
 
-    redact_stream < "${raw_log_file}" > "${redacted_log_file}" &&
-        log_redaction_succeeded=true
-    rm -f "${raw_log_file}"
-    if [[ "${log_redaction_succeeded}" == false ]]; then
-        rm -f "${redacted_log_file}"
-        return 1
-    fi
-
-    chmod 600 "${redacted_log_file}"
-    mv "${redacted_log_file}" "${DIRECT_SALLY_LOG_FILE}"
-}
-
-sally_revoked_oor_evidence_is_ready() {
-    local submitted_after=$1
-    local credential_said=$2
-    local issuer=$3
-    local revocation_timestamp=$4
-    local logs_were_captured=false
-
-    capture_direct_sally_logs "${submitted_after}" &&
-        logs_were_captured=true
-    if [[ "${logs_were_captured}" == false ]]; then
-        printf 'Unable to capture direct Sally logs\n'
-        return 1
-    fi
-
-    run_sally_evidence revoked-oor \
-        --callbacks /proof/sally-callbacks.jsonl \
-        --logs /proof/direct-sally.log \
-        --after "${submitted_after}" \
-        --said "${credential_said}" \
-        --schema "${OOR_SCHEMA}" \
-        --issuer "${issuer}" \
-        --revoked-at "${revocation_timestamp}"
-}
-
-no_ecr_callback_window_is_complete() {
-    local submitted_after=$1
-    local credential_said=$2
-    local quiet_deadline=$3
-    local evidence_result=""
-    local evidence_is_clean=false
-    local quiet_window_elapsed=false
-
-    evidence_result=$(run_sally_evidence no-callback \
-        --callbacks /proof/sally-callbacks.jsonl \
-        --after "${submitted_after}" \
-        --schema "${ECR_SCHEMA}" \
-        --said "${credential_said}") &&
-        evidence_is_clean=true
-    if [[ "${evidence_is_clean}" == false ]]; then
-        printf '%s\n' "${evidence_result}"
-        return 1
-    fi
-
-    [[ $(date +%s) -ge "${quiet_deadline}" ]] &&
-        quiet_window_elapsed=true
-    if [[ "${quiet_window_elapsed}" == false ]]; then
-        printf 'No ECR callback observed; quiet window is still open\n'
-        return 1
-    fi
-
-    printf '%s\n' "${evidence_result}"
-}
-
-prove_no_ecr_callback() {
-    local submitted_after=$1
-    local credential_said=$2
-    local quiet_seconds=10
-    local quiet_deadline=$(( $(date +%s) + quiet_seconds ))
-    local evidence_result=""
-    local evidence_wait_failed=false
-
-    evidence_result=$(wait_until \
-        "a ${quiet_seconds}s window with no ECR callback" \
-        "$(( quiet_seconds + 2 ))" \
-        no_ecr_callback_window_is_complete \
-        "${submitted_after}" \
-        "${credential_said}" \
-        "${quiet_deadline}") || evidence_wait_failed=true
-    if [[ "${evidence_wait_failed}" == true ]]; then
-        fail_workflow "An ECR callback was emitted or the quiet-window proof failed"
-    fi
-
-    record_sally_evidence "${evidence_result}" "ECR-not-presented"
+    printf 'callback=%s rejection=%s\n' \
+        "${callback_found}" "${rejection_found}"
+    return 1
 }
 
 require_system_commands() {
     local required_command
     local command_is_available=false
 
-    for required_command in docker jq curl shasum awk sed wc; do
+    for required_command in docker jq curl awk sed wc; do
         command_is_available=false
         command -v "${required_command}" >/dev/null 2>&1 && command_is_available=true
         if [[ "${command_is_available}" == false ]]; then
@@ -296,72 +176,12 @@ require_system_commands() {
 create_docker_containers() {
   local image_build_succeeded=false
 
-  print_green "-------------------Building workflow runner and proof recorder-------------------"
-  workflow_compose build signify hook && image_build_succeeded=true
+  print_green "-------------------Building workflow runner and callback recorder-------------------"
+  workflow_compose build signify callback-recorder &&
+      image_build_succeeded=true
   if [[ "${image_build_succeeded}" == false ]]; then
       fail_workflow "Unable to build the workflow images"
   fi
-}
-
-record_dependency_proof() {
-  local keria_container_id=""
-  local keria_image_id=""
-  local keria_repo_digest=""
-  local keria_version=""
-  local signify_version=""
-  local dependency_probe_failed=false
-  local versions_are_expected=false
-
-  keria_container_id=$(workflow_compose ps -q keria1) ||
-      dependency_probe_failed=true
-  if [[ "${dependency_probe_failed}" == false ]]; then
-      keria_image_id=$(docker inspect \
-          --format '{{.Image}}' "${keria_container_id}") ||
-          dependency_probe_failed=true
-  fi
-  if [[ "${dependency_probe_failed}" == false ]]; then
-      keria_repo_digest=$(docker image inspect \
-          weboftrust/keria:0.4.0 \
-          --format '{{range .RepoDigests}}{{println .}}{{end}}' |
-          awk '/^weboftrust\/keria@sha256:/ {print; exit}') ||
-          dependency_probe_failed=true
-  fi
-  if [[ "${dependency_probe_failed}" == false ]]; then
-      keria_version=$(workflow_compose exec -T keria1 \
-          python3 -c 'import keria; print(keria.__version__)') ||
-          dependency_probe_failed=true
-  fi
-  if [[ "${dependency_probe_failed}" == false ]]; then
-      signify_version=$(run_secure_compose_command \
-          signify \
-          node \
-          --input-type=module \
-          -e \
-          'import {readFileSync} from "node:fs"; console.log(JSON.parse(readFileSync("./node_modules/signify-ts/package.json","utf8")).version)') ||
-          dependency_probe_failed=true
-  fi
-  if [[ "${dependency_probe_failed}" == true ]]; then
-      fail_workflow "Unable to record the resolved KERIA and SignifyTS dependencies"
-  fi
-
-  [[ "${keria_version}" == "0.4.0" &&
-     "${signify_version}" == "0.4.0" &&
-     "${keria_repo_digest}" == weboftrust/keria@sha256:* ]] &&
-      versions_are_expected=true
-  if [[ "${versions_are_expected}" == false ]]; then
-      fail_workflow \
-          "Dependency mismatch: KERIA=${keria_version}, SignifyTS=${signify_version}, digest=${keria_repo_digest}"
-  fi
-
-  append_proof_record "$(jq -cn \
-      --arg image "weboftrust/keria:0.4.0" \
-      --arg version "${keria_version}" \
-      --arg imageId "${keria_image_id}" \
-      --arg digest "${keria_repo_digest}" \
-      '{type:"dependency",component:"KERIA",image:$image,version:$version,imageId:$imageId,digest:$digest}')"
-  append_proof_record "$(jq -cn \
-      --arg version "${signify_version}" \
-      '{type:"dependency",component:"SignifyTS",version:$version}')"
 }
 
 # QVI Config
@@ -377,45 +197,33 @@ CONT_CONFIG_DIR=/config
 
 #### Identifier Information ####
 # GEDA AIDs - GLEIF External Delegated AID
-GAR1=accolon
 GAR1_PRE=
-GAR2=bedivere
 GAR2_PRE=
-export GEDA_NAME=dagonet
-export GEDA_PRE=
+export GEDA_NAME
 
 # Legal Entity AIDs
-LAR1=elaine
 LAR1_PRE=
-LAR2=finn
 LAR2_PRE=
-LE_NAME=gareth
 LE_PRE=
 
 #### KERIA and Signify Identifiers ####
 # QAR AIDs - filled in later after KERIA setup
-QAR1=galahad
 QAR1_PRE=
 QAR1_AGENT_EID=
-QAR2=lancelot
 QAR2_PRE=
 QAR2_AGENT_EID=
-QAR3=tristan
 QAR3_PRE=
 QAR3_AGENT_EID=
-QVI_NAME=percival
 QVI_PRE=
 
 # Person AID
-PERSON=mordred
 PERSON_PRE=
 OOR_CRED_SAID=
 ECR_CRED_SAID=
 LE_CRED_SAID=
 LAST_ISSUED_CREDENTIAL_SAID=
 LAST_REVOCATION_TIMESTAMP=
-OOR_REVOCATION_TIMESTAMP=
-ECR_CALLBACK_BOUNDARY=
+LAST_REVOCATION_TEL_DIGEST=
 
 #### Credential data ####
 LE_LEI=254900OPPU84GM83MG36 # GLEIF Americas
@@ -423,84 +231,11 @@ PERSON_NAME="Mordred Delacqs"
 PERSON_ECR="Consultant"
 PERSON_OOR="Advisor"
 
-# Sally - vLEI Reporting API. Exported so the verifier container can deliver
-# callbacks to the proof hook.
-export WEBHOOK_HOST=http://hook:9923
-
-# Direct mode Sally
-export DIRECT_SALLY_HOST=http://direct-sally:9823
-export DIRECT_SALLY_KS_NAME=direct-sally
-export DIRECT_SALLY_ALIAS=direct-sally
-export DIRECT_SALLY_PASSCODE=""
-export DIRECT_SALLY_SALT=""
+# Sally values and public demo salts/passcodes come from the workflow env file.
+export WEBHOOK_HOST
+export DIRECT_SALLY_HOST DIRECT_SALLY_KS_NAME DIRECT_SALLY_ALIAS
+export DIRECT_SALLY_PASSCODE DIRECT_SALLY_SALT
 export DIRECT_SALLY_PRE=""
-
-# Registries
-GEDA_REGISTRY=vLEI-external
-LE_REGISTRY=vLEI-internal
-QVI_REGISTRY=vLEI-qvi
-
-# Credential Schemas
-QVI_SCHEMA=EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao
-LE_SCHEMA=ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY
-ECR_AUTH_SCHEMA=EH6ekLjSr8V32WyFbGe1zXjTzFs9PkTYmupJ9H65O14g
-OOR_AUTH_SCHEMA=EKA57bKBKxr_kN7iN5i7lMUxpMG-s19dRcmov1iDxz-E
-ECR_SCHEMA=EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw
-OOR_SCHEMA=EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy
-
-# Write wrong GEDA PRE, will be reset later
-export GEDA_PRE=DUMMY_VALUE_INVALID_________________________
-
-write_private_runtime_config() {
-  local compose_environment_file="${COMPOSE_ENV_FILE}.tmp"
-  local participant_configuration_file="${PARTICIPANT_CONFIG_FILE}.tmp"
-  local qar1_salt="${QAR1_SALT:-}"
-  local qar2_salt="${QAR2_SALT:-}"
-  local qar3_salt="${QAR3_SALT:-}"
-  local person_salt="${PERSON_SALT:-}"
-
-  print_bg_blue "[ADMIN] Writing protected runtime configuration"
-
-  {
-    printf 'WORKFLOW_CONFIG_DIR=%s\n' "${WORKFLOW_CONFIG_DIR}"
-    printf 'WORKFLOW_PROOF_DIR=%s\n' "${WORKFLOW_PROOF_DIR}"
-    printf 'WORKFLOW_SECRET_DIR=%s\n' "${WORKFLOW_SECRET_DIR}"
-    printf 'KEYSTORE_DIR=%s\n' "${KEYSTORE_DIR}"
-    printf 'KLI_DATA_DIR=%s\n' "${KLI_DATA_DIR}"
-    printf 'LOCAL_QVI_DATA_DIR=%s\n' "${LOCAL_QVI_DATA_DIR}"
-    printf 'WORKFLOW_UID=%s\n' "${WORKFLOW_UID}"
-    printf 'WORKFLOW_GID=%s\n' "${WORKFLOW_GID}"
-    printf 'WORKFLOW_TIMEOUT_SECONDS=%s\n' "${WORKFLOW_TIMEOUT_SECONDS}"
-    printf 'DIRECT_SALLY_KS_NAME=%s\n' "${DIRECT_SALLY_KS_NAME}"
-    printf 'DIRECT_SALLY_ALIAS=%s\n' "${DIRECT_SALLY_ALIAS}"
-    printf 'DIRECT_SALLY_PRE=%s\n' "${DIRECT_SALLY_PRE}"
-    printf 'DIRECT_SALLY_SALT=%s\n' "${DIRECT_SALLY_SALT}"
-    printf 'DIRECT_SALLY_PASSCODE=%s\n' "${DIRECT_SALLY_PASSCODE}"
-    printf 'WEBHOOK_HOST=%s\n' "${WEBHOOK_HOST}"
-    printf 'GEDA_PRE=%s\n' "${GEDA_PRE}"
-  } > "${compose_environment_file}"
-
-  {
-    printf '{\n'
-    printf '  "environment": "docker-tsx",\n'
-    printf '  "participants": {\n'
-    printf '    "qar1": {"position":"qar1","name":"%s","salt":"%s","keriaHost":1},\n' "${QAR1}" "${qar1_salt}"
-    printf '    "qar2": {"position":"qar2","name":"%s","salt":"%s","keriaHost":2},\n' "${QAR2}" "${qar2_salt}"
-    printf '    "qar3": {"position":"qar3","name":"%s","salt":"%s","keriaHost":3},\n' "${QAR3}" "${qar3_salt}"
-    printf '    "person": {"position":"person","name":"%s","salt":"%s","keriaHost":1}\n' "${PERSON}" "${person_salt}"
-    printf '  }\n'
-    printf '}\n'
-  } > "${participant_configuration_file}"
-
-  chmod 600 "${compose_environment_file}" "${participant_configuration_file}"
-  mv "${compose_environment_file}" "${COMPOSE_ENV_FILE}"
-  mv "${participant_configuration_file}" "${PARTICIPANT_CONFIG_FILE}"
-}
-
-prepare_compose_lifecycle() {
-  write_private_runtime_config
-  WORKFLOW_COMPOSE_RESOURCES_MAY_EXIST=true
-}
 
 function start_docker_containers() {
   local foundation_start_failed=false
@@ -511,7 +246,7 @@ function start_docker_containers() {
       --wait \
       --wait-timeout "${WORKFLOW_TIMEOUT_SECONDS}" \
       vlei-server \
-      hook \
+      callback-recorder \
       gar-witnesses \
       qar-witnesses \
       person-witnesses \
@@ -539,63 +274,6 @@ function start_docker_containers() {
 ################################################
 # QVI Workflow with KERIpy, KERIA, and SignifyTS
 ################################################
-#### Prepare Salts and Passcodes ####
-function generate_salts_and_passcodes(){
-  # salts and passcodes need to be new and dynamic on each run so that when presenting credentials to
-  # other sally instances, not this one, that duplicity is not created by virtue of using the same
-  # identifier salt, passcode, and inception configuration.
-
-  print_green "Generating protected participant salts and passcodes"
-  export GAR1_SALT
-  export GAR2_SALT
-  export LAR1_SALT
-  export LAR2_SALT
-  export QAR1_SALT
-  export QAR2_SALT
-  export QAR3_SALT
-  export PERSON_SALT
-  export GAR1_PASSCODE
-  export GAR2_PASSCODE
-  export LAR1_PASSCODE
-  export LAR2_PASSCODE
-  export PERSON_PASSCODE
-  export DIRECT_SALLY_SALT
-  export DIRECT_SALLY_PASSCODE
-
-  GAR1_SALT=$(kli salt | tr -d " \t\n\r")
-  GAR2_SALT=$(kli salt | tr -d " \t\n\r")
-  LAR1_SALT=$(kli salt | tr -d " \t\n\r")
-  LAR2_SALT=$(kli salt | tr -d " \t\n\r")
-  QAR1_SALT=$(kli salt | tr -d " \t\n\r")
-  QAR2_SALT=$(kli salt | tr -d " \t\n\r")
-  QAR3_SALT=$(kli salt | tr -d " \t\n\r")
-  PERSON_SALT=$(kli salt | tr -d " \t\n\r")
-  DIRECT_SALLY_SALT=$(kli salt | tr -d " \t\n\r")
-
-  GAR1_PASSCODE=$(kli passcode generate | tr -d " \t\n\r")
-  GAR2_PASSCODE=$(kli passcode generate | tr -d " \t\n\r")
-  LAR1_PASSCODE=$(kli passcode generate | tr -d " \t\n\r")
-  LAR2_PASSCODE=$(kli passcode generate | tr -d " \t\n\r")
-  PERSON_PASSCODE=$(kli passcode generate | tr -d " \t\n\r")
-  DIRECT_SALLY_PASSCODE=$(kli passcode generate | tr -d " \t\n\r")
-
-  register_proof_secret_values \
-    "${GAR1_SALT}" \
-    "${GAR2_SALT}" \
-    "${LAR1_SALT}" \
-    "${LAR2_SALT}" \
-    "${QAR1_SALT}" \
-    "${QAR2_SALT}" \
-    "${QAR3_SALT}" \
-    "${PERSON_SALT}" \
-    "${GAR1_PASSCODE}" \
-    "${GAR2_PASSCODE}" \
-    "${LAR1_PASSCODE}" \
-    "${LAR2_PASSCODE}" \
-    "${PERSON_PASSCODE}" \
-    "${DIRECT_SALLY_SALT}" \
-    "${DIRECT_SALLY_PASSCODE}"
-}
 
 sally_oobi_prefix_is_ready() {
   local service_name=$1
@@ -652,11 +330,8 @@ sally_oobi_prefix_is_ready() {
 observe_sally_prefix() {
   local service_name=$1
   local local_oobi_url=$2
-  local alias=$3
-  local info_file=$4
   local observed_prefix=""
   local observation_failed=false
-  local temporary_info_file="${info_file}.tmp"
 
   observed_prefix=$(wait_until \
       "${service_name} self-bootstrapped OOBI" \
@@ -669,25 +344,15 @@ observe_sally_prefix() {
       return 1
   fi
 
-  jq -n \
-      --arg alias "${alias}" \
-      --arg prefix "${observed_prefix}" \
-      '{alias: $alias, prefix: $prefix}' \
-      > "${temporary_info_file}"
-  chmod 600 "${temporary_info_file}"
-  mv "${temporary_info_file}" "${info_file}"
   printf '%s\n' "${observed_prefix}"
 }
 
 load_sally_prefixes() {
-  local direct_info="${WORKFLOW_SECRET_DIR}/direct-sally.json"
   local direct_observation_failed=false
 
   DIRECT_SALLY_PRE=$(observe_sally_prefix \
       direct-sally \
-      http://127.0.0.1:9823/oobi \
-      "${DIRECT_SALLY_ALIAS}" \
-      "${direct_info}") ||
+      http://127.0.0.1:9823/oobi) ||
       direct_observation_failed=true
   if [[ "${direct_observation_failed}" == true ]]; then
       fail_workflow "Unable to observe direct Sally's self-bootstrapped AID"
@@ -704,7 +369,6 @@ function setup_keria_identifiers() {
   print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
   qvi_setup_data=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-and-person-setup.ts" \
-      --config "${PARTICIPANT_CONFIG_CONTAINER}" \
       --data-dir "${QVI_DATA_DIR}") || setup_failed=true
   if [[ "${setup_failed}" == true ]]; then
       fail_workflow "Unable to create the QAR and Person identifiers"
@@ -828,7 +492,6 @@ function resolve_oobis() {
 
     run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/resolve-oobi-gars-lars-sally.ts" \
-        --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --oobis "${OOBIS_FOR_KERIA}" >/dev/null ||
         resolution_failed=true
     if [[ "${resolution_failed}" == true ]]; then
@@ -880,81 +543,25 @@ function resolve_oobis() {
     echo
 }
 
-CHALLENGE_WORD_FILE=""
-CHALLENGE_WORD_CONTAINER_FILE=""
-CHALLENGE_DIGEST=""
-CHALLENGE_WORD_SEQUENCE=0
-KERIA_CHALLENGE_EXN_SAID=""
+CHALLENGE_WORDS=""
 
 function generate_challenge_words() {
     local challenge_generation_failed=false
-    local challenge_words=""
     local challenge_word_count=""
-    local challenge_word_file_exists=false
     local challenge_word_count_is_valid=false
 
-    clear_challenge_words
-    CHALLENGE_WORD_SEQUENCE=$((CHALLENGE_WORD_SEQUENCE + 1))
-    CHALLENGE_WORD_FILE="${WORKFLOW_SECRET_DIR}/challenge-${CHALLENGE_WORD_SEQUENCE}.words"
-    CHALLENGE_WORD_CONTAINER_FILE="/run/qvi/challenge-${CHALLENGE_WORD_SEQUENCE}.words"
-    generate_kli_challenge_words_file "${CHALLENGE_WORD_CONTAINER_FILE}" ||
-        challenge_generation_failed=true
+    CHALLENGE_WORDS=$(kli challenge generate --out string |
+        tr -d '\r\n') || challenge_generation_failed=true
     if [[ "${challenge_generation_failed}" == true ]]; then
         fail_workflow "Failed to generate a 128-bit challenge"
     fi
 
-    [[ -f "${CHALLENGE_WORD_FILE}" ]] && challenge_word_file_exists=true
-    if [[ "${challenge_word_file_exists}" == false ]]; then
-        fail_workflow "Challenge generation completed without a protected words file"
-    fi
-
-    challenge_word_count=$(wc -w < "${CHALLENGE_WORD_FILE}" | tr -d '[:space:]')
+    challenge_word_count=$(printf '%s\n' "${CHALLENGE_WORDS}" |
+        wc -w |
+        tr -d '[:space:]')
     [[ "${challenge_word_count}" -eq 12 ]] && challenge_word_count_is_valid=true
     if [[ "${challenge_word_count_is_valid}" == false ]]; then
         fail_workflow "Expected a 12-word, 128-bit challenge"
-    fi
-
-    chmod 600 "${CHALLENGE_WORD_FILE}"
-    challenge_words=$(<"${CHALLENGE_WORD_FILE}")
-    register_proof_secret_values "${challenge_words}"
-    CHALLENGE_DIGEST=$(shasum -a 256 "${CHALLENGE_WORD_FILE}" | awk '{print $1}')
-}
-
-function clear_challenge_words() {
-    local challenge_file_is_present=false
-    [[ -n "${CHALLENGE_WORD_FILE}" && -f "${CHALLENGE_WORD_FILE}" ]] &&
-        challenge_file_is_present=true
-    if [[ "${challenge_file_is_present}" == true ]]; then
-        rm -f "${CHALLENGE_WORD_FILE}"
-    fi
-    CHALLENGE_WORD_FILE=""
-    CHALLENGE_WORD_CONTAINER_FILE=""
-    CHALLENGE_DIGEST=""
-}
-
-function verify_kli_contact_binding() {
-    local verifier_name=$1
-    local verifier_passcode=$2
-    local responder_name=$3
-    local expected_responder_prefix=$4
-    local contacts_json=""
-    local contact_query_failed=false
-    local binding_validation_failed=false
-
-    contacts_json=$(kli contacts list \
-        --name "${verifier_name}" \
-        --passcode "${verifier_passcode}") || contact_query_failed=true
-    if [[ "${contact_query_failed}" == true ]]; then
-        fail_workflow "Unable to inspect ${verifier_name}'s contacts before challenge verification"
-    fi
-
-    printf '%s\n' "${contacts_json}" |
-        run_workflow_contract contact-binding \
-            --alias "${responder_name}" \
-            --expected-prefix "${expected_responder_prefix}" >/dev/null ||
-        binding_validation_failed=true
-    if [[ "${binding_validation_failed}" == true ]]; then
-        fail_workflow "Contact ${responder_name} did not resolve to its expected prefix for ${verifier_name}"
     fi
 }
 
@@ -962,22 +569,16 @@ function verify_kli_challenge() {
     local verifier_name=$1
     local verifier_passcode=$2
     local responder_name=$3
-    local expected_responder_prefix=$4
     local output=""
     local verification_failed=false
     local success_message_found=false
 
-    verify_kli_contact_binding \
-        "${verifier_name}" \
-        "${verifier_passcode}" \
-        "${responder_name}" \
-        "${expected_responder_prefix}"
-
-    output=$(kli_challenge_verify_from_file "${CHALLENGE_WORD_CONTAINER_FILE}" \
+    output=$(kli challenge verify \
         --name "${verifier_name}" \
         --alias "${verifier_name}" \
         --passcode "${verifier_passcode}" \
-        --signer "${responder_name}" 2>&1) || verification_failed=true
+        --signer "${responder_name}" \
+        --words "${CHALLENGE_WORDS}" 2>&1) || verification_failed=true
     if [[ "${verification_failed}" == true ]]; then
         fail_workflow "KLI challenge verification failed for ${verifier_name} and ${responder_name}"
     fi
@@ -995,80 +596,17 @@ function keria_challenge_action() {
     local participant=$1
     local action=$2
     local peer_prefix=$3
-    local result_json=""
     local challenge_action_failed=false
 
-    result_json=$(run_signify_json "${QVI_SIGNIFY_DIR}/keria-challenge.ts" \
-        --config /run/qvi/participants.json \
+    run_signify_json "${QVI_SIGNIFY_DIR}/keria-challenge.ts" \
         --participant "${participant}" \
         --action "${action}" \
         --peer-prefix "${peer_prefix}" \
-        --words-file "${CHALLENGE_WORD_CONTAINER_FILE}") ||
+        --words "${CHALLENGE_WORDS}" >/dev/null ||
         challenge_action_failed=true
     if [[ "${challenge_action_failed}" == true ]]; then
         fail_workflow "KERIA challenge ${action} failed for ${participant} and ${peer_prefix}"
     fi
-
-    KERIA_CHALLENGE_EXN_SAID=$(printf '%s\n' "${result_json}" |
-        jq -r '.responseExnSaid')
-}
-
-function record_challenge_receipt() {
-    local relationship=$1
-    local direction=$2
-    local challenger_prefix=$3
-    local responder_prefix=$4
-    local verifier_type=$5
-    local response_exn_said=$6
-    local verified_at
-    local response_said_is_present=false
-    local receipt_json=""
-
-    verified_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    [[ -n "${response_exn_said}" ]] &&
-        response_said_is_present=true
-    if [[ "${response_said_is_present}" == true ]]; then
-        receipt_json=$(jq -cn \
-            --arg relationship "${relationship}" \
-            --arg direction "${direction}" \
-            --arg challengerPrefix "${challenger_prefix}" \
-            --arg responderPrefix "${responder_prefix}" \
-            --arg verifierType "${verifier_type}" \
-            --arg challengeDigest "${CHALLENGE_DIGEST}" \
-            --arg verifiedAt "${verified_at}" \
-            --arg responseExnSaid "${response_exn_said}" \
-            '{
-                type: "challenge",
-                relationship: $relationship,
-                direction: $direction,
-                challengerPrefix: $challengerPrefix,
-                responderPrefix: $responderPrefix,
-                verifierType: $verifierType,
-                challengeDigest: $challengeDigest,
-                verifiedAt: $verifiedAt,
-                responseExnSaid: $responseExnSaid
-            }')
-    else
-        receipt_json=$(jq -cn \
-            --arg relationship "${relationship}" \
-            --arg direction "${direction}" \
-            --arg challengerPrefix "${challenger_prefix}" \
-            --arg responderPrefix "${responder_prefix}" \
-            --arg verifierType "${verifier_type}" \
-            --arg challengeDigest "${CHALLENGE_DIGEST}" \
-            --arg verifiedAt "${verified_at}" \
-            '{
-                type: "challenge",
-                relationship: $relationship,
-                direction: $direction,
-                challengerPrefix: $challengerPrefix,
-                responderPrefix: $responderPrefix,
-                verifierType: $verifierType,
-                challengeDigest: $challengeDigest,
-                verifiedAt: $verifiedAt
-            }')
-    fi
-    append_proof_record "${receipt_json}"
 }
 
 function complete_challenge_direction() {
@@ -1085,25 +623,23 @@ function complete_challenge_direction() {
     local responder_passcode=$1
     local responder_prefix=$2
     local response_failed=false
-    local response_exn_said=""
     local challenger_uses_kli=false
     local responder_uses_kli=false
 
     generate_challenge_words
-    KERIA_CHALLENGE_EXN_SAID=""
 
     [[ "${challenger_type}" == kli ]] && challenger_uses_kli=true
     [[ "${responder_type}" == kli ]] && responder_uses_kli=true
     if [[ "${responder_uses_kli}" == true ]]; then
-        kli_challenge_respond_from_file "${CHALLENGE_WORD_CONTAINER_FILE}" \
+        kli challenge respond \
             --name "${responder_name}" \
             --alias "${responder_name}" \
             --passcode "${responder_passcode}" \
-            --recipient "${challenger_name}" >/dev/null ||
+            --recipient "${challenger_name}" \
+            --words "${CHALLENGE_WORDS}" >/dev/null ||
             response_failed=true
     else
         keria_challenge_action "${responder_id}" respond "${challenger_prefix}"
-        response_exn_said="${KERIA_CHALLENGE_EXN_SAID}"
     fi
     if [[ "${response_failed}" == true ]]; then
         fail_workflow "Challenge response failed from ${responder_id} to ${challenger_id}"
@@ -1113,22 +649,13 @@ function complete_challenge_direction() {
         verify_kli_challenge \
             "${challenger_name}" \
             "${challenger_passcode}" \
-            "${responder_name}" \
-            "${responder_prefix}"
+            "${responder_name}"
     else
         keria_challenge_action "${challenger_id}" verify "${responder_prefix}"
-        [[ -n "${KERIA_CHALLENGE_EXN_SAID}" ]] &&
-            response_exn_said="${KERIA_CHALLENGE_EXN_SAID}"
     fi
 
-    record_challenge_receipt \
-        "${relationship}" \
-        "${challenger_id}->${responder_id}" \
-        "${challenger_prefix}" \
-        "${responder_prefix}" \
-        "${challenger_type}" \
-        "${response_exn_said}"
-    clear_challenge_words
+    print_green "[challenge] ${relationship}: ${challenger_id} verified ${responder_id}"
+    CHALLENGE_WORDS=""
 }
 
 function challenge_relationship() {
@@ -1153,17 +680,6 @@ function challenge_relationship() {
         "${relationship}" \
         "${right_type}" "${right_id}" "${right_name}" "${right_passcode}" "${right_prefix}" \
         "${left_type}" "${left_id}" "${left_name}" "${left_passcode}" "${left_prefix}"
-}
-
-function validate_challenge_receipts() {
-    local validation_failed=false
-
-    run_workflow_contract challenge-manifest \
-        --manifest /proof/manifest.jsonl >/dev/null ||
-        validation_failed=true
-    if [[ "${validation_failed}" == true ]]; then
-        fail_workflow "Challenge proof did not contain the exact 16 complete relationship directions"
-    fi
 }
 
 load_challenge_participant() {
@@ -1270,7 +786,6 @@ function challenge_response() {
           "${right_type}" "${right_id}" "${right_name}" "${right_passcode}" "${right_prefix}"
   done
 
-  validate_challenge_receipts
   print_green "[challenge] Completed 16 directed responses across 8 trust relationships"
 }
 
@@ -1316,7 +831,7 @@ function create_geda_multisig() {
     echo
     print_yellow "[External] Multisig Inception { ${GAR1}, ${GAR2} } - wait for signatures"
     echo
-    print_dark_gray "Waiting on Compose-scoped GAR jobs"
+    print_dark_gray "Waiting on GAR jobs"
     wait_kli_jobs gar1 gar2
 
     exists=$(kli list --name "${GAR1}" --passcode "${GAR1_PASSCODE}")
@@ -1338,13 +853,11 @@ function recreate_sally_containers() {
   local restarted_prefix=""
   local restart_failed=false
   local observation_failed=false
-  local direct_info="${WORKFLOW_SECRET_DIR}/direct-sally.json"
   local prefix_was_preserved=false
 
   # Recreate Sally with the GEDA prefix that is now known. Sally must reopen
   # the existing Habery rather than silently incepting a new verifier.
   print_yellow "Recreating Sally container with new GEDA prefix ${GEDA_PRE}"
-  write_private_runtime_config
   workflow_compose up \
       --detach \
       --force-recreate \
@@ -1358,9 +871,7 @@ function recreate_sally_containers() {
 
   restarted_prefix=$(observe_sally_prefix \
       direct-sally \
-      http://127.0.0.1:9823/oobi \
-      "${DIRECT_SALLY_ALIAS}" \
-      "${direct_info}") ||
+      http://127.0.0.1:9823/oobi) ||
       observation_failed=true
   if [[ "${observation_failed}" == true ]]; then
       fail_workflow "Unable to observe Sally after its GEDA-authorized restart"
@@ -1391,7 +902,6 @@ function qars_resolve_geda_oobi() {
     print_yellow "GEDA OOBI: ${GEDA_OOBI}"
     run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" \
-        --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --alias "${GEDA_NAME}" \
         --oobi "${GEDA_OOBI}" >/dev/null ||
         geda_resolution_failed=true
@@ -1401,7 +911,6 @@ function qars_resolve_geda_oobi() {
 
     run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qars-refresh-geda-multisig-state.ts" \
-        --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --geda-prefix "${GEDA_PRE}" >/dev/null ||
         refresh_failed=true
     if [[ "${refresh_failed}" == true ]]; then
@@ -1414,7 +923,6 @@ function create_qvi_multisig() {
     local delegator_prefix=""
     local creation_result=""
     local creation_failed=false
-    local completion_result=""
     local completion_failed=false
 
     print_yellow "Creating QVI multisig AID with GEDA as delegator"
@@ -1428,7 +936,6 @@ function create_qvi_multisig() {
     print_yellow "Delegator Prefix: ${delegator_prefix}"
     creation_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-create-qvi-multisig.ts" \
-      --config "${PARTICIPANT_CONFIG_CONTAINER}" \
       --group-name "${QVI_NAME}" \
       --data-dir "${QVI_DATA_DIR}" \
       --delegator-prefix "${delegator_prefix}") ||
@@ -1440,8 +947,6 @@ function create_qvi_multisig() {
     print_yellow "Delegated Multisig Info:"
     QVI_PRE=$(printf '%s\n' "${creation_result}" |
         jq -r '.msPrefix')
-    append_proof_record "$(printf '%s\n' "${creation_result}" |
-        jq -c '. + {type:"qvi-operation",operation:"delegated-inception"}')"
     echo
     print_lcyan "QVI Multisig Prefix: ${QVI_PRE}"
     echo
@@ -1461,20 +966,16 @@ function create_qvi_multisig() {
     print_dark_gray "waiting on Docker containers gar1, gar2"
     wait_kli_jobs gar1 gar2
 
-    completion_result=$(run_signify_json \
+    run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qars-complete-multisig-incept.ts" \
-        --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --geda-prefix "${GEDA_PRE}" \
         --operation-artifact \
-          "/vlei-workflow/qvi_data/qvi-multisig-info.json") ||
+          "/vlei-workflow/qvi_data/qvi-multisig-info.json" >/dev/null ||
         completion_failed=true
     if [[ "${completion_failed}" == true ]]; then
         fail_workflow "QVI delegated inception did not converge after GEDA approval"
     fi
 
-    append_proof_record "$(printf '%s\n' "${completion_result}" |
-        jq -c \
-            '{type:"qvi-operation",operation:"delegated-inception-completion"} + .')"
     print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 }
 
@@ -1483,12 +984,10 @@ QVI_OOBI=""
 function authorize_qvi_multisig_agent_endpoint_role(){
     local authorization_result=""
     local authorization_failed=false
-    local qvi_state_record=""
 
     print_yellow "Authorizing QVI multisig agent endpoint role"
     authorization_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-authorize-endroles-get-qvi-oobi.ts" \
-      --config /run/qvi/participants.json \
       --group-name "${QVI_NAME}" \
       --data-dir "${QVI_DATA_DIR}" \
       --group-prefix "${QVI_PRE}" \
@@ -1500,20 +999,6 @@ function authorize_qvi_multisig_agent_endpoint_role(){
 
     QVI_OOBI=$(printf '%s\n' "${authorization_result}" |
         jq -r '.multisigOobi')
-    qvi_state_record=$(printf '%s\n' "${authorization_result}" |
-        jq -c '{
-            type: "qvi-state",
-            qviPrefix,
-            multisigOobi,
-            agentEndpoints,
-            groupState,
-            groupObservations,
-            operationNames,
-            coordinationReceipts
-        }')
-    append_proof_record "${qvi_state_record}"
-    append_proof_record "$(printf '%s\n' "${authorization_result}" |
-        jq -c '{type:"qvi-operation",operation:"authorize-agent-endroles"} + .')"
     print_green "Collected one canonical multisig OOBI and common QVI group state"
 }
 
@@ -1572,7 +1057,6 @@ function qars_resolve_le_oobi() {
     echo "LE OOBI: ${LE_OOBI}"
     run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qvi-resolve-oobi.ts" \
-        --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --alias "${LE_NAME}" \
         --oobi "${LE_OOBI}" >/dev/null ||
         le_resolution_failed=true
@@ -1592,7 +1076,6 @@ function resolve_qvi_oobi() {
 
     print_yellow "Resolving the canonical QVI multisig OOBI for Person"
     sig_tsx "${QVI_SIGNIFY_DIR}/person-resolve-qvi-oobi.ts" \
-      --config /run/qvi/participants.json \
       --group-name "${QVI_NAME}" \
       --oobi-file "${QVI_DATA_DIR}/qvi-oobi.json"
     echo
@@ -1722,26 +1205,19 @@ admit_qvi_received_credential() {
     local issuer_prefix=$2
     local schema=$3
     local credential_said=$4
-    local admission_result=""
     local admission_failed=false
 
-    admission_result=$(run_signify_json \
+    run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
-        --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --group-name "${QVI_NAME}" \
         --issuer-prefix "${issuer_prefix}" \
         --credential-said "${credential_said}" \
         --expected-schema "${schema}" \
-        --expected-issuee "${QVI_PRE}") ||
+        --expected-issuee "${QVI_PRE}" >/dev/null ||
         admission_failed=true
     if [[ "${admission_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to admit ${story_label} credential ${credential_said}"
     fi
-
-    append_proof_record "$(printf '%s\n' "${admission_result}" |
-        jq -c \
-            --arg story "${story_label}-admitted" \
-            '. + {type:"credential",event:"admission",story:$story}')"
 }
 
 # QVI: Admit QVI credential from GEDA
@@ -1767,9 +1243,7 @@ function admit_qvi_credential() {
 }
 
 function present_qvi_cred_to_sally_signify() {
-  local presentation_result=""
   local presentation_failed=false
-  local presentation_boundary
   local credential_said_is_valid=false
 
   QVI_CRED_SAID=$(kli vc list \
@@ -1784,32 +1258,21 @@ function present_qvi_cred_to_sally_signify() {
       fail_workflow "[QVI] Unable to identify the active QVI credential"
   fi
 
-  presentation_boundary=$(utc_now)
   print_yellow "[QVI] Presenting QVI Credential ${QVI_CRED_SAID} to Sally"
-  presentation_result=$(run_signify_json \
+  run_signify_json \
     "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
-    --config /run/qvi/participants.json \
     --group-name "${QVI_NAME}" \
     --credential-said "${QVI_CRED_SAID}" \
     --expected-issuer "${GEDA_PRE}" \
     --expected-schema "${QVI_SCHEMA}" \
     --expected-issuee "${QVI_PRE}" \
     --recipient-prefix "${DIRECT_SALLY_PRE}" \
-    --expected-status active) || presentation_failed=true
+    --expected-status active >/dev/null || presentation_failed=true
   if [[ "${presentation_failed}" == true ]]; then
       fail_workflow "[QVI] Failed to transmit the active QVI credential to Sally"
   fi
 
-  append_proof_record "$(printf '%s\n' "${presentation_result}" |
-      jq -c '. + {type:"credential",event:"presentation",story:"QVI-active"}')"
-  wait_for_active_sally_evidence \
-      "QVI-active" \
-      "${presentation_boundary}" \
-      "${QVI_CRED_SAID}" \
-      "${QVI_SCHEMA}" \
-      "${QVI_PRE}" \
-      "${GEDA_PRE}"
-  print_green "[QVI] Sally reported the exact active QVI Credential"
+  wait_for_sally_callback "active QVI" iss "${QVI_CRED_SAID}"
 }
 
 ############################ LE Credential ##################################
@@ -1821,7 +1284,6 @@ function create_qvi_reg() {
 
     registry_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-registry-create.ts" \
-      --config "${PARTICIPANT_CONFIG_CONTAINER}" \
       --group-name "${QVI_NAME}" \
       --registry-name "${QVI_REGISTRY}" \
       --data-dir "${QVI_DATA_DIR}") ||
@@ -1833,8 +1295,6 @@ function create_qvi_reg() {
     QVI_REG_REGK=$(printf '%s\n' "${registry_result}" |
         jq -r '.registryRegk')
 
-    append_proof_record "$(printf '%s\n' "${registry_result}" |
-        jq -c '. + {type:"credential",event:"registry"}')"
     print_green "[QVI] Credential Registry created for QVI with regk: ${QVI_REG_REGK}"
 }
 
@@ -1867,17 +1327,11 @@ function prepare_le_cred_data() {
 
 # QVI: Create LE credential
 record_qvi_issuance_result() {
-    local story_label=$1
-    local issuance_result=$2
+    local issuance_result=$1
     LAST_ISSUED_CREDENTIAL_SAID=$(
         printf '%s\n' "${issuance_result}" |
-            jq -r '.observations[0].said'
+            jq -r '.credentialSaid'
     )
-
-    append_proof_record "$(printf '%s\n' "${issuance_result}" |
-        jq -c \
-            --arg story "${story_label}-issued" \
-            '. + {type:"credential",event:"issuance",story:$story}')"
 }
 
 function create_and_grant_le_credential() {
@@ -1895,7 +1349,6 @@ function create_and_grant_le_credential() {
 
     issuance_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-le-credential-create.ts" \
-      --config "${PARTICIPANT_CONFIG_CONTAINER}" \
       --group-name "${QVI_NAME}" \
       --data-dir "/acdc-info" \
       --issuee-prefix "${LE_PRE}" \
@@ -1904,9 +1357,7 @@ function create_and_grant_le_credential() {
     if [[ "${issuance_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to create and grant the LE credential"
     fi
-    record_qvi_issuance_result \
-        "LE" \
-        "${issuance_result}"
+    record_qvi_issuance_result "${issuance_result}"
     LE_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
 
     echo
@@ -1960,37 +1411,23 @@ function admit_le_credential() {
 }
 
 function present_le_cred_to_sally() {
-  local presentation_result=""
   local presentation_failed=false
-  local presentation_boundary
-
-  presentation_boundary=$(utc_now)
 
   print_yellow "[QVI] Presenting LE Credential ${LE_CRED_SAID} to Sally"
-  presentation_result=$(run_signify_json \
+  run_signify_json \
     "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
-    --config /run/qvi/participants.json \
     --group-name "${QVI_NAME}" \
     --credential-said "${LE_CRED_SAID}" \
     --expected-issuer "${QVI_PRE}" \
     --expected-schema "${LE_SCHEMA}" \
     --expected-issuee "${LE_PRE}" \
     --recipient-prefix "${DIRECT_SALLY_PRE}" \
-    --expected-status active) || presentation_failed=true
+    --expected-status active >/dev/null || presentation_failed=true
   if [[ "${presentation_failed}" == true ]]; then
       fail_workflow "[QVI] Failed to transmit the active LE credential to Sally"
   fi
 
-  append_proof_record "$(printf '%s\n' "${presentation_result}" |
-      jq -c '. + {type:"credential",event:"presentation",story:"LE-active"}')"
-  wait_for_active_sally_evidence \
-      "LE-active" \
-      "${presentation_boundary}" \
-      "${LE_CRED_SAID}" \
-      "${LE_SCHEMA}" \
-      "${LE_PRE}" \
-      "${QVI_PRE}"
-  print_green "[QVI] Sally reported the exact active LE Credential"
+  wait_for_sally_callback "active LE" iss "${LE_CRED_SAID}"
 }
 
 # LE: Create LE credential registry
@@ -2207,7 +1644,6 @@ function create_and_grant_oor_credential() {
 
     issuance_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-oor-credential-create.ts" \
-      --config "${PARTICIPANT_CONFIG_CONTAINER}" \
       --group-name "${QVI_NAME}" \
       --data-dir "/acdc-info" \
       --issuee-prefix "${PERSON_PRE}" \
@@ -2216,9 +1652,7 @@ function create_and_grant_oor_credential() {
     if [[ "${credential_creation_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to create and grant the OOR credential"
     fi
-    record_qvi_issuance_result \
-        "OOR" \
-        "${issuance_result}"
+    record_qvi_issuance_result "${issuance_result}"
     OOR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
 
     echo
@@ -2230,25 +1664,18 @@ admit_person_leaf_credential() {
     local story_label=$1
     local schema=$2
     local credential_said=$3
-    local admission_result=""
     local admission_failed=false
 
-    admission_result=$(run_signify_json \
+    run_signify_json \
         "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
-        --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --issuer-prefix "${QVI_PRE}" \
         --credential-said "${credential_said}" \
         --expected-schema "${schema}" \
-        --expected-issuee "${PERSON_PRE}") ||
+        --expected-issuee "${PERSON_PRE}" >/dev/null ||
         admission_failed=true
     if [[ "${admission_failed}" == true ]]; then
         fail_workflow "[PERSON] Failed to admit ${story_label} credential ${credential_said}"
     fi
-
-    append_proof_record "$(printf '%s\n' "${admission_result}" |
-        jq -c \
-            --arg story "${story_label}-person-admitted" \
-            '. + {type:"credential",event:"admission",story:$story}')"
 }
 
 # Person: Admit OOR credential from QVI
@@ -2269,35 +1696,21 @@ function admit_oor_credential() {
 # PERSON: Present OOR credential to Sally (vLEI Reporting API)
 function person_present_oor_cred_to_sally() {
     local credential_transmission_failed=false
-    local presentation_result=""
-    local presentation_boundary
-
-    presentation_boundary=$(utc_now)
 
     print_yellow "[PERSON] Presenting active OOR Credential ${OOR_CRED_SAID} to Sally"
-    presentation_result=$(run_signify_json \
+    run_signify_json \
       "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
-      --config /run/qvi/participants.json \
       --credential-said "${OOR_CRED_SAID}" \
       --expected-issuer "${QVI_PRE}" \
       --expected-schema "${OOR_SCHEMA}" \
       --expected-issuee "${PERSON_PRE}" \
-      --recipient-prefix "${DIRECT_SALLY_PRE}") ||
+      --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
         credential_transmission_failed=true
     if [[ "${credential_transmission_failed}" == true ]]; then
         fail_workflow "[PERSON] Failed to transmit the active OOR credential to Sally"
     fi
 
-    append_proof_record "$(printf '%s\n' "${presentation_result}" |
-        jq -c '. + {type:"credential",event:"presentation",story:"OOR-active"}')"
-    wait_for_active_sally_evidence \
-        "OOR-active" \
-        "${presentation_boundary}" \
-        "${OOR_CRED_SAID}" \
-        "${OOR_SCHEMA}" \
-        "${PERSON_PRE}" \
-        "${QVI_PRE}"
-    print_green "[PERSON] Sally reported the exact active OOR Credential"
+    wait_for_sally_callback "active OOR" iss "${OOR_CRED_SAID}"
 }
 
 function revoke_qvi_leaf_credential() {
@@ -2310,7 +1723,6 @@ function revoke_qvi_leaf_credential() {
     print_yellow "[QVI] Revoking ${label} credential ${credential_said}"
     revocation_result=$(run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qars-revoke-credential.ts" \
-        --config /run/qvi/participants.json \
         --group-name "${QVI_NAME}" \
         --credential-said "${credential_said}" \
         --expected-schema "${expected_schema}" \
@@ -2321,16 +1733,15 @@ function revoke_qvi_leaf_credential() {
 
     LAST_REVOCATION_TIMESTAMP=$(printf '%s\n' "${revocation_result}" |
         jq -r '.revocationTimestamp')
-    append_proof_record "$(printf '%s\n' "${revocation_result}" |
-        jq -c \
-            --arg story "${label}-revoked" \
-            '. + {type:"credential",event:"revocation",story:$story}')"
+    LAST_REVOCATION_TEL_DIGEST=$(printf '%s\n' "${revocation_result}" |
+        jq -r '.revocationTelDigest')
     print_green "[QVI] ${label} credential revocation converged on all three QARs"
+    print_lcyan \
+        "[QVI] ${label} revocation TEL: ${LAST_REVOCATION_TEL_DIGEST} at ${LAST_REVOCATION_TIMESTAMP}"
 }
 
 function revoke_oor_credential() {
     revoke_qvi_leaf_credential "OOR" "${OOR_CRED_SAID}" "${OOR_SCHEMA}"
-    OOR_REVOCATION_TIMESTAMP="${LAST_REVOCATION_TIMESTAMP}"
 }
 
 function revoke_ecr_credential() {
@@ -2344,50 +1755,34 @@ function present_revoked_oor_to_sally() {
         fail_workflow "[QVI] Cannot present a revoked OOR without its credential SAID"
     fi
 
-    local revocation_timestamp_is_missing=false
     local credential_transmission_failed=false
-    local presentation_result=""
     local presentation_boundary
-    local evidence_result=""
     local evidence_wait_failed=false
-
-    [[ -z "${OOR_REVOCATION_TIMESTAMP:-}" ]] &&
-        revocation_timestamp_is_missing=true
-    if [[ "${revocation_timestamp_is_missing}" == true ]]; then
-        fail_workflow "[QVI] Cannot prove a revoked OOR without its TEL timestamp"
-    fi
 
     presentation_boundary=$(utc_now)
     print_yellow "[QVI] Presenting revoked OOR credential ${OOR_CRED_SAID} to Sally"
-    presentation_result=$(run_signify_json \
+    run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
-        --config /run/qvi/participants.json \
         --group-name "${QVI_NAME}" \
         --credential-said "${OOR_CRED_SAID}" \
         --expected-issuer "${QVI_PRE}" \
         --expected-schema "${OOR_SCHEMA}" \
         --expected-issuee "${PERSON_PRE}" \
         --recipient-prefix "${DIRECT_SALLY_PRE}" \
-        --expected-status revoked) || credential_transmission_failed=true
+        --expected-status revoked >/dev/null || credential_transmission_failed=true
     if [[ "${credential_transmission_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to transmit revoked OOR credential ${OOR_CRED_SAID}"
     fi
 
-    append_proof_record "$(printf '%s\n' "${presentation_result}" |
-        jq -c '. + {type:"credential",event:"presentation",story:"OOR-revoked"}')"
-    evidence_result=$(wait_until \
+    wait_until \
         "Sally rejection and revocation callback for OOR ${OOR_CRED_SAID}" \
         "${WORKFLOW_TIMEOUT_SECONDS}" \
-        sally_revoked_oor_evidence_is_ready \
+        revoked_oor_was_rejected_and_reported \
         "${presentation_boundary}" \
-        "${OOR_CRED_SAID}" \
-        "${QVI_PRE}" \
-        "${OOR_REVOCATION_TIMESTAMP}") || evidence_wait_failed=true
+        "${OOR_CRED_SAID}" >/dev/null || evidence_wait_failed=true
     if [[ "${evidence_wait_failed}" == true ]]; then
         fail_workflow "[QVI] Sally did not prove revoked-OOR rejection and reporting for ${OOR_CRED_SAID}"
     fi
-
-    record_sally_evidence "${evidence_result}" "OOR-revoked"
     print_green "[QVI] Sally rejected revoked OOR ${OOR_CRED_SAID} and emitted the exact revocation callback"
 }
 
@@ -2563,7 +1958,6 @@ function create_and_grant_ecr_credential() {
 
     issuance_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-ecr-credential-create.ts" \
-      --config "${PARTICIPANT_CONFIG_CONTAINER}" \
       --group-name "${QVI_NAME}" \
       --data-dir "/acdc-info" \
       --issuee-prefix "${PERSON_PRE}" \
@@ -2572,9 +1966,7 @@ function create_and_grant_ecr_credential() {
     if [[ "${credential_creation_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to create and grant the ECR credential"
     fi
-    record_qvi_issuance_result \
-        "ECR" \
-        "${issuance_result}"
+    record_qvi_issuance_result "${issuance_result}"
     ECR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
 
     echo
@@ -2656,17 +2048,9 @@ function end_workflow() {
 
 # main setup function
 function setup() {
-  # Salt generation is the first Compose-backed action. Persist a complete,
-  # protected environment and arm scoped cleanup before that boundary so an
-  # interruption always has enough information to tear down the exact project.
-  prepare_compose_lifecycle
-  generate_salts_and_passcodes
-  write_private_runtime_config
   create_docker_containers
   start_docker_containers
-  record_dependency_proof
   load_sally_prefixes
-  write_private_runtime_config
 #  pause "press enter to set up keria identifiers"
   setup_keria_identifiers
   create_aids
@@ -2779,10 +2163,8 @@ function main_flow() {
   revoke_oor_credential
   present_revoked_oor_to_sally
 
-  ECR_CALLBACK_BOUNDARY=$(utc_now)
   ecr_auth_and_ecr_cred
   revoke_ecr_credential
-  prove_no_ecr_callback "${ECR_CALLBACK_BOUNDARY}" "${ECR_CRED_SAID}"
 
   pause "Press [enter] to end workflow"
   end_workflow
@@ -2843,7 +2225,7 @@ usage() {
         "  -a, --alias ALIAS     Alias for --alternate (default: alternate)" \
         "  -o, --oobi OOBI       OOBI URL for --alternate" \
         "      --timeout SECONDS Timeout for each bounded operation (default: 120)" \
-        "      --keep-runtime    Preserve the private runtime and Compose stack" \
+        "      --keep-runtime    Preserve runtime/ and the Compose stack" \
         "      --pause           Pause at story checkpoints" \
         "  -h, --help            Display this help message"
 }
@@ -2963,8 +2345,6 @@ parse_arguments() {
 
 main() {
     local argument_parse_succeeded=false
-    local proof_contains_secret=false
-    local proof_redaction_succeeded=false
     local workflow_duration
 
     parse_arguments "$@" && argument_parse_succeeded=true
@@ -2983,11 +2363,6 @@ main() {
     # shellcheck source=./kli-commands.sh
     source "${SCRIPT_DIR}/kli-commands.sh"
     START_TIME=$(date +%s)
-    append_proof_record "$(jq -cn \
-        --arg project "${COMPOSE_PROJECT_NAME}" \
-        --arg startedAt "$(utc_now)" \
-        --argjson timeoutSeconds "${WORKFLOW_TIMEOUT_SECONDS}" \
-        '{type:"runtime",composeProject:$project,startedAt:$startedAt,timeoutSeconds:$timeoutSeconds}')"
 
     case "${WORKFLOW_MODE}" in
         alternate) present_to_alternate_sally ;;
@@ -2997,20 +2372,6 @@ main() {
     esac
 
     workflow_duration=$(( $(date +%s) - START_TIME ))
-    append_proof_record "$(jq -cn \
-        --argjson durationSeconds "${workflow_duration}" \
-        '{type:"workflow",status:"passed",durationSeconds:$durationSeconds}')"
-    write_proof_summary passed "${workflow_duration}"
-    retained_proof_contains_registered_secret &&
-        proof_contains_secret=true
-    if [[ "${proof_contains_secret}" == true ]]; then
-        redact_retained_proof_files &&
-            proof_redaction_succeeded=true
-        if [[ "${proof_redaction_succeeded}" == false ]]; then
-            fail_workflow "Retained proof contains a secret value and could not be sanitized"
-        fi
-        fail_workflow "Retained proof contained a secret value and was sanitized"
-    fi
     print_lcyan "Full chain workflow completed in ${workflow_duration} seconds"
 }
 

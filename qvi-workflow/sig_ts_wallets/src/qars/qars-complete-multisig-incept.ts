@@ -18,11 +18,6 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
-import {QVI_INITIAL_SEQUENCE} from '../qvi-configuration.ts';
-import {
-    assertTerminalOperationEvidence,
-    canonicalOperationEvidence,
-} from '../workflow-contracts.ts';
 
 type MemberScopedInceptionOperations = [
     qar1: string,
@@ -272,36 +267,17 @@ if (isMainModule(import.meta.url)) {
         const inception = readInceptionCompletionArtifact(
             parsed['operation-artifact']
         );
-        const operationEvidence = await completeMultisigIncept(
+        await completeMultisigIncept(
             invocation.participantSource,
             parsed['geda-prefix'],
             invocation.environment,
             inception.operationNames,
             inception.coordinationNotifications
         );
-        const operationWasProvided =
-            inception.operationNames.length > 0;
-        if (operationWasProvided) {
-            assertTerminalOperationEvidence(
-                operationEvidence,
-                Array.from({length: 3}, () => ({
-                    name: `group.${inception.msPrefix}`,
-                    result: {
-                        kind: 'event',
-                        said: inception.msPrefix,
-                        prefix: inception.msPrefix,
-                        sequence: QVI_INITIAL_SEQUENCE,
-                    },
-                })),
-                'Delegated inception completion'
-            );
-        }
         return {
             status: 'completed',
             gedaPrefix: parsed['geda-prefix'],
             qviPrefix: inception.msPrefix,
-            operationEvidence:
-                canonicalOperationEvidence(operationEvidence),
         };
     });
 }

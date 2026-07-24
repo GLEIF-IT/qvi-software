@@ -23,7 +23,6 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
-import {canonicalObserverSnapshots} from '../workflow-contracts.ts';
 
 function admittedCredentialSnapshots(
     credentials: Array<
@@ -58,7 +57,7 @@ function admittedCredentialSnapshots(
         memberPrefixes,
         `Credential ${expected.said}`
     );
-    return canonicalObserverSnapshots(snapshots);
+    return snapshots;
 }
 
 /**
@@ -238,7 +237,7 @@ if (isMainModule(import.meta.url)) {
             'credential-said',
         ]);
         const invocation = participantInvocationFromArguments(parsed);
-        const credentials = await admitCredentialQvi(
+        await admitCredentialQvi(
             parsed['group-name'],
             invocation.participantSource,
             parsed['issuer-prefix'],
@@ -250,7 +249,6 @@ if (isMainModule(import.meta.url)) {
         return {
             status: 'admitted',
             credentialSaid: parsed['credential-said'],
-            observations: credentials,
         };
     });
 }

@@ -10,6 +10,7 @@ import {describe, it} from 'node:test';
 
 import {
     parseNamedOrPositionalArguments,
+    participantConfigFromArguments,
     participantInvocationFromArguments,
     singleSigParticipantInvocationFromArguments,
 } from '../src/cli.ts';
@@ -111,7 +112,7 @@ describe('workflow runner command lines', () => {
         );
     });
 
-    it('loads single-signature participants from a protected config path', () => {
+    it('loads single-signature participants from a config path', () => {
         const directory = mkdtempSync(
             join(tmpdir(), 'qvi-single-sig-config-')
         );
@@ -160,5 +161,34 @@ describe('workflow runner command lines', () => {
         } finally {
             rmSync(directory, {recursive: true, force: true});
         }
+    });
+
+    it('loads QVI participants from ordinary environment arguments', () => {
+        const config = participantConfigFromArguments({
+            environment: 'docker-tsx',
+            'participant-source': [
+                'qar1|QAR1|qar1-salt',
+                'qar2|QAR2|qar2-salt',
+                'qar3|QAR3|qar3-salt',
+                'person|Person|person-salt',
+            ].join(','),
+        });
+
+        assert.equal(config.environment, 'docker-tsx');
+        assert.deepEqual(
+            Object.values(config.participants).map(
+                ({position, name, keriaHost}) => ({
+                    position,
+                    name,
+                    keriaHost,
+                })
+            ),
+            [
+                {position: 'qar1', name: 'QAR1', keriaHost: 1},
+                {position: 'qar2', name: 'QAR2', keriaHost: 2},
+                {position: 'qar3', name: 'QAR3', keriaHost: 3},
+                {position: 'person', name: 'Person', keriaHost: 1},
+            ]
+        );
     });
 });

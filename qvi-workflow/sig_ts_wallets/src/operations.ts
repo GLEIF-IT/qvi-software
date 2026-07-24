@@ -272,8 +272,8 @@ export function completedOperationEvidence(
 /**
  * Polls a KERIA operation until it completes.
  *
- * Operations are intentionally retained. The workflow records their
- * structured result before its private runtime volume is removed.
+ * Operations remain available to KERIA until the demonstration tears down its
+ * Compose volumes.
  */
 export async function waitOperation(
     client: SignifyClient,

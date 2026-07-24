@@ -3,14 +3,14 @@ import {
     assertExpectedCredential,
     credentialSnapshot,
     selectCredential,
-    type CredentialSnapshot,
 } from '../credential-state.ts';
 import {
     isMainModule,
     parseNamedArguments,
-    readParticipantConfig,
+    participantConfigFromArguments,
     requireNamedArguments,
     runJsonCli,
+    type ParticipantConfig,
 } from '../cli.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {revokeCredentialMultisig} from '../credentials.ts';
@@ -20,21 +20,11 @@ import {
     readGroupObservation,
 } from '../group-state.ts';
 import {
-    type OperationEvidence,
-} from '../operations.ts';
-import {
     completeCoordinatedOperations,
 } from '../coordinated-operation.ts';
-import {
-    assertRevocationContract,
-    canonicalObserverSnapshots,
-    canonicalOperationEvidence,
-    canonicalReceipts,
-    canonicalStrings,
-} from '../workflow-contracts.ts';
 
 export interface RevokeCredentialOptions {
-    configPath: string;
+    config: ParticipantConfig;
     groupName: string;
     credentialSaid: string;
     expectedSchema: string;
@@ -45,18 +35,8 @@ export interface RevocationResult {
     status: 'already-revoked' | 'revoked';
     credentialSaid: string;
     qviPrefix: string;
-    operationNames: string[];
-    operationEvidence: OperationEvidence[];
-    before: CredentialSnapshot[];
-    after: CredentialSnapshot[];
     revocationTelDigest: string;
     revocationTimestamp: string;
-    coordinationReceipts: Array<{
-        sender: string;
-        recipient: string;
-        exnSaid: string;
-        innerExchangeSaid: string;
-    }>;
 }
 
 function assertRevocationEvent(
@@ -83,7 +63,7 @@ function assertRevocationEvent(
 export async function runRevocation(
     options: RevokeCredentialOptions
 ): Promise<RevocationResult> {
-    const config = readParticipantConfig(options.configPath);
+    const config = options.config;
     const participants = [
         config.participants.qar1,
         config.participants.qar2,
@@ -153,24 +133,13 @@ export async function runRevocation(
         (snapshot) => snapshot.statusSequence === '1'
     );
     if (credentialIsRevokedOnEveryQar) {
-        const result: RevocationResult = {
+        return {
             status: 'already-revoked',
             credentialSaid: options.credentialSaid,
             qviPrefix: qvi.prefix,
-            operationNames: [],
-            operationEvidence: [],
-            before: canonicalObserverSnapshots(before),
-            after: canonicalObserverSnapshots(before),
             revocationTelDigest: before[0].currentTelDigest,
             revocationTimestamp: credentials[0].status.dt,
-            coordinationReceipts: [],
         };
-        assertRevocationContract(
-            result,
-            expectedMemberPrefixes,
-            expectedCredential
-        );
-        return result;
     }
 
     const credentialIsIssuedOnEveryQar = before.every(
@@ -209,7 +178,7 @@ export async function runRevocation(
         revocations.push(revocation);
     }
 
-    const operationEvidence = await completeCoordinatedOperations(
+    await completeCoordinatedOperations(
         revocations.map((revocation, index) => ({
             client: clients[index],
             result: revocation,
@@ -259,35 +228,13 @@ export async function runRevocation(
         );
     }
 
-    const coordinationReceipts = revocations.flatMap(
-        (revocation, index) =>
-            revocation.wrapperReceipts.map((receipt) => ({
-                sender: memberAids[index].prefix,
-                ...receipt,
-            }))
-    );
-    const result: RevocationResult = {
+    return {
         status: 'revoked',
         credentialSaid: options.credentialSaid,
         qviPrefix: qvi.prefix,
-        operationNames: canonicalStrings(operationEvidence.map(
-            (operation) => operation.name
-        )),
-        operationEvidence:
-            canonicalOperationEvidence(operationEvidence),
-        before: canonicalObserverSnapshots(before),
-        after: canonicalObserverSnapshots(after),
         revocationTelDigest: after[0].currentTelDigest,
         revocationTimestamp: timestamp,
-        coordinationReceipts:
-            canonicalReceipts(coordinationReceipts),
     };
-    assertRevocationContract(
-        result,
-        expectedMemberPrefixes,
-        expectedCredential
-    );
-    return result;
 }
 
 function parseRevocationArguments(
@@ -295,20 +242,21 @@ function parseRevocationArguments(
 ): RevokeCredentialOptions {
     const args = parseNamedArguments(argv, [
         'config',
+        'environment',
+        'participant-source',
         'group-name',
         'credential-said',
         'expected-schema',
         'expected-issuee',
     ]);
     requireNamedArguments(args, [
-        'config',
         'group-name',
         'credential-said',
         'expected-schema',
         'expected-issuee',
     ]);
     return {
-        configPath: args.config,
+        config: participantConfigFromArguments(args),
         groupName: args['group-name'],
         credentialSaid: args['credential-said'],
         expectedSchema: args['expected-schema'],

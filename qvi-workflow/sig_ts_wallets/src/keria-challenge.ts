@@ -1,12 +1,10 @@
-import {createHash} from 'node:crypto';
-import {readFileSync} from 'node:fs';
-
 import {
     isMainModule,
     parseNamedArguments,
-    readParticipantConfig,
+    participantConfigFromArguments,
     requireNamedArguments,
     runJsonCli,
+    type ParticipantConfig,
     type ParticipantPosition,
 } from './cli.ts';
 import {getOrCreateClient} from './keystore-creation.ts';
@@ -18,27 +16,19 @@ import {
 export type ChallengeAction = 'respond' | 'verify';
 
 export interface RunChallengeOptions {
-    configPath: string;
+    config: ParticipantConfig;
     participant: ParticipantPosition;
     action: ChallengeAction;
     peerPrefix: string;
-    wordsFile: string;
+    words: string[];
 }
 
 export interface ChallengeResult {
     status: 'responded' | 'verified';
-    participant: ParticipantPosition;
-    participantPrefix: string;
-    peerPrefix: string;
-    challengeDigest: string;
-    responseExnSaid: string;
-    completedAt: string;
 }
 
-function parseChallengeWords(wordsFile: string): string[] {
-    const words = readFileSync(wordsFile, 'utf8')
-        .trim()
-        .split(/\s+/);
+function parseChallengeWords(wordsValue: string): string[] {
+    const words = wordsValue.trim().split(/\s+/);
     const challengeWordCountIsInvalid = words.length !== 12;
     if (challengeWordCountIsInvalid) {
         throw new Error(
@@ -46,12 +36,6 @@ function parseChallengeWords(wordsFile: string): string[] {
         );
     }
     return words;
-}
-
-function challengeDigest(words: string[]): string {
-    return createHash('sha256')
-        .update(words.join(' '), 'utf8')
-        .digest('hex');
 }
 
 function isChallengeOperationResponse(
@@ -71,19 +55,14 @@ function isChallengeOperationResponse(
 export async function runChallenge(
     options: RunChallengeOptions
 ): Promise<ChallengeResult> {
-    const config = readParticipantConfig(options.configPath);
+    const config = options.config;
     const participant = config.participants[options.participant];
-    const words = parseChallengeWords(options.wordsFile);
-    const digest = challengeDigest(words);
+    const words = options.words;
     const client = await getOrCreateClient(
         participant.salt,
         config.environment,
         participant.keriaHost
     );
-    const participantAid = await client
-        .identifiers()
-        .get(participant.name);
-
     if (options.action === 'respond') {
         const exchange = await client
             .challenges()
@@ -103,12 +82,6 @@ export async function runChallenge(
 
         return {
             status: 'responded',
-            participant: options.participant,
-            participantPrefix: participantAid.prefix,
-            peerPrefix: options.peerPrefix,
-            challengeDigest: digest,
-            responseExnSaid: exchange.d,
-            completedAt: new Date().toISOString(),
         };
     }
 
@@ -134,29 +107,24 @@ export async function runChallenge(
 
     return {
         status: 'verified',
-        participant: options.participant,
-        participantPrefix: participantAid.prefix,
-        peerPrefix: options.peerPrefix,
-        challengeDigest: digest,
-        responseExnSaid,
-        completedAt: new Date().toISOString(),
     };
 }
 
 function parseChallengeArguments(argv: string[]): RunChallengeOptions {
     const args = parseNamedArguments(argv, [
         'config',
+        'environment',
+        'participant-source',
         'participant',
         'action',
         'peer-prefix',
-        'words-file',
+        'words',
     ]);
     requireNamedArguments(args, [
-        'config',
         'participant',
         'action',
         'peer-prefix',
-        'words-file',
+        'words',
     ]);
 
     const participant = args.participant as ParticipantPosition;
@@ -180,11 +148,11 @@ function parseChallengeArguments(argv: string[]): RunChallengeOptions {
     }
 
     return {
-        configPath: args.config,
+        config: participantConfigFromArguments(args),
         participant,
         action,
         peerPrefix: args['peer-prefix'],
-        wordsFile: args['words-file'],
+        words: parseChallengeWords(args.words),
     };
 }
 

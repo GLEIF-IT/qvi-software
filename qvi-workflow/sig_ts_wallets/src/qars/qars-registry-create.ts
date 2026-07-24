@@ -5,9 +5,6 @@ import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
 import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
 import {createRegistryMultisig} from "../credentials";
 import {
-    type OperationEvidence,
-} from '../operations.ts';
-import {
     completeCoordinatedOperations,
 } from '../coordinated-operation.ts';
 import {retry} from '../retry.ts';
@@ -22,14 +19,6 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
-import {QVI_INITIAL_SEQUENCE} from '../qvi-configuration.ts';
-import {
-    assertExactDirectedFanout,
-    assertTerminalOperationEvidence,
-    canonicalOperationEvidence,
-    canonicalReceipts,
-    canonicalStrings,
-} from '../workflow-contracts.ts';
 
 
 /**
@@ -115,9 +104,6 @@ export async function createQviRegistry(multisigName: string, registryName: stri
         }
         return {
             registryRegk: regk,
-            operationNames: [],
-            operationEvidence: [] as OperationEvidence[],
-            coordinationReceipts: [],
         };
     }
     if (noQarHasRegistry === false) {
@@ -155,7 +141,7 @@ export async function createQviRegistry(multisigName: string, registryName: stri
         {coordinator: QAR1Id.prefix}
     );
 
-    const operationEvidence = await completeCoordinatedOperations([
+    await completeCoordinatedOperations([
         {client: QAR1Client, result: registryOp1},
         {client: QAR2Client, result: registryOp2},
         {client: QAR3Client, result: registryOp3},
@@ -186,49 +172,7 @@ export async function createQviRegistry(multisigName: string, registryName: stri
             return registries;
         });
     const registryRegk = qviRegistrybyQAR1[0].regk;
-    const coordinationReceipts = [
-        ...registryOp1.wrapperReceipts.map((receipt) => ({
-            sender: QAR1Id.prefix,
-            ...receipt,
-        })),
-        ...registryOp2.wrapperReceipts.map((receipt) => ({
-            sender: QAR2Id.prefix,
-            ...receipt,
-        })),
-        ...registryOp3.wrapperReceipts.map((receipt) => ({
-            sender: QAR3Id.prefix,
-            ...receipt,
-        })),
-    ];
-    assertTerminalOperationEvidence(
-        operationEvidence,
-        Array.from({length: 3}, () => ({
-            name: `registry.${registryRegk}`,
-            result: {
-                kind: 'registry-anchor',
-                said: registryRegk,
-                prefix: registryRegk,
-                sequence: QVI_INITIAL_SEQUENCE,
-            },
-        })),
-        'QVI registry creation'
-    );
-    assertExactDirectedFanout(
-        coordinationReceipts,
-        memberPrefixes,
-        'QVI registry coordination',
-        registryRegk
-    );
-    return {
-        registryRegk,
-        operationNames: canonicalStrings(operationEvidence.map(
-            (operation) => operation.name
-        )),
-        operationEvidence:
-            canonicalOperationEvidence(operationEvidence),
-        coordinationReceipts:
-            canonicalReceipts(coordinationReceipts),
-    };
+    return {registryRegk};
 }
 
 if (isMainModule(import.meta.url)) {

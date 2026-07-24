@@ -1,49 +1,73 @@
-# KERIA and KLI Docker workflow
+# KLI, KERIA, SignifyTS, and Sally QVI workflow
 
-This is the isolated, fail-closed regression harness for the complete local
-QVI story. Compose runs the witnesses, schema server, KERIA agents, direct
-Sally verifier, KLI jobs, SignifyTS jobs, and callback recorder. KLI represents the
-GARs and LARs; KERIA with SignifyTS represents the three QARs and the Person.
+This is a public, one-run-at-a-time interoperability demonstration for the
+complete QVI story. Docker Compose runs:
 
-The default workflow proves protocol convergence and exact evidence. It does
-not infer success from a process exit alone, fixed sleeps, notification routes,
-cached webhook state, or human-readable success messages. The full contract is
-documented in [`HARDENED-PROOF.md`](HARDENED-PROOF.md).
+- KERIpy witnesses and KLI jobs for the GARs and LARs;
+- three KERIA agents and SignifyTS wallets for the QARs and Person;
+- the vLEI schema server;
+- direct-mode Sally; and
+- a small webhook that records Sally callbacks.
 
-## Requirements and pins
+The workflow favors visible commands, deterministic demo identities, and
+console output that a developer can follow. It keeps the protocol checks that
+distinguish working interoperability from a command that merely exited zero.
 
-- Docker with the Compose plugin
-- Bash 3.2 or later
+## Versions
+
 - `weboftrust/keria:0.4.0`
 - `signify-ts@0.4.0`
 - `gleif/sally:1.0.2`
+- `weboftrust/keri:1.1.32` and `gleif/keri:1.2.9` for the KLI lanes
 
-The Signify runner is built from `../sig_ts_wallets` with `npm ci`. Host
-Node.js and a globally installed `tsx` are not required.
+The Signify image installs the locked Node dependencies with `npm ci`. A host
+Node.js installation is not required for the Docker workflow.
 
-Sally owns its own bootstrap lifecycle. On a fresh volume,
-`sally server start` creates its Habery and no-witness identifier from the
-protected runtime salt and inception configuration; on restart, it reopens
-that same identifier. The workflow accepts the verifier as ready only after
-its blind `/oobi` endpoint returns a valid `KERI-AID` header, and it asserts
-that the prefix does not change when Sally restarts with the final GEDA
-authorization prefix.
+## Public demo configuration
 
-## Run the complete local story
+[`keria-signify-docker.env`](keria-signify-docker.env) contains the participant
+names, salts, passcodes, schema identifiers, and other values used by the
+demonstration. These are public test fixtures, not secrets.
 
-From this directory:
+To run with different identities, copy the file, edit the copy, and point the
+workflow at it:
 
 ```bash
+cp keria-signify-docker.env my-qvi-demo.env
+QVI_WORKFLOW_ENV_FILE="$PWD/my-qvi-demo.env" ./vlei-workflow.sh
+```
+
+Fresh identities are recommended when presenting to an external staging,
+production, or alternate Sally so an earlier run cannot conflict with the
+history you are creating.
+
+## Run the story
+
+```bash
+cd qvi-workflow/keria_docker
 ./vlei-workflow.sh
 ```
 
-The script resolves its own directory, so it can also be invoked from another
-working directory.
+The script also works from another current directory because it resolves its
+own location.
 
-Every invocation starts with a new private runtime and unique Compose project.
-On success or failure, the default cleanup removes that project's containers,
-volumes, network, keystores, generated data, and secret inputs. Sanitized proof
-artifacts remain under `proofs/<run-id>/`.
+Each invocation first runs `docker compose down -v --remove-orphans`, replaces
+`runtime/`, and starts the Compose stack. A normal exit tears down the stack
+and removes `runtime/`. On failure, recent Compose and detached-job logs are
+printed before cleanup.
+
+Use `--keep-runtime` to leave the stack and ordinary `runtime/` directory in
+place for inspection:
+
+```bash
+./vlei-workflow.sh --keep-runtime
+docker compose \
+  --env-file keria-signify-docker.env \
+  -f docker-compose-keria_signify_qvi.yaml \
+  ps
+```
+
+The next invocation clears the retained stack and runtime automatically.
 
 ### Options
 
@@ -54,50 +78,60 @@ artifacts remain under `proofs/<run-id>/`.
 -a, --alias ALIAS     Alias for --alternate
 -o, --oobi OOBI       OOBI URL for --alternate
     --timeout SECONDS Timeout for each bounded operation (default: 120)
-    --keep-runtime    Preserve the private runtime and Compose stack
+    --keep-runtime    Preserve runtime/ and the Compose stack
     --pause           Pause at story checkpoints
 -h, --help            Display help
 ```
 
-Alternate, staging, and production modes are explicit external presentation
-paths. They are not substitutes for the default local proof and are excluded
-from automated acceptance.
+## Story sequence
 
-`--timeout` applies a positive per-operation deadline to polling, KERIA
-operations, HTTP evidence, and detached jobs. `--keep-runtime` prints the exact
-scoped `docker compose down --volumes --remove-orphans` command needed for
-teardown. A retained runtime contains protected participant configuration and
-must be treated as sensitive until it is removed. There is no
-`--keystore-dir`, `--environment`, `--clear`, or `--debug` mode.
+1. Sally starts its own Habery and identifier through `sally server start`.
+2. GAR, LAR, QAR, and Person identifiers are created and exchange OOBIs.
+3. The driver performs both directions of eight useful challenge
+   relationships: GAR1-GAR2, LAR1-LAR2, the three QAR pairs, GAR1-QAR1,
+   QAR1-LAR1, and QAR1-Person. All 16 response-and-verification commands must
+   succeed.
+4. The GARs create the GEDA. The three QARs create the delegated QVI and
+   authorize its three KERIA agent endpoints.
+5. The workflow issues and admits the QVI and LE credentials, then presents
+   both to Sally.
+6. The LE issues OOR-Auth; the QVI issues OOR to the Person. The Person admits
+   and presents the active OOR.
+7. The QVI revokes the OOR. All three QARs must observe status sequence `1`
+   and the same TEL digest. Sally must log the rejected revoked credential and
+   send the matching `rev` callback.
+8. The LE issues ECR-Auth; the QVI issues ECR to the Person. The Person admits
+   it, then all three QARs converge on the ECR revocation.
 
-## What the proof covers
+Sally 1.0.2 does not support the ECR reporting story, so this workflow does not
+present ECR. It simply ends that branch after admission and converged
+revocation. OOR-Auth and ECR-Auth remain active because the QVI did not issue
+them.
 
-- Eight intended challenge relationships produce exactly 16 verified
-  directions.
-- The three QARs agree on the delegated QVI's prefix, delegator, members,
-  sequence, establishment digest, and current and next thresholds.
-- All QARs must agree on the three authorized group agent EIDs and their
-  member-agent endpoint locations. The workflow then strips `/agent/<eid>`
-  from one KERIA-provided qualified OOBI and each consumer resolves that one
-  canonical `/oobi/<qvi-prefix>` multisig OOBI.
-- Only the QVI-issued OOR and ECR leaves are revoked. LE-issued OOR-Auth and
-  ECR-Auth credentials remain active.
-- Active QVI, LE, and OOR presentations require exact structured Sally
-  callbacks.
-- The revoked OOR requires both Sally's exact rejection log and its exact
-  structured `rev` callback.
-- ECR issuance, Person admission, and one common revocation TEL digest are
-  proved across the QARs. No ECR is presented to Sally, and no ECR callback may
-  appear.
+Useful console milestones include the 16 successful challenge directions, the
+delegated QVI prefix and canonical OOBI, credential SAIDs, Sally callback
+messages, and common OOR/ECR revocation TEL digests.
 
-Challenge words, salts, passcodes, and participant seed material are never
-printed or retained. See
-[`proof_hook/README.md`](proof_hook/README.md)
-for the callback and Sally evidence adapters.
+## Runtime layout
+
+With `--keep-runtime`, the generated files are deliberately easy to find:
+
+```text
+runtime/
+├── acdc-info/
+├── config/
+├── jobs/
+├── keystores/
+├── logs/
+├── qvi_data/
+└── sally-callbacks.jsonl
+```
+
+The callback recorder accepts a JSON object at `POST /`, adds a receipt
+timestamp, and appends it to `sally-callbacks.jsonl`. See
+[`callback_recorder/README.md`](callback_recorder/README.md).
 
 ## Developer checks
-
-Install and test the shared Signify package with its locked dependencies:
 
 ```bash
 cd ../sig_ts_wallets
@@ -105,10 +139,12 @@ npm ci
 npm ls signify-ts@0.4.0 --depth=0
 npm run typecheck
 npm test
-```
 
-Run the callback-recorder tests from `keria_docker`:
-
-```bash
-python3 -m unittest discover -s proof_hook/tests -v
+cd ../keria_docker
+python3 -m unittest discover -s callback_recorder/tests -v
+for test_script in tests/*.sh; do bash "$test_script"; done
+docker compose \
+  --env-file keria-signify-docker.env \
+  -f docker-compose-keria_signify_qvi.yaml \
+  config --quiet
 ```

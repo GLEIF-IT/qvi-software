@@ -8,9 +8,10 @@ import {
 import {
     isMainModule,
     parseNamedArguments,
-    readParticipantConfig,
+    participantConfigFromArguments,
     requireNamedArguments,
     runJsonCli,
+    type ParticipantConfig,
 } from '../cli.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {getOrCreateClient} from '../keystore-creation.ts';
@@ -20,7 +21,7 @@ import {
 } from '../operations.ts';
 
 export interface PersonPresentationOptions {
-    configPath: string;
+    config: ParticipantConfig;
     credentialSaid: string;
     expectedIssuer: string;
     expectedSchema: string;
@@ -31,7 +32,7 @@ export interface PersonPresentationOptions {
 export async function presentPersonCredential(
     options: PersonPresentationOptions
 ) {
-    const config = readParticipantConfig(options.configPath);
+    const config = options.config;
     const person = config.participants.person;
     const client = await getOrCreateClient(
         person.salt,
@@ -87,7 +88,7 @@ export async function presentPersonCredential(
             [options.recipientPrefix]
         );
     const completed = await waitOperation(client, operation);
-    const response = requireOperationResponse(
+    requireOperationResponse(
         completed,
         (value): value is {said: string} =>
             typeof value === 'object' &&
@@ -98,9 +99,8 @@ export async function presentPersonCredential(
 
     return {
         status: 'presented' as const,
-        credential: snapshot,
+        credentialSaid: snapshot.said,
         recipientPrefix: options.recipientPrefix,
-        grantExchangeSaid: response.said,
     };
 }
 
@@ -109,6 +109,8 @@ function parsePresentationArguments(
 ): PersonPresentationOptions {
     const args = parseNamedArguments(argv, [
         'config',
+        'environment',
+        'participant-source',
         'credential-said',
         'expected-issuer',
         'expected-schema',
@@ -116,7 +118,6 @@ function parsePresentationArguments(
         'recipient-prefix',
     ]);
     requireNamedArguments(args, [
-        'config',
         'credential-said',
         'expected-issuer',
         'expected-schema',
@@ -124,7 +125,7 @@ function parsePresentationArguments(
         'recipient-prefix',
     ]);
     return {
-        configPath: args.config,
+        config: participantConfigFromArguments(args),
         credentialSaid: args['credential-said'],
         expectedIssuer: args['expected-issuer'],
         expectedSchema: args['expected-schema'],

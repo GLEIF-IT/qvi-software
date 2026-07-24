@@ -8,40 +8,37 @@ This directory contains five implementations of the QVI qualification story:
    witnesses and KERIpy jobs.
 3. `keria_kli/vlei-workflow.sh` uses local KLI processes for the GAR and LAR
    participants and KERIA with SignifyTS for the QARs and Person.
-4. `keria_docker/vlei-workflow.sh` runs the complete KLI/KERIA story in an
-   isolated Compose project.
+4. `keria_docker/vlei-workflow.sh` runs the complete KLI/KERIA story in Docker
+   Compose.
 5. `single-sig/vlei-workflow.sh` is a focused compatibility workflow with
    single-signature GEDA, QVI, and LE identifiers.
 
-The implementations are demonstrations with different dependency and proof
-boundaries. The hardened regression harness is `keria_docker`; do not assume
-that the other four workflows produce the same evidence.
+These are public interoperability demonstrations. They intentionally expose
+the commands and deterministic fixture data so developers can understand how
+KLI, KERIA, SignifyTS, and Sally fit together.
 
 Local reporting uses direct Sally only.
 
-## Hardened Docker workflow
+## Docker QVI story
 
-The default `keria_docker` workflow proves:
+The `keria_docker` workflow demonstrates:
 
-- the exact 16 challenge directions derived from eight intended trust
+- 16 successful directed challenge responses across eight useful
   relationships;
-- convergence of the three-member delegated QVI and its thresholds, member
-  sets, and establishment state;
-- derivation and resolution of one canonical QVI multisig OOBI;
-- exact identity and TEL convergence for the QVI-issued OOR and ECR leaves;
-- active QVI, LE, and OOR callbacks from Sally;
-- both Sally's rejection and its structured revocation report for the revoked
-  OOR; and
-- the absence of any ECR presentation or Sally callback.
+- convergence of the three-member delegated QVI, its thresholds, member sets,
+  establishment state, endpoint roles, and canonical multisig OOBI;
+- issuance, admission, and Sally presentation of the QVI, LE, and active OOR
+  credentials;
+- common three-QAR TEL state after the QVI revokes its OOR and ECR leaves; and
+- Sally's revoked-OOR rejection and revocation callback.
 
-The QVI revokes only credentials it issued. The LE-issued OOR-Auth and ECR-Auth
-credentials remain active.
+The QVI revokes only credentials it issued. The LE-issued OOR-Auth and
+ECR-Auth credentials remain active. Sally 1.0.2 does not support ECR
+reporting, so the ECR branch ends after Person admission and converged
+revocation.
 
-See
-[`keria_docker/README.md`](keria_docker/README.md)
-for usage and
-[`keria_docker/HARDENED-PROOF.md`](keria_docker/HARDENED-PROOF.md)
-for the evidence contract.
+See [`keria_docker/README.md`](keria_docker/README.md) for the tutorial,
+configuration, runtime layout, and commands.
 
 ## Dependencies
 
@@ -50,8 +47,8 @@ The containerized workflows require Docker with the Compose plugin.
 host Node.js installation or a globally installed `tsx`.
 
 The local `keria_kli` workflow requires Node.js and the dependencies installed
-from `sig_ts_wallets/package-lock.json`. Its README describes how to expose the
-project-local `tsx` executable without installing it globally.
+from `sig_ts_wallets/package-lock.json`. Its README describes how to use the
+project-local `tsx` executable.
 
 Each workflow has additional version and service requirements in its own
 README.

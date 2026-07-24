@@ -13,11 +13,7 @@ import {
 import {
     assertIssuedCredentialConvergence,
     credentialSnapshot,
-    type CredentialSnapshot,
 } from '../credential-state.ts';
-import {
-    type OperationEvidence,
-} from '../operations.ts';
 import {
     completeCoordinatedOperations,
 } from '../coordinated-operation.ts';
@@ -28,11 +24,6 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
-import {
-    assertIssuanceContract,
-    canonicalObserverSnapshots,
-    canonicalOperationEvidence,
-} from '../workflow-contracts.ts';
 
 const OOR_SCHEMA_SAID = 'EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy';
 
@@ -50,19 +41,10 @@ export interface OorCredentialArtifact {
     oorCredIssuee: string;
 }
 
-export interface GrantCoordinationReceipt {
-    sender: string;
-    recipient: string;
-    exnSaid: string;
-    innerExchangeSaid: string;
-}
-
 export interface CreateOorCredentialResult {
     artifact: OorCredentialArtifact;
-    observations: CredentialSnapshot[];
-    operationEvidence: OperationEvidence[];
-    issuanceReceipts: GrantCoordinationReceipt[];
-    coordinationReceipts: GrantCoordinationReceipt[];
+    registryId: string;
+    telDigest: string;
 }
 
 /**
@@ -170,29 +152,15 @@ export async function createOorCredential(
             'OOR credential'
         );
         console.log("OOR credential already exists");
-        const result: CreateOorCredentialResult = {
+        return {
             artifact: {
                 oorCredSAID: snapshots[0].said,
                 oorCredIssuer: snapshots[0].issuer,
                 oorCredIssuee: snapshots[0].issuee,
             },
-            observations:
-                canonicalObserverSnapshots(snapshots),
-            operationEvidence: [],
-            issuanceReceipts: [],
-            coordinationReceipts: [],
+            registryId: snapshots[0].registry,
+            telDigest: snapshots[0].currentTelDigest,
         };
-        assertIssuanceContract(
-            result,
-            memberPrefixes,
-            {
-                issuer: qviAID.prefix,
-                schema: OOR_SCHEMA_SAID,
-                issuee: issueePrefix,
-            },
-            'OOR credential'
-        );
-        return result;
     }
 
     const onlySomeQarsHaveCredential = noQarHasCredential === false;
@@ -269,7 +237,7 @@ export async function createOorCredential(
         {coordinator: QAR1Id.prefix}
     );
 
-    const operationEvidence = await completeCoordinatedOperations([
+    await completeCoordinatedOperations([
         {client: QAR1Client, result: IssOp1},
         {client: QAR2Client, result: IssOp2},
         {client: QAR3Client, result: IssOp3},
@@ -349,69 +317,15 @@ export async function createOorCredential(
         completeMultisigIpex(QAR3Client, grant3),
     ]);
 
-    const result: CreateOorCredentialResult = {
+    return {
         artifact: {
             oorCredSAID: issuedSnapshots[0].said,
             oorCredIssuer: issuedSnapshots[0].issuer,
             oorCredIssuee: issuedSnapshots[0].issuee,
         },
-        observations: canonicalObserverSnapshots(issuedSnapshots),
-        operationEvidence:
-            canonicalOperationEvidence(operationEvidence),
-        issuanceReceipts: [
-            ...IssOp1.wrapperReceipts.map((receipt) => ({
-                sender: QAR1Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[0].currentTelDigest,
-            })),
-            ...IssOp2.wrapperReceipts.map((receipt) => ({
-                sender: QAR2Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[1].currentTelDigest,
-            })),
-            ...IssOp3.wrapperReceipts.map((receipt) => ({
-                sender: QAR3Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[2].currentTelDigest,
-            })),
-        ].sort((left, right) =>
-            `${left.sender}\u0000${left.recipient}`.localeCompare(
-                `${right.sender}\u0000${right.recipient}`
-            )
-        ),
-        coordinationReceipts: [
-            ...grant1.wrapperReceipts.map((receipt) => ({
-                sender: QAR1Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant1.innerExchangeSaid,
-            })),
-            ...grant2.wrapperReceipts.map((receipt) => ({
-                sender: QAR2Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant2.innerExchangeSaid,
-            })),
-            ...grant3.wrapperReceipts.map((receipt) => ({
-                sender: QAR3Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant3.innerExchangeSaid,
-            })),
-        ].sort((left, right) =>
-            `${left.sender}\u0000${left.recipient}`.localeCompare(
-                `${right.sender}\u0000${right.recipient}`
-            )
-        ),
+        registryId: issuedSnapshots[0].registry,
+        telDigest: issuedSnapshots[0].currentTelDigest,
     };
-    assertIssuanceContract(
-        result,
-        memberPrefixes,
-        {
-            issuer: qviAID.prefix,
-            schema: OOR_SCHEMA_SAID,
-            issuee: issueePrefix,
-        },
-        'OOR credential'
-    );
-    return result;
 }
 
 function parseOorCredentialArguments(
@@ -465,10 +379,9 @@ if (isMainModule(import.meta.url)) {
         return {
             status: 'converged',
             credential: result.artifact,
-            observations: result.observations,
-            operationEvidence: result.operationEvidence,
-            issuanceReceipts: result.issuanceReceipts,
-            coordinationReceipts: result.coordinationReceipts,
+            credentialSaid: result.artifact.oorCredSAID,
+            registryId: result.registryId,
+            telDigest: result.telDigest,
         };
     });
 }

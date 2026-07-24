@@ -13,11 +13,7 @@ import {
 import {
     assertIssuedCredentialConvergence,
     credentialSnapshot,
-    type CredentialSnapshot,
 } from '../credential-state.ts';
-import {
-    type OperationEvidence,
-} from '../operations.ts';
 import {
     completeCoordinatedOperations,
 } from '../coordinated-operation.ts';
@@ -28,11 +24,6 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
-import {
-    assertIssuanceContract,
-    canonicalObserverSnapshots,
-    canonicalOperationEvidence,
-} from '../workflow-contracts.ts';
 
 const ECR_SCHEMA_SAID = 'EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw';
 
@@ -50,19 +41,10 @@ export interface EcrCredentialArtifact {
     ecrCredIssuee: string;
 }
 
-export interface GrantCoordinationReceipt {
-    sender: string;
-    recipient: string;
-    exnSaid: string;
-    innerExchangeSaid: string;
-}
-
 export interface CreateEcrCredentialResult {
     artifact: EcrCredentialArtifact;
-    observations: CredentialSnapshot[];
-    operationEvidence: OperationEvidence[];
-    issuanceReceipts: GrantCoordinationReceipt[];
-    coordinationReceipts: GrantCoordinationReceipt[];
+    registryId: string;
+    telDigest: string;
 }
 
 /**
@@ -170,29 +152,15 @@ export async function createEcrCredential(
             'ECR credential'
         );
         console.log("ECR credential already exists");
-        const result: CreateEcrCredentialResult = {
+        return {
             artifact: {
                 ecrCredSAID: snapshots[0].said,
                 ecrCredIssuer: snapshots[0].issuer,
                 ecrCredIssuee: snapshots[0].issuee,
             },
-            observations:
-                canonicalObserverSnapshots(snapshots),
-            operationEvidence: [],
-            issuanceReceipts: [],
-            coordinationReceipts: [],
+            registryId: snapshots[0].registry,
+            telDigest: snapshots[0].currentTelDigest,
         };
-        assertIssuanceContract(
-            result,
-            memberPrefixes,
-            {
-                issuer: qviAID.prefix,
-                schema: ECR_SCHEMA_SAID,
-                issuee: issueePrefix,
-            },
-            'ECR credential'
-        );
-        return result;
     }
 
     const onlySomeQarsHaveCredential = noQarHasCredential === false;
@@ -271,7 +239,7 @@ export async function createEcrCredential(
         {coordinator: QAR1Id.prefix}
     );
 
-    const operationEvidence = await completeCoordinatedOperations([
+    await completeCoordinatedOperations([
         {client: QAR1Client, result: IssOp1},
         {client: QAR2Client, result: IssOp2},
         {client: QAR3Client, result: IssOp3},
@@ -352,69 +320,15 @@ export async function createEcrCredential(
         completeMultisigIpex(QAR3Client, grant3),
     ]);
 
-    const result: CreateEcrCredentialResult = {
+    return {
         artifact: {
             ecrCredSAID: issuedSnapshots[0].said,
             ecrCredIssuer: issuedSnapshots[0].issuer,
             ecrCredIssuee: issuedSnapshots[0].issuee,
         },
-        observations: canonicalObserverSnapshots(issuedSnapshots),
-        operationEvidence:
-            canonicalOperationEvidence(operationEvidence),
-        issuanceReceipts: [
-            ...IssOp1.wrapperReceipts.map((receipt) => ({
-                sender: QAR1Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[0].currentTelDigest,
-            })),
-            ...IssOp2.wrapperReceipts.map((receipt) => ({
-                sender: QAR2Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[1].currentTelDigest,
-            })),
-            ...IssOp3.wrapperReceipts.map((receipt) => ({
-                sender: QAR3Id.prefix,
-                ...receipt,
-                innerExchangeSaid: issuedSnapshots[2].currentTelDigest,
-            })),
-        ].sort((left, right) =>
-            `${left.sender}\u0000${left.recipient}`.localeCompare(
-                `${right.sender}\u0000${right.recipient}`
-            )
-        ),
-        coordinationReceipts: [
-            ...grant1.wrapperReceipts.map((receipt) => ({
-                sender: QAR1Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant1.innerExchangeSaid,
-            })),
-            ...grant2.wrapperReceipts.map((receipt) => ({
-                sender: QAR2Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant2.innerExchangeSaid,
-            })),
-            ...grant3.wrapperReceipts.map((receipt) => ({
-                sender: QAR3Id.prefix,
-                ...receipt,
-                innerExchangeSaid: grant3.innerExchangeSaid,
-            })),
-        ].sort((left, right) =>
-            `${left.sender}\u0000${left.recipient}`.localeCompare(
-                `${right.sender}\u0000${right.recipient}`
-            )
-        ),
+        registryId: issuedSnapshots[0].registry,
+        telDigest: issuedSnapshots[0].currentTelDigest,
     };
-    assertIssuanceContract(
-        result,
-        memberPrefixes,
-        {
-            issuer: qviAID.prefix,
-            schema: ECR_SCHEMA_SAID,
-            issuee: issueePrefix,
-        },
-        'ECR credential'
-    );
-    return result;
 }
 
 function parseEcrCredentialArguments(
@@ -468,10 +382,9 @@ if (isMainModule(import.meta.url)) {
         return {
             status: 'converged',
             credential: result.artifact,
-            observations: result.observations,
-            operationEvidence: result.operationEvidence,
-            issuanceReceipts: result.issuanceReceipts,
-            coordinationReceipts: result.coordinationReceipts,
+            credentialSaid: result.artifact.ecrCredSAID,
+            registryId: result.registryId,
+            telDigest: result.telDigest,
         };
     });
 }

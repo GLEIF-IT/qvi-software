@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 set -Eeuo pipefail
-umask 077
 
 SALLY_KS_NAME="${SALLY_KS_NAME:?SALLY_KS_NAME is required}"
 SALLY_ALIAS="${SALLY_ALIAS:?SALLY_ALIAS is required}"
@@ -11,8 +10,8 @@ WEBHOOK_HOST="${WEBHOOK_HOST:?WEBHOOK_HOST is required}"
 GEDA_PRE="${GEDA_PRE:?GEDA_PRE is required}"
 
 # Sally owns its complete bootstrap lifecycle. On a new volume, server start
-# creates the Habery and identifier from the protected salt and inception
-# configuration. On restart, it reopens the same identifier.
+# creates the Habery and identifier from the public demo configuration. On
+# restart, it reopens the same identifier.
 exec sally server start \
     --direct \
     --http "${SALLY_PORT:-9823}" \

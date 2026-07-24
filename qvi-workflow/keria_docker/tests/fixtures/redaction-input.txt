@@ -1,4 +1,0 @@
-GAR1_SALT=not-a-real-salt
-command --passcode not-a-real-passcode --salt=not-a-real-cli-salt
-command --words twelve-fake-words --words-file /private/challenge.words
-{"participants":{"qar1":{"salt":"not-a-real-participant-salt"}},"passcode":"not-a-real-json-passcode"}

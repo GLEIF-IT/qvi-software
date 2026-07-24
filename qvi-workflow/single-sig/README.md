@@ -11,9 +11,8 @@ This uses single signature GEDA, QVI, and LE identifiers, simplifying the workfl
 The shared Signify runner installs its exact dependencies from
 `sig_ts_wallets/package-lock.json` with `npm ci`.
 
-This simplified workflow is a compatibility story. It does not produce the
-three-member convergence, three-agent OOBI, challenge, or Sally evidence
-required by the hardened `keria_docker` harness. Its one delegated QVI OOBI
+This simplified workflow is a compatibility story with one delegated QVI
+instead of the three-member QVI used by `keria_docker`. Its delegated QVI OOBI
 remains endpoint-qualified; the runner does not strip the `/agent/{eid}` path.
 
 The workflow uses direct-mode Sally. Sally owns its keystore bootstrap and

@@ -103,8 +103,8 @@ export function parseNamedArguments(
 }
 
 /**
- * Parses the hardened named interface while preserving existing sibling
- * workflow callers until they are migrated independently.
+ * Accepts named arguments while preserving the positional interface used by
+ * older sibling workflow drivers.
  */
 export function parseNamedOrPositionalArguments(
     argv: string[],
@@ -236,19 +236,87 @@ export function participantInvocationFromArguments(
         };
     }
 
-    const environment = parsed.environment;
-    const participantSource = parsed['participant-source'];
+    const environment =
+        parsed.environment ?? process.env.ENVIRONMENT;
+    const participantSource =
+        parsed['participant-source'] ?? process.env.SIGTS_AIDS;
     const legacyArgumentsAreMissing =
         typeof environment !== 'string' ||
         typeof participantSource !== 'string' ||
         participantSource.length === 0;
     if (legacyArgumentsAreMissing) {
-        throw new Error('A protected --config path is required');
+        throw new Error(
+            'Provide --config or set ENVIRONMENT and SIGTS_AIDS'
+        );
     }
 
     return {
         environment: parseEnvironmentPreset(environment),
         participantSource,
+    };
+}
+
+export function participantConfigFromArguments(
+    parsed: Record<string, string>
+): ParticipantConfig {
+    if (parsed.config !== undefined) {
+        return readParticipantConfig(parsed.config);
+    }
+
+    const invocation = participantInvocationFromArguments(parsed);
+    const keriaHosts: Record<ParticipantPosition, number> = {
+        qar1: 1,
+        qar2: 2,
+        qar3: 3,
+        person: 1,
+    };
+    const participants = Object.fromEntries(
+        invocation.participantSource.split(',').map((entry) => {
+            const [positionValue, name, salt] = entry.split('|');
+            const position = positionValue as ParticipantPosition;
+            const positionIsInvalid =
+                position in keriaHosts === false;
+            if (
+                positionIsInvalid ||
+                name === undefined ||
+                name.length === 0 ||
+                salt === undefined ||
+                salt.length === 0
+            ) {
+                throw new Error(
+                    `Invalid SIGTS_AIDS participant entry ${entry}`
+                );
+            }
+            return [
+                position,
+                {
+                    position,
+                    name,
+                    salt,
+                    keriaHost: keriaHosts[position],
+                },
+            ];
+        })
+    ) as ParticipantConfig['participants'];
+
+    const expectedPositions: ParticipantPosition[] = [
+        'qar1',
+        'qar2',
+        'qar3',
+        'person',
+    ];
+    const participantsAreIncomplete = expectedPositions.some(
+        (position) => participants[position] === undefined
+    );
+    if (participantsAreIncomplete) {
+        throw new Error(
+            'SIGTS_AIDS must define qar1, qar2, qar3, and person'
+        );
+    }
+
+    return {
+        environment: invocation.environment,
+        participants,
     };
 }
 
@@ -336,9 +404,8 @@ export function readSingleSigParticipantConfig(
 }
 
 /**
- * Resolves a protected single-signature config without placing participant
- * salts in process arguments or emitted results. Legacy callers may continue
- * supplying their existing positional participant string.
+ * Reads either the optional config file used by sibling workflows or the
+ * ordinary environment-variable form used by the Docker demonstration.
  */
 export function singleSigParticipantInvocationFromArguments(
     parsed: Record<string, string>
@@ -366,14 +433,18 @@ export function singleSigParticipantInvocationFromArguments(
         };
     }
 
-    const environment = parsed.environment;
-    const participantSource = parsed['participant-source'];
+    const environment =
+        parsed.environment ?? process.env.ENVIRONMENT;
+    const participantSource =
+        parsed['participant-source'] ?? process.env.SIGTS_AIDS;
     const legacyArgumentsAreMissing =
         typeof environment !== 'string' ||
         typeof participantSource !== 'string' ||
         participantSource.length === 0;
     if (legacyArgumentsAreMissing) {
-        throw new Error('A protected --config path is required');
+        throw new Error(
+            'Provide --config or set ENVIRONMENT and SIGTS_AIDS'
+        );
     }
 
     return {

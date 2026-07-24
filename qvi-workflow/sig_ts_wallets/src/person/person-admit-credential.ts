@@ -108,7 +108,8 @@ if (isMainModule(import.meta.url)) {
         );
         return {
             status: 'admitted',
-            credential: admitted,
+            credentialSaid: admitted.said,
+            telDigest: admitted.currentTelDigest,
         };
     });
 }
