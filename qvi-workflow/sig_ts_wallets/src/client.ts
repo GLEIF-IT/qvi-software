@@ -449,24 +449,32 @@ export async function resolveAidOobi(
     return result.response;
 }
 
-/** Create one fresh identifier and require its operation to complete. */
-export async function createAid(
+/** Incept one fresh identifier and require its operation to complete. */
+export async function inceptAid(
     client: SignifyClient,
     name: string,
     args: CreateIdentiferArgs
 ): Promise<HabState> {
     const result: EventResult = await client.identifiers().create(name, args);
     await waitOperation(client, await result.op());
-    const aid = await client.identifiers().get(name);
+    return await client.identifiers().get(name);
+}
+
+/** Authorize the connected KERIA agent for one concrete identifier. */
+export async function authorizeAidAgent(
+    client: SignifyClient,
+    aid: HabState
+): Promise<void> {
     const agentPrefix = client.agent?.pre;
     if (typeof agentPrefix !== 'string' || agentPrefix.length === 0) {
-        throw new Error(`Cannot authorize ${name} without a KERIA agent`);
+        throw new Error(
+            `Cannot authorize ${aid.name} without a KERIA agent`
+        );
     }
     const role = await client
         .identifiers()
-        .addEndRole(name, 'agent', agentPrefix);
+        .addEndRole(aid.name, 'agent', agentPrefix);
     await waitOperation(client, await role.op());
-    return aid;
 }
 
 /** Retrieve an existing identifier without any create-on-missing fallback. */

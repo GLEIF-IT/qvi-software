@@ -5,6 +5,8 @@ import signify, {
     type SignifyClient,
 } from 'signify-ts';
 
+import type {GroupMember} from './client.ts';
+import {coordinateMultisigOperation} from './multisig-coordinator.ts';
 import {
     sendExchangeToEachRecipient,
 } from './exchanges.ts';
@@ -34,11 +36,11 @@ export interface MultisigCoordinationOptions {
     coordinator?: string;
 }
 
-export interface EndRoleResult {
-    coordinatedOperations: Array<{
-        operation: Operation;
-        coordination: MatchedNotification[];
-    }>;
+export interface EndRoleRequest {
+    members: GroupMember[];
+    initiatorPrefix: string;
+    eid: string;
+    timestamp: string;
 }
 
 export interface MultisigEventResult {
@@ -138,13 +140,16 @@ export async function createAIDMultisig(
 
 export async function addEndRoleMultisig(
     client: SignifyClient,
-    groupName: string,
     aid: HabState,
     otherMembersAIDs: HabState[],
     multisigAID: HabState,
+    eid: string,
     timestamp: string,
     options: MultisigCoordinationOptions
-): Promise<EndRoleResult> {
+): Promise<{
+    operation: Operation;
+    coordination: MatchedNotification[];
+}> {
     const participantIsFollower = options.isInitiator !== true;
     const coordinator = requireCoordinator(
         options,
@@ -152,92 +157,99 @@ export async function addEndRoleMultisig(
         '/multisig/rpy'
     );
 
-    const coordinatedOperations: Array<{
-        operation: Operation;
-        coordination: MatchedNotification[];
-    }> = [];
-    const members = await client.identifiers().members(multisigAID.name);
-    const signings = members['signing'];
-
-    for (const signing of signings) {
-        const agentEnds = signing.ends.agent;
-        const agentEndsAreMissing = agentEnds === null;
-        if (agentEndsAreMissing) {
-            throw new Error(
-                `Signing member ${signing.aid} has no agent end role`
-            );
-        }
-        const eid = Object.keys(agentEnds)[0];
-        const endpointIsMissing = eid === undefined;
-        if (endpointIsMissing) {
-            throw new Error(
-                `Signing member ${signing.aid} has an empty agent end-role map`
-            );
-        }
-
-        const endRoleResult = await client
-            .identifiers()
-            .addEndRole(multisigAID.name, 'agent', eid, timestamp);
-        const op = await endRoleResult.op();
-        const rpy = endRoleResult.serder;
-        const sigs = endRoleResult.sigs;
-        const ghabState1 = multisigAID.state;
-        const seal = [
-            'SealEvent',
-            {
-                i: multisigAID.prefix,
-                s: ghabState1['ee']['s'],
-                d: ghabState1['ee']['d'],
-            },
-        ];
-        const sigers = sigs.map(
-            (sig: string) => new signify.Siger({ qb64: sig })
-        );
-        const roleims = signify.d(
-            signify.messagize(rpy, sigers, seal, undefined, undefined, false)
-        );
-        const atc = roleims.substring(rpy.size);
-        const roleembeds = {
-            rpy: [rpy, atc],
-        };
-        const recp = otherMembersAIDs.map((aid) => aid.prefix);
-        let coordination: MatchedNotification | undefined;
-        if (participantIsFollower) {
-            coordination = await waitForMatchingNotification(client, {
-                notificationRoute: '/multisig/rpy',
-                exchangeRoute: '/multisig/rpy',
-                sender: coordinator,
-                recipient: aid.prefix,
-                groupPrefix: multisigAID.prefix,
-                payloadFields: {eid},
-                embeddedDigest: rpy.said,
-            });
-        }
-        if (coordination !== undefined) {
-            requireCoordinatedEventDigest(
-                coordination.exchange,
-                '/multisig/rpy',
-                rpy.said
-            );
-        }
-        await sendExchangeToEachRecipient(client, {
-            name: aid.name,
-            topic: 'multisig',
-            sender: aid,
-            route: '/multisig/rpy',
-            payload: {gid: multisigAID.prefix, eid},
-            embeds: roleembeds,
-            recipients: recp,
-        });
-
-        coordinatedOperations.push({
-            operation: op,
-            coordination:
-                coordination === undefined ? [] : [coordination],
+    const endRoleResult = await client
+        .identifiers()
+        .addEndRole(multisigAID.name, 'agent', eid, timestamp);
+    const op = await endRoleResult.op();
+    const rpy = endRoleResult.serder;
+    const sigs = endRoleResult.sigs;
+    const ghabState1 = multisigAID.state;
+    const seal = [
+        'SealEvent',
+        {
+            i: multisigAID.prefix,
+            s: ghabState1['ee']['s'],
+            d: ghabState1['ee']['d'],
+        },
+    ];
+    const sigers = sigs.map(
+        (sig: string) => new signify.Siger({qb64: sig})
+    );
+    const roleims = signify.d(
+        signify.messagize(rpy, sigers, seal, undefined, undefined, false)
+    );
+    const atc = roleims.substring(rpy.size);
+    const roleembeds = {
+        rpy: [rpy, atc],
+    };
+    const recp = otherMembersAIDs.map((member) => member.prefix);
+    let coordination: MatchedNotification | undefined;
+    if (participantIsFollower) {
+        coordination = await waitForMatchingNotification(client, {
+            notificationRoute: '/multisig/rpy',
+            exchangeRoute: '/multisig/rpy',
+            sender: coordinator,
+            recipient: aid.prefix,
+            groupPrefix: multisigAID.prefix,
+            payloadFields: {eid},
+            embeddedDigest: rpy.said,
         });
     }
-
+    if (coordination !== undefined) {
+        requireCoordinatedEventDigest(
+            coordination.exchange,
+            '/multisig/rpy',
+            rpy.said
+        );
+    }
+    await sendExchangeToEachRecipient(client, {
+        name: aid.name,
+        topic: 'multisig',
+        sender: aid,
+        route: '/multisig/rpy',
+        payload: {gid: multisigAID.prefix, eid},
+        embeds: roleembeds,
+        recipients: recp,
+    });
     return {
-        coordinatedOperations,
+        operation: op,
+        coordination:
+            coordination === undefined ? [] : [coordination],
     };
+}
+
+/** Authorize one explicit endpoint through concrete group members. */
+export async function authorizeEndRole(
+    request: EndRoleRequest
+): Promise<void> {
+    await coordinateMultisigOperation(
+        request.members.map(({client, memberAid}) => ({
+            client,
+            aid: memberAid,
+        })),
+        request.initiatorPrefix,
+        (context) => {
+            const member = request.members.find(
+                ({memberAid}) =>
+                    memberAid.prefix === context.aid.prefix
+            );
+            if (member === undefined) {
+                throw new Error(
+                    `Missing group member ${context.aid.prefix}`
+                );
+            }
+            return addEndRoleMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                member.groupAid,
+                request.eid,
+                request.timestamp,
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            );
+        }
+    );
 }

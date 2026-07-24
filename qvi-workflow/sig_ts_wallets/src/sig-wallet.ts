@@ -12,10 +12,11 @@ import {
 
 import {
     assertSignifyVersion,
+    authorizeAidAgent,
     bootClient,
     connectClient,
-    createAid,
     getAid,
+    inceptAid,
     loadGroupMembers,
     readWorkflowConfig,
     readParticipantEvidence,
@@ -31,7 +32,9 @@ import {
 import {
     assertGroupConvergence,
     assertPersonCredentialState,
+    assertQviEndRoles,
     assertQviCredentialConvergence,
+    type AgentEndpoint,
     type ExpectedCredentialState,
 } from './assertions.ts';
 import {
@@ -57,7 +60,7 @@ import {
 } from './credentials.ts';
 import {createTimestamp} from './create-aid.ts';
 import {presentCredential} from './qars/qars-present-credential.ts';
-import {authorizeAgentEndRoles} from './qars/qars-authorize-endroles-get-qvi-oobi.ts';
+import {authorizeEndRole} from './multisig-creation.ts';
 import {admitCredential as admitPersonCredential} from './person/person-admit-credential.ts';
 import {presentPersonCredential} from './person/person-grant-credential.ts';
 import {
@@ -178,6 +181,37 @@ function firstGroupMember(members: GroupMember[]): GroupMember {
         throw new Error('Group operation requires at least one member');
     }
     return member;
+}
+
+/** Build the exact final QVI agent endpoint set from workflow config. */
+function qviAgentEndpoints(
+    config: WorkflowConfig,
+    members: GroupMember[]
+): AgentEndpoint[] {
+    if (members.length !== config.qvi.finalMembers.length) {
+        throw new Error(
+            'Final QVI members do not match the configured roster'
+        );
+    }
+    return members.map(({client}, index) => {
+        const role = config.qvi.finalMembers[index];
+        const eid = client.agent?.pre;
+        if (
+            role === undefined ||
+            typeof eid !== 'string' ||
+            eid.length === 0
+        ) {
+            throw new Error(
+                'Final QVI member has no configured agent endpoint'
+            );
+        }
+        return {
+            eid,
+            url: new URL(
+                config.participants[role].oobiUrl
+            ).toString(),
+        };
+    });
 }
 
 /** Load the concrete person wallet used by holder actions. */
@@ -731,14 +765,13 @@ async function createSetupAids(
                 wallet.role === 'person'
                     ? config.services.witnesses[2]
                     : config.services.witnesses[1];
-            return {
-                ...wallet,
-                aid: await createAid(
-                    wallet.client,
-                    participant.name,
-                    {toad: 1, wits: [witness.id]}
-                ),
-            };
+            const aid = await inceptAid(
+                wallet.client,
+                participant.name,
+                {toad: 1, wits: [witness.id]}
+            );
+            await authorizeAidAgent(wallet.client, aid);
+            return {...wallet, aid};
         })
     );
 }
@@ -1171,10 +1204,43 @@ async function authorizeAction(
     args: Record<string, string>
 ) {
     const members = await loadFinalQviMembers(config);
-    const qviOobi = await authorizeAgentEndRoles({
-        members,
-        groupName: config.qvi.name,
-    });
+    const initiator = firstGroupMember(members);
+    const qviPrefix = initiator.groupAid.prefix;
+    if (
+        members.some(
+            ({groupAid}) => groupAid.prefix !== qviPrefix
+        )
+    ) {
+        throw new Error('QVI members disagree on the group prefix');
+    }
+    const endpoints = qviAgentEndpoints(config, members);
+    const existing = await Promise.all(
+        members.map(({client}) =>
+            client.oobis().endroles(qviPrefix, 'agent')
+        )
+    );
+    if (existing.some((roles) => roles.length > 0)) {
+        throw new Error(
+            'QVI agent roles already exist before authorization'
+        );
+    }
+    const timestamp = createTimestamp();
+    for (const {eid} of endpoints) {
+        await authorizeEndRole({
+            members,
+            initiatorPrefix: initiator.memberAid.prefix,
+            eid,
+            timestamp,
+        });
+    }
+    const qviOobi = await retry(() =>
+        assertQviEndRoles(
+            members.map(({client}) => client),
+            config.qvi.name,
+            qviPrefix,
+            endpoints
+        )
+    );
     await fs.writeFile(
         `${args['data-dir']}/qvi-oobi.json`,
         JSON.stringify(qviOobi)
