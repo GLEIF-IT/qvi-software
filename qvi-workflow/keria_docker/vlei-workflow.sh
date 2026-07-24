@@ -178,7 +178,9 @@ wait_for_sally_callback() {
     local callback_result=""
     local callback_wait_failed=false
 
-    callback_result=$(wait_until \
+    # callback_was_recorded performs one local JSONL lookup per poll. Its
+    # matching callback line becomes poll_until's successful result.
+    callback_result=$(poll_until \
         "Sally ${action} callback for ${story_label} credential ${credential_said}" \
         "${WORKFLOW_TIMEOUT_SECONDS}" \
         callback_was_recorded \
@@ -395,7 +397,9 @@ observe_sally_prefix() {
   local observed_prefix=""
   local observation_failed=false
 
-  observed_prefix=$(wait_until \
+  # sally_oobi_prefix_is_ready performs one HTTP request per poll.
+  # http_request owns the curl connect and request timeouts.
+  observed_prefix=$(poll_until \
       "${service_name} self-bootstrapped OOBI" \
       "${WORKFLOW_TIMEOUT_SECONDS}" \
       sally_oobi_prefix_is_ready \
@@ -1848,7 +1852,10 @@ function present_revoked_oor_to_sally() {
         fail_workflow "[QVI] Failed to transmit revoked OOR credential ${OOR_CRED_SAID}"
     fi
 
-    wait_until \
+    # revoked_oor_was_rejected_and_reported checks the callback file and one
+    # current Sally log snapshot per poll. Docker CLI responsiveness remains
+    # an infrastructure prerequisite rather than a poller responsibility.
+    poll_until \
         "Sally rejection and revocation callback for OOR ${OOR_CRED_SAID}" \
         "${WORKFLOW_TIMEOUT_SECONDS}" \
         revoked_oor_was_rejected_and_reported \

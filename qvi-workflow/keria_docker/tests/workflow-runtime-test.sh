@@ -54,26 +54,55 @@ always_pending() {
     return 1
 }
 
-timeout_output="${TEST_ROOT}/timeout-output"
-timeout_status=0
-wait_until "fixture state" 0 always_pending \
-    >/dev/null 2>"${timeout_output}" || timeout_status=$?
-[[ "${timeout_status}" -ne 0 ]]
-grep -q 'Last observation:' "${timeout_output}"
+immediately_ready() {
+    local expected_argument=$1
 
-blocking_predicate() {
-    while true; do
-        :
-    done
+    printf 'ready with %s\n' "${expected_argument}"
 }
 
-blocking_started_at=$(date +%s)
-blocking_status=0
-wait_until "blocking fixture" 1 blocking_predicate \
-    >/dev/null 2>&1 || blocking_status=$?
-blocking_duration=$(( $(date +%s) - blocking_started_at ))
-[[ "${blocking_status}" -ne 0 ]]
-[[ "${blocking_duration}" -le 3 ]]
+immediate_output=$(poll_until \
+    "immediate fixture" \
+    0 \
+    immediately_ready \
+    "forwarded argument")
+[[ "${immediate_output}" == "ready with forwarded argument" ]]
+
+retry_then_ready() {
+    local attempt_file=$1
+    local expected_argument=$2
+    local attempt_number=0
+
+    [[ "${expected_argument}" == "forwarded argument" ]] || return 1
+    if [[ -f "${attempt_file}" ]]; then
+        attempt_number=$(<"${attempt_file}")
+    fi
+    attempt_number=$((attempt_number + 1))
+    printf '%s\n' "${attempt_number}" > "${attempt_file}"
+
+    if [[ "${attempt_number}" -lt 2 ]]; then
+        printf 'attempt %s is pending\n' "${attempt_number}"
+        return 1
+    fi
+
+    printf 'ready on attempt %s\n' "${attempt_number}"
+}
+
+retry_count_file="${TEST_ROOT}/poll-attempts"
+retry_output=$(poll_until \
+    "retry fixture" \
+    2 \
+    retry_then_ready \
+    "${retry_count_file}" \
+    "forwarded argument")
+[[ "${retry_output}" == "ready on attempt 2" ]]
+[[ "$(<"${retry_count_file}")" -eq 2 ]]
+
+timeout_output="${TEST_ROOT}/timeout-output"
+timeout_status=0
+poll_until "fixture state" 0 always_pending \
+    >/dev/null 2>"${timeout_output}" || timeout_status=$?
+[[ "${timeout_status}" -ne 0 ]]
+grep -q 'Last observation: still pending' "${timeout_output}"
 
 KEEP_RUNTIME=true
 retained_status=0

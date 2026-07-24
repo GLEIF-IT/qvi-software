@@ -149,75 +149,50 @@ install_workflow_traps() {
     trap 'handle_workflow_signal HUP' HUP
 }
 
-wait_until() {
+poll_until() {
     local description=$1
     local timeout_seconds=$2
     local predicate_name=$3
     shift 3
 
-    local deadline=$(( $(date +%s) + timeout_seconds ))
-    local attempt_number=0
-    local output_file=""
-    local status_file=""
-    local predicate_process_id=""
-    local predicate_finished=false
+    local deadline=$((SECONDS + timeout_seconds))
     local predicate_output=""
-    local predicate_status=1
     local last_observation="<none>"
     local predicate_succeeded=false
-    local timeout_elapsed=false
+    local deadline_reached=false
 
-    while [[ "${timeout_elapsed}" == false ]]; do
-        attempt_number=$((attempt_number + 1))
-        output_file="${WORKFLOW_LOG_DIR:-${TMPDIR:-/tmp}}/wait-${$}-${attempt_number}.out"
-        status_file="${WORKFLOW_LOG_DIR:-${TMPDIR:-/tmp}}/wait-${$}-${attempt_number}.status"
-        : > "${output_file}"
-        : > "${status_file}"
-
-        predicate_status=0
-        predicate_finished=false
-        (
-            local completed_status=0
-            "${predicate_name}" "$@" || completed_status=$?
-            printf '%s\n' "${completed_status}" > "${status_file}"
-            exit "${completed_status}"
-        ) > "${output_file}" 2>&1 &
-        predicate_process_id=$!
-
-        while [[ "${predicate_finished}" == false &&
-                 "${timeout_elapsed}" == false ]]; do
-            [[ -s "${status_file}" ]] && predicate_finished=true
-            [[ $(date +%s) -gt "${deadline}" ]] && timeout_elapsed=true
-            if [[ "${predicate_finished}" == false &&
-                  "${timeout_elapsed}" == false ]]; then
-                sleep 0.1
-            fi
-        done
-
-        if [[ "${predicate_finished}" == true ]]; then
-            wait "${predicate_process_id}" || predicate_status=$?
-        else
-            kill "${predicate_process_id}" >/dev/null 2>&1 || true
-            wait "${predicate_process_id}" >/dev/null 2>&1 || true
-            predicate_status=124
-        fi
-        predicate_output=$(<"${output_file}")
-        rm -f "${output_file}" "${status_file}"
-        [[ -n "${predicate_output}" ]] &&
-            last_observation="${predicate_output}"
-
+    while true; do
+        predicate_output=""
         predicate_succeeded=false
-        [[ "${predicate_status}" -eq 0 ]] && predicate_succeeded=true
+
+        # The named workflow predicate runs in command substitution so its
+        # output can become either the successful result or the final
+        # diagnostic. It therefore runs in a subshell and must not communicate
+        # through shell-variable side effects. Predicates must also bound their
+        # own external I/O; poll_until only controls when another poll begins.
+        predicate_output=$(
+            "${predicate_name}" "$@" 2>&1
+        ) && predicate_succeeded=true
+
+        if [[ -n "${predicate_output}" ]]; then
+            last_observation="${predicate_output}"
+        fi
+
         if [[ "${predicate_succeeded}" == true ]]; then
-            [[ -n "${predicate_output}" ]] &&
+            if [[ -n "${predicate_output}" ]]; then
                 printf '%s\n' "${predicate_output}"
+            fi
             return 0
         fi
 
-        [[ $(date +%s) -gt "${deadline}" ]] && timeout_elapsed=true
-        if [[ "${timeout_elapsed}" == false ]]; then
-            sleep 1
+        deadline_reached=false
+        [[ "${SECONDS}" -ge "${deadline}" ]] &&
+            deadline_reached=true
+        if [[ "${deadline_reached}" == true ]]; then
+            break
         fi
+
+        sleep 1
     done
 
     printf 'Timed out after %ss waiting for %s. Last observation: %s\n' \
@@ -289,7 +264,10 @@ wait_for_compose_job() {
     fi
     container_id=$(<"${job_file}")
 
-    wait_until \
+    # compose_container_has_stopped performs one Docker inspect per poll.
+    # Docker CLI responsiveness is an infrastructure prerequisite; poll_until
+    # does not supervise or kill a blocked Docker command.
+    poll_until \
         "detached KLI job ${logical_name}" \
         "${WORKFLOW_TIMEOUT_SECONDS}" \
         compose_container_has_stopped \
