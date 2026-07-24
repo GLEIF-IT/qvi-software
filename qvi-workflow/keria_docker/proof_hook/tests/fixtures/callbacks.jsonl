@@ -1,0 +1,3 @@
+{"action":"iss","actor":"EQviIssuer","credential":"EQviCredential","data":{"credential":"EQviCredential","issuer":"EQviIssuer","recipient":"EQviHolder","schema":"EQviSchema","type":"QVI"},"receivedAt":"2026-07-23T17:00:01.000000Z","schema":"EQviSchema"}
+{"action":"iss","actor":"ELegalEntity","credential":"EOorCredential","data":{"credential":"EOorCredential","issuer":"ELegalEntity","recipient":"EPerson","schema":"EOorSchema","type":"OOR"},"receivedAt":"2026-07-23T17:00:02.000000Z","schema":"EOorSchema"}
+{"action":"rev","actor":"ELegalEntity","credential":"EOorCredential","data":{"credential":"EOorCredential","revocationTimestamp":"2026-07-23T17:00:03.000000+00:00","schema":"EOorSchema","type":"OOR"},"receivedAt":"2026-07-23T17:00:04.000000Z","schema":"EOorSchema"}

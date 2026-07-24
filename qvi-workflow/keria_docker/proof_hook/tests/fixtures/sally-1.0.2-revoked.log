@@ -1,0 +1,2 @@
+direct-sally-1 | 2026-07-23T17:00:03.500000Z 2026-07-23 17:00:03 [direct-sally] ERROR credential EOorCredential from issuer ELegalEntity failed validation: revoked credential EOorCredential being presented
+direct-sally-1 | 2026-07-23T17:00:04.100000Z 2026-07-23 17:00:04 [direct-sally] INFO Sending rev of OOR to http://hook:9923 with SAID EOorCredential
