@@ -1,103 +1,147 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ##################################################################
 ##                                                              ##
-##          KLI Commands proxied by Docker Containers           ##
+##      Compose-scoped KLI and Signify command adapters          ##
 ##                                                              ##
 ##################################################################
 
-LOCAL_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-export KLI_DATA_DIR="${LOCAL_DIR}/acdc-info"
-export KLI_CONFIG_DIR="${LOCAL_DIR}/config"
+# This file is source-only. vlei-workflow.sh creates the private runtime and
+# initializes workflow_compose before any command below is called. Commands
+# are written to mode-0600 scripts mounted in the job container so passcodes,
+# salts, participant seeds, and challenge words never appear in Docker argv.
 
-KEYSTORE_DIR=${1:-./docker-keystores}
-ENVIRONMENT=${2:-docker-tsx}
+WORKFLOW_INVOCATION_SEQUENCE=0
+SECURE_INVOCATION_HOST_PATH=""
+SECURE_INVOCATION_CONTAINER_PATH=""
 
-if [ ! -d "${KEYSTORE_DIR}" ]; then
-    echo "Creating Keystore directory ${KEYSTORE_DIR}"
-    mkdir -p "${KEYSTORE_DIR}"
-fi
+create_secure_invocation() {
+    local executable=$1
+    shift
+    local argument
 
-# Set current working directory for all scripts that must access files
-KLI1IMAGE="weboftrust/keri:1.1.32"
-KLI2IMAGE="gleif/keri:1.2.9"
+    WORKFLOW_INVOCATION_SEQUENCE=$((WORKFLOW_INVOCATION_SEQUENCE + 1))
+    SECURE_INVOCATION_HOST_PATH="${WORKFLOW_SECRET_DIR}/invoke-${WORKFLOW_INVOCATION_SEQUENCE}.sh"
+    SECURE_INVOCATION_CONTAINER_PATH="/run/qvi/invoke-${WORKFLOW_INVOCATION_SEQUENCE}.sh"
 
-TSX_SIGNIFY_IMG="gleif/vlei-workflow-signify:1.0.0"
-
-# Separate function enables different version of KERIpy to be used for some identifiers.
-function kli() {
-  docker run -it --rm \
-    --network vlei \
-    -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}":/config \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI1IMAGE}" "$@"
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'exec %q' "${executable}"
+        for argument in "$@"; do
+            printf ' %q' "${argument}"
+        done
+        printf '\n'
+    } > "${SECURE_INVOCATION_HOST_PATH}"
+    chmod 600 "${SECURE_INVOCATION_HOST_PATH}"
 }
 
-export -f kli
+run_secure_compose_command() {
+    local service_name=$1
+    local executable=$2
+    shift 2
+    local command_status=0
 
-# Runs the KLI command in a detached container which is expected to be used in conjunction with
-# `docker wait` to wait for the container to finish before continuing with further steps.
-function klid() {
-  name=$1
-  # must pull first arg off to use as container name
-  shift 1
-  # pass remaining args to docker run
-  docker run -d \
-    --network vlei \
-    --name $name \
-    -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}":/config \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI1IMAGE}" "$@"
+    create_secure_invocation "${executable}" "$@"
+    workflow_compose run --rm --no-deps -T \
+        "${service_name}" "${SECURE_INVOCATION_CONTAINER_PATH}" ||
+        command_status=$?
+    rm -f "${SECURE_INVOCATION_HOST_PATH}"
+    return "${command_status}"
 }
 
-export -f klid
-
-# Separate function enables different version of KERIpy to be used for some identifiers.
-function kli2() {
-  docker run -it --rm \
-    --network vlei \
-    -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}":/config \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI2IMAGE}" "$@"
+generate_kli_challenge_words_file() {
+    local container_words_file=$1
+    # $1 is expanded by the nested shell inside the KLI container.
+    # shellcheck disable=SC2016
+    run_secure_compose_command \
+        kli \
+        /bin/bash \
+        -c \
+        'umask 077; kli challenge generate --out string | tr -d "\r\n" > "$1"' \
+        qvi-challenge-generator \
+        "${container_words_file}"
 }
 
-export -f kli2
+run_kli_challenge_with_words_file() {
+    local action=$1
+    local container_words_file=$2
+    shift 2
+    local argument
+    local command_status=0
 
-# Runs the KLI command in a detached container which is expected to be used in conjunction with
-# `docker wait` to wait for the container to finish before continuing with further steps.
-function kli2d() {
-  name=$1
-  # must pull first arg off to use as container name
-  shift 1
-  # pass remaining args to docker run
-  docker run -d \
-    --network vlei \
-    --name $name \
-    -v "${KEYSTORE_DIR}":/usr/local/var/keri \
-    -v "${KLI_CONFIG_DIR}":/config \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    -e PYTHONWARNINGS="ignore::SyntaxWarning" \
-    "${KLI2IMAGE}" "$@"
+    WORKFLOW_INVOCATION_SEQUENCE=$((WORKFLOW_INVOCATION_SEQUENCE + 1))
+    SECURE_INVOCATION_HOST_PATH="${WORKFLOW_SECRET_DIR}/invoke-${WORKFLOW_INVOCATION_SEQUENCE}.sh"
+    SECURE_INVOCATION_CONTAINER_PATH="/run/qvi/invoke-${WORKFLOW_INVOCATION_SEQUENCE}.sh"
+    {
+        printf '#!/usr/bin/env bash\n'
+        # These expressions belong to the generated script, not this shell.
+        # shellcheck disable=SC2016
+        printf 'challenge_words=$(<%q)\n' "${container_words_file}"
+        printf 'exec kli challenge %q' "${action}"
+        for argument in "$@"; do
+            printf ' %q' "${argument}"
+        done
+        # shellcheck disable=SC2016
+        printf ' --words "${challenge_words}"\n'
+    } > "${SECURE_INVOCATION_HOST_PATH}"
+    chmod 600 "${SECURE_INVOCATION_HOST_PATH}"
+
+    workflow_compose run --rm --no-deps -T \
+        kli "${SECURE_INVOCATION_CONTAINER_PATH}" ||
+        command_status=$?
+    rm -f "${SECURE_INVOCATION_HOST_PATH}"
+    return "${command_status}"
 }
 
-export -f kli2d
-
-function sig_tsx() {
-  docker run -it --rm \
-    --network vlei \
-    -e ENVIRONMENT="${ENVIRONMENT}" \
-    -v "${LOCAL_DIR}/qvi_data":/vlei-workflow/qvi_data \
-    -v "${KLI_DATA_DIR}":/acdc-info \
-    "${TSX_SIGNIFY_IMG}" "tsx" "$@"
+kli_challenge_respond_from_file() {
+    local container_words_file=$1
+    shift
+    run_kli_challenge_with_words_file respond "${container_words_file}" "$@"
 }
 
-export -f sig_tsx
+kli_challenge_verify_from_file() {
+    local container_words_file=$1
+    shift
+    run_kli_challenge_with_words_file verify "${container_words_file}" "$@"
+}
 
-echo "Keystore directory is ${KEYSTORE_DIR}"
-echo "Data directory is ${KLI_DATA_DIR}"
-echo "Config directory is ${KLI_CONFIG_DIR}"
+kli() {
+    run_secure_compose_command kli kli "$@"
+}
+
+klid() {
+    local logical_name=$1
+    shift
+
+    create_secure_invocation kli "$@"
+    run_detached_compose_job \
+        kli \
+        "${logical_name}" \
+        "${SECURE_INVOCATION_CONTAINER_PATH}"
+    printf '%s\n' "${SECURE_INVOCATION_HOST_PATH}" \
+        > "${WORKFLOW_JOB_DIR}/${logical_name}.script"
+}
+
+kli2() {
+    run_secure_compose_command kli2 kli "$@"
+}
+
+kli2d() {
+    local logical_name=$1
+    shift
+
+    create_secure_invocation kli "$@"
+    run_detached_compose_job \
+        kli2 \
+        "${logical_name}" \
+        "${SECURE_INVOCATION_CONTAINER_PATH}"
+    printf '%s\n' "${SECURE_INVOCATION_HOST_PATH}" \
+        > "${WORKFLOW_JOB_DIR}/${logical_name}.script"
+}
+
+sig_tsx() {
+    run_secure_compose_command signify tsx "$@"
+}
+
+wait_kli_jobs() {
+    wait_for_compose_jobs "$@"
+}
