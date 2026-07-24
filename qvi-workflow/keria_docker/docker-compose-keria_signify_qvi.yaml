@@ -15,43 +15,32 @@ x-qar-witness-image: &qar-witness-image
   image: gleif/keri:1.2.9
 x-person-witness-image: &person-witness-image
   image: gleif/keri:1.2.9
-x-sally-witness-image: &sally-witness-image
-  image: gleif/keri:1.2.9
 
 x-keria-image: &keria-image
-  image: gleif/keria:0.3.0
+  image: weboftrust/keria:0.4.0
 x-vlei-image: &vlei-image
   image: gleif/vlei:1.0.0
-x-sally-image: &sally-image
-  image: gleif/sally:1.0.2
 x-direct-sally-image: &direct-sally-image
   image: gleif/sally:1.0.2
 
 x-healthcheck: &healthcheck
   interval: 3s
   timeout: 3s
-  retries: 5
-  start_period: 2s
+  retries: 10
+  start_period: 20s
 x-witness-env: &witness-env
   PYTHONUNBUFFERED: 1 # Ensure output is logged in real-time
   PYTHONIOENCODING: UTF-8 # Ensure consistent logging encoding
   PYTHONWARNINGS: ignore::SyntaxWarning # Ignore regular expression syntax warning
 
-networks:
-  default:
-    external: true
-    name: vlei
-
 volumes:
   gar-wit-vol:
   qar-wit-vol:
   person-wit-vol:
-  sally-wit-vol:
   direct-sally-vol:
   keria1-vol:
   keria2-vol:
   keria3-vol:
-  sally-vol:
 
 services:
   # vLEI schema caching server
@@ -66,8 +55,6 @@ services:
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao" ]
       <<: *healthcheck
-    ports:
-      - "7723:7723"
 
   # GARs use one of the six demo witnesses, wan
   gar-witnesses:
@@ -81,10 +68,8 @@ services:
       <<: *healthcheck
     command: witness demo --loglevel INFO
     volumes:
-      - ./config/witnesses-gar:/keripy/scripts/keri/cf/main
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}/witnesses-gar:/keripy/scripts/keri/cf/main
       - gar-wit-vol:/usr/local/var/keri
-    ports:
-      - "5642:5642" # witness named wan
     depends_on:
       vlei-server:
         condition: service_healthy
@@ -100,10 +85,8 @@ services:
       <<: *healthcheck
     command: witness demo --loglevel INFO
     volumes:
-      - ./config/witnesses-qar:/keripy/scripts/keri/cf/main
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}/witnesses-qar:/keripy/scripts/keri/cf/main
       - qar-wit-vol:/usr/local/var/keri
-    ports:
-      - "5643:5643" # witness named wil
     depends_on:
       vlei-server:
         condition: service_healthy
@@ -119,30 +102,8 @@ services:
       <<: *healthcheck
     command: witness demo --loglevel INFO
     volumes:
-      - ./config/witnesses-person:/keripy/scripts/keri/cf/main
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}/witnesses-person:/keripy/scripts/keri/cf/main
       - person-wit-vol:/usr/local/var/keri
-    ports:
-      - "5644:5644" # witness named wes
-    depends_on:
-      vlei-server:
-        condition: service_healthy
-
-  # GARs use one of the six demo witnesses, wan
-  sally-witnesses:
-    stop_grace_period: 1s
-    <<: *sally-witness-image
-    environment:
-      <<: *witness-env
-    healthcheck:
-      # healthcheck needs to be different in 1.2.7+ because it uses the Alpine base image and curl is not present
-      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5645/oobi" ]
-      <<: *healthcheck
-    command: witness demo --loglevel INFO
-    volumes:
-      - ./config/witnesses-sally:/keripy/scripts/keri/cf/main
-      - sally-wit-vol:/usr/local/var/keri
-    ports:
-      - "5645:5645" # witness named wit
     depends_on:
       vlei-server:
         condition: service_healthy
@@ -157,16 +118,12 @@ services:
       - PYTHONWARNINGS=ignore::SyntaxWarning
       - KERIA_RELEASER_TIMEOUT=3600
     volumes:
-      - ./config/keria/keria1.json:/keria/config/keri/cf/keria.json
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}/keria/keria1.json:/keria/config/keri/cf/keria.json
       - keria1-vol:/usr/local/var/keri
     command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
       <<: *healthcheck
-    ports:
-      - "3901:3901"
-      - "3902:3902"
-      - "3903:3903"
     entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'keria', '--loglevel', 'INFO' ]
     depends_on:
       vlei-server:
@@ -186,16 +143,12 @@ services:
       - PYTHONWARNINGS=ignore::SyntaxWarning
       - KERIA_RELEASER_TIMEOUT=3600
     volumes:
-      - ./config/keria/keria2.json:/keria/config/keri/cf/keria.json
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}/keria/keria2.json:/keria/config/keri/cf/keria.json
       - keria2-vol:/usr/local/var/keri
     command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
       <<: *healthcheck
-    ports:
-      - "4901:3901"
-      - "4902:3902"
-      - "4903:3903"
     entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'keria', '--loglevel', 'INFO' ]
     depends_on:
       vlei-server:
@@ -215,16 +168,12 @@ services:
       - PYTHONWARNINGS=ignore::SyntaxWarning
       - KERIA_RELEASER_TIMEOUT=3600
     volumes:
-      - ./config/keria/keria3.json:/keria/config/keri/cf/keria.json
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}/keria/keria3.json:/keria/config/keri/cf/keria.json
       - keria3-vol:/usr/local/var/keri
     command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
       <<: *healthcheck
-    ports:
-      - "5901:3901"
-      - "5902:3902"
-      - "5903:3903"
     entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'keria', '--loglevel', 'INFO' ]
     depends_on:
       vlei-server:
@@ -234,21 +183,21 @@ services:
       person-witnesses:
         condition: service_healthy
 
-  # Sample Webhook that will receive IPEX credential presentation bodies as JSON from Sally
+  # Source-owned, append-only recorder for Sally's structured callbacks.
   hook:
     stop_grace_period: 1s
-    <<: *sally-image
+    image: qvi-workflow-proof-hook:local
+    build:
+      context: ./proof_hook
     environment:
-      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
-      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - PYTHONWARNINGS=ignore::SyntaxWarning
-    # volumes:
+      PYTHONUNBUFFERED: "1"
+      QVI_PROOF_CALLBACKS_PATH: /proof/sally-callbacks.jsonl
+    user: "${WORKFLOW_UID:?WORKFLOW_UID is required}:${WORKFLOW_GID:?WORKFLOW_GID is required}"
+    volumes:
+      - ${WORKFLOW_PROOF_DIR:?WORKFLOW_PROOF_DIR is required}:/proof
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9923/health" ]
       <<: *healthcheck
-    ports:
-      - "9923:9923"
-    entrypoint: [ 'sally', 'hook', 'demo' ]
     
   # Direct mode Sally Verifier (runs own mailbox, no witnesses or witness mailbox)
   direct-sally:
@@ -266,75 +215,56 @@ services:
       - PYTHONWARNINGS=ignore::SyntaxWarning
       - SALLY_PORT=9823
     volumes:
-      - ./direct-sally/keri/cf/direct-sally.json:/sally/conf/keri/cf/direct-sally.json
-      - ./direct-sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json
-      - ./direct-sally/entry-point.sh:/sally/entry-point.sh
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}/direct-sally/keri/cf/direct-sally.json:/sally/conf/keri/cf/direct-sally.json
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}/direct-sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json:ro
+      - ./direct-sally/entry-point.sh:/sally/entry-point.sh:ro
       - direct-sally-vol:/usr/local/var/keri
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9823/health" ]
       <<: *healthcheck
-    ports:
-      - 9823:9823
-    entrypoint: "/sally/entry-point.sh"
-    depends_on:
-      vlei-server:
-        condition: service_healthy
-
-  # The reporting endpoint verifier service receiving IPEX credential presentations
-  sally:
-    stop_grace_period: 1s
-    <<: *sally-image
-    environment:
-      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
-      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - SALLY_KS_NAME=${INDIRECT_SALLY_KS_NAME}
-      - SALLY_ALIAS=${INDIRECT_SALLY_ALIAS}
-      - SALLY_SALT=${INDIRECT_SALLY_SALT}
-      - SALLY_PASSCODE=${INDIRECT_SALLY_PASSCODE}
-      - WEBHOOK_HOST=${WEBHOOK_HOST}
-      - GEDA_PRE=${GEDA_PRE}
-      - PYTHONWARNINGS=ignore::SyntaxWarning
-      - SALLY_PORT=9723
-    volumes:
-      - ./sally/keri/cf/sally.json:/sally/conf/keri/cf/sally.json
-      - ./sally/sally-incept.json:/sally/conf/sally-incept.json
-      - ./sally/entry-point.sh:/sally/entry-point.sh
-      - sally-vol:/usr/local/var/keri
-    healthcheck:
-      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9723/health" ]
-      <<: *healthcheck
-    ports:
-      - "9723:9723"
     entrypoint: "/sally/entry-point.sh"
     depends_on:
       hook:
         condition: service_healthy
       vlei-server:
         condition: service_healthy
-      sally-witnesses:
-        condition: service_healthy
 
-  # Debugging container - useful for manual tasks
-  qvi-tools:
-    image: gleif/qvi-tools:latest
-    build:
-      context: .
-      dockerfile: tool-shell.dockerfile
-    stop_grace_period: 1s
+  # Compose-scoped one-shot services used by the workflow driver.
+  kli:
     <<: *keri_1_1-image
-    environment:
-      - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
-      - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - PYTHONWARNINGS=ignore::SyntaxWarning
-    env_file:
-      - ./keria-signify-docker.env
-    volumes:
-      - ../sig_ts_wallets:/vlei-workflow
-      - ${KEYSTORE_DIR:-./docker-keystores}:/usr/local/var/keri
-    tty: true
+    profiles: [ "jobs" ]
     entrypoint: /bin/bash
-    depends_on:
-      gar-witnesses:
-        condition: service_healthy
-      qar-witnesses:
-        condition: service_healthy
+    environment:
+      PYTHONWARNINGS: ignore::SyntaxWarning
+    volumes:
+      - ${KEYSTORE_DIR:?KEYSTORE_DIR is required}:/usr/local/var/keri
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}:/config
+      - ${KLI_DATA_DIR:?KLI_DATA_DIR is required}:/acdc-info
+      - ${WORKFLOW_SECRET_DIR:?WORKFLOW_SECRET_DIR is required}:/run/qvi
+
+  kli2:
+    <<: *keri_1_2-image
+    profiles: [ "jobs" ]
+    entrypoint: /bin/bash
+    environment:
+      PYTHONWARNINGS: ignore::SyntaxWarning
+    volumes:
+      - ${KEYSTORE_DIR:?KEYSTORE_DIR is required}:/usr/local/var/keri
+      - ${WORKFLOW_CONFIG_DIR:?WORKFLOW_CONFIG_DIR is required}:/config
+      - ${KLI_DATA_DIR:?KLI_DATA_DIR is required}:/acdc-info
+      - ${WORKFLOW_SECRET_DIR:?WORKFLOW_SECRET_DIR is required}:/run/qvi
+
+  signify:
+    image: gleif/vlei-workflow-signify:1.0.0
+    build:
+      context: ../sig_ts_wallets
+      dockerfile: signify-ts.Dockerfile
+    profiles: [ "jobs" ]
+    entrypoint: /bin/bash
+    environment:
+      ENVIRONMENT: docker-tsx
+      QVI_OPERATION_TIMEOUT_SECONDS: ${WORKFLOW_TIMEOUT_SECONDS:-120}
+    volumes:
+      - ${LOCAL_QVI_DATA_DIR:?LOCAL_QVI_DATA_DIR is required}:/vlei-workflow/qvi_data
+      - ${KLI_DATA_DIR:?KLI_DATA_DIR is required}:/acdc-info
+      - ${WORKFLOW_SECRET_DIR:?WORKFLOW_SECRET_DIR is required}:/run/qvi:ro
