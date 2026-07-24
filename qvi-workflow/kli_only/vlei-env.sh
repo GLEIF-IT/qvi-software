@@ -62,6 +62,7 @@ export PERSON_ECR="Consultant"
 export PERSON_OOR="Advisor"
 
 # Sally - vLEI Reporting API
+export WEBHOOK_HOST=http://127.0.0.1:9923
 export SALLY=sally
 export SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
 export SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC

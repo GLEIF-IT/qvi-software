@@ -209,7 +209,6 @@ function add_mailboxes() {
 }
 
 export SALLY_OOBI="http://127.0.0.1:9723/oobi"
-INDIRECT_MODE_SALLY=false  # default
 function sally_setup() {
     # skip setup if already running
     if [[ $(check_sally_up) -eq 0 ]]; then
@@ -224,37 +223,20 @@ function sally_setup() {
     sally hook demo & # For the webhook Sally will call upon credential presentation
     WEBHOOK_PID=$!
 
-    if [[ $INDIRECT_MODE_SALLY = true ]] ; then
-      print_yellow "Assuming Sally has already been incepted with a witness for indirect mode..."
-      print_yellow "Starting sally on ${SALLY_HOST} in indirect (mailbox) mode"
-      sally server start \
-        --name $SALLY \
-        --alias $SALLY \
-        --salt $SALLY_SALT \
-        --config-dir sally \
-        --config-file sally-indirect.json \
-        --passcode $SALLY_PASSCODE \
-        --web-hook http://127.0.0.1:9923 \
-        --auth "${GEDA_PRE}" & # who will be presenting the credential
-      SALLY_PID=$!
-      export SALLY_OOBI="${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
-    else
-      print_yellow "Starting sally on ${SALLY_HOST} in direct mode"
-      sally server start \
-        --direct \
-        --name "$SALLY" \
-        --alias "$SALLY" \
-        --salt "$SALLY_SALT" \
-        --config-dir sally \
-        --config-file sally.json \
-        --incept-file sally-incept.json \
-        --passcode "$SALLY_PASSCODE" \
-        --web-hook http://127.0.0.1:9923 \
-        --auth "${GEDA_PRE}" & # who will be presenting the credential
-      SALLY_PID=$!
-      export SALLY_OOBI="http://127.0.0.1:9723/oobi"
-
-    fi
+    print_yellow "Starting Sally on ${SALLY_HOST} in direct mode"
+    sally server start \
+      --direct \
+      --name "${SALLY}" \
+      --alias "${SALLY}" \
+      --salt "${SALLY_SALT}" \
+      --config-dir sally \
+      --config-file sally.json \
+      --incept-file sally-incept.json \
+      --passcode "${SALLY_PASSCODE}" \
+      --web-hook "${WEBHOOK_HOST}" \
+      --auth "${GEDA_PRE}" &
+    SALLY_PID=$!
+    export SALLY_OOBI="${SALLY_HOST}/oobi"
     print_yellow "Waiting 3 seconds for Sally to start..."
     sleep 3
 }
@@ -2672,17 +2654,18 @@ function debug_workflow() {
 
 # Function to display usage
 usage() {
+    local usage_exit_status=${1:-1}
+
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -k, --keystore-dir DIR  Specify keystore directory directory (default: ./docker-keystores)"
     echo "  -a, --alias ALIAS       OOBI alias for target Sally deployment (default: alternate)"
     echo "      --challenge         Use challenge and response section of workflow"
-    echo "      --direct            Use direct mode Sally (verification agent)"
     echo "  -d, --debug             Run the Debug workflow"
     echo "  -c, --clear             Clear all containers, keystores, and networks"
     echo "  -h, --help              Display this help message"
     echo "  --pause                 Enable pausing between steps"
-    exit 1
+    exit "${usage_exit_status}"
 }
 
 # Parse command-line options
@@ -2692,14 +2675,10 @@ while [[ $# -gt 0 ]]; do
             cleanup
             ;;
         -h|--help)
-            usage
+            usage 0
             ;;
         --challenge)
             CHALLENGE_ENABLED=true
-            shift
-            ;;
-        --indirect)
-            INDIRECT_MODE_SALLY=true
             shift
             ;;
         --pause)
@@ -2734,7 +2713,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            usage
+            usage 1
             ;;
     esac
 done
