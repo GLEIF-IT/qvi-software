@@ -1444,7 +1444,7 @@ async function assertCredentialAction(
     throw new UsageError(`Unknown assertion actor ${args.actor}`);
 }
 
-/** Parse and dispatch one explicit qvi.ts action without hidden transitions. */
+/** Parse and dispatch one explicit wallet action without hidden transitions. */
 export async function run(
     argv: string[]
 ): Promise<Record<string, unknown>> {

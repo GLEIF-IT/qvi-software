@@ -9,7 +9,7 @@ import {
     readPendingWorkflowEvent,
     run,
     UsageError,
-} from '../src/qvi.ts';
+} from '../src/sig-wallet.ts';
 
 const PENDING_EVENT = {
     eventKind: 'rotation',
@@ -37,10 +37,10 @@ const PENDING_EVENT = {
     ],
 };
 
-describe('qvi entrypoint boundary', () => {
+describe('Signify wallet entrypoint boundary', () => {
     it('imports without performing workflow work', async () => {
         await assert.doesNotReject(
-            import(`../src/qvi.ts?test=${Date.now()}`)
+            import(`../src/sig-wallet.ts?test=${Date.now()}`)
         );
     });
 

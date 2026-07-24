@@ -98,7 +98,7 @@ run_qvi_json() {
     local phase=$1
     shift
     run_signify_json \
-        "${QVI_SIGNIFY_DIR}/qvi.ts" \
+        "${QVI_SIGNIFY_DIR}/sig-wallet.ts" \
         "${phase}" \
         --config "${QVI_PARTICIPANT_CONFIG}" \
         "$@"
