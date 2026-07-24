@@ -45,6 +45,7 @@ export async function issueAndGrantCredential(
             client,
             aid: memberAid,
         })),
+        members[0].memberAid.prefix,
         (context) =>
             issueCredentialMultisig(
                 context.client,
@@ -78,6 +79,7 @@ export async function issueAndGrantCredential(
             client,
             aid: memberAid,
         })),
+        members[0].memberAid.prefix,
         (context) => {
             const memberIndex = members.findIndex(
                 ({memberAid}) =>

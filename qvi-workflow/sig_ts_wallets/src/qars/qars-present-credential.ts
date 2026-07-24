@@ -26,6 +26,7 @@ export async function presentCredential(
             client,
             aid: memberAid,
         })),
+        members[0].memberAid.prefix,
         (context) => {
             const memberIndex = members.findIndex(
                 ({memberAid}) =>

@@ -19,6 +19,7 @@ export async function admitCredentialQvi(
             client,
             aid: memberAid,
         })),
+        members[0].memberAid.prefix,
         (context) => {
             const member = members.find(
                 ({memberAid}) =>

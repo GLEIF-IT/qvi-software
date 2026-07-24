@@ -3,19 +3,15 @@ import signify, {
     type CreateIdentiferArgs,
     type HabState,
     type KeyState,
-    type Operation,
     Serder,
 } from 'signify-ts';
 
 import {sendExchangeToEachRecipient} from './exchanges.ts';
 import {createAIDMultisig} from './multisig-creation.ts';
 import {
-    completeSavedMemberResults,
     memberContexts,
     type MemberSubmission,
     type MultisigMember,
-    type MultisigMemberContext,
-    type SavedMemberResult,
 } from './multisig-coordinator.ts';
 import {requireCoordinatedEventDigest} from './multisig-coordination.ts';
 import {
@@ -32,53 +28,46 @@ export interface GroupEventSubmission {
     members: MemberSubmission[];
 }
 
-export interface SavedGroupEvent {
-    groupPrefix: string;
-    eventSaid: string;
-    eventSequence: string;
-    signingMembers: string[];
-    rotationMembers: string[];
-    members: SavedMemberResult[];
-}
-
 export interface GroupInceptionRequest {
     groupName: string;
     delegatorPrefix: string;
     members: MultisigMember[];
+    initiatorPrefix: string;
     signingThreshold: readonly string[];
     nextThreshold: readonly string[];
-    witnessId: string;
+    witnessIds: string[];
+    witnessThreshold: number;
 }
 
 export interface GroupRotationRequest {
     groupName: string;
     signingMembers: MultisigMember[];
     rotationMembers: HabState[];
+    initiatorPrefix: string;
 }
 
-export interface JoiningMemberRotationRequest {
+export interface RotationRequest {
+    groupName: string;
+    member: MultisigMember;
+    initiatorPrefix: string;
+    signingMembers: HabState[];
+    rotationMembers: HabState[];
+    recipients: HabState[];
+}
+
+export interface JoinRotationRequest {
     groupName: string;
     groupPrefix: string;
-    existingMembers: MultisigMember[];
-    joiningMember: MultisigMember;
-}
-
-export interface CompleteGroupEventRequest {
-    signingMembers: MultisigMember[];
+    member: MultisigMember;
+    initiatorPrefix: string;
+    signingMembers: HabState[];
     rotationMembers: HabState[];
-    event: SavedGroupEvent;
+    recipients: HabState[];
+    event: GroupEventSubmission;
 }
 
-interface SubmittedMemberEvent {
+export interface GroupMemberEvent {
     member: MemberSubmission;
-    groupPrefix: string;
-    eventSaid: string;
-    eventSequence: string;
-}
-
-interface MemberEventResult {
-    operation: Operation;
-    coordination: MatchedNotification[];
     groupPrefix: string;
     eventSaid: string;
     eventSequence: string;
@@ -96,17 +85,20 @@ function eventAttachment(
     return message.substring(serder.size);
 }
 
-/** Submit one current member's group rotation and correlated EXN fan-out. */
-async function submitMemberRotation(
-    context: MultisigMemberContext,
-    groupName: string,
-    states: KeyState[],
-    rstates: KeyState[],
-    recipientAids: HabState[]
-): Promise<MemberEventResult> {
-    const result = await context.client
+/** Submit one member's group rotation and correlated EXN fan-out. */
+export async function submitRotation(
+    request: RotationRequest
+): Promise<GroupMemberEvent> {
+    const member = request.member;
+    const states: KeyState[] = request.signingMembers.map(
+        ({state}) => state
+    );
+    const rstates: KeyState[] = request.rotationMembers.map(
+        ({state}) => state
+    );
+    const result = await member.client
         .identifiers()
-        .rotate(groupName, {states, rstates});
+        .rotate(request.groupName, {states, rstates});
     const operation = await result.op();
     const serder = result.serder;
     const sigers = result.sigs.map(
@@ -115,14 +107,14 @@ async function submitMemberRotation(
     const message = signify.d(signify.messagize(serder, sigers));
     const attachment = eventAttachment(serder, result.sigs, message);
     let coordination: MatchedNotification[] = [];
-    if (context.isInitiator === false) {
+    if (member.aid.prefix !== request.initiatorPrefix) {
         const notification = await waitForMatchingNotification(
-            context.client,
+            member.client,
             {
                 notificationRoute: '/multisig/rot',
                 exchangeRoute: '/multisig/rot',
-                sender: context.coordinatorPrefix,
-                recipient: context.aid.prefix,
+                sender: request.initiatorPrefix,
+                recipient: member.aid.prefix,
                 groupPrefix: serder.pre,
                 embeddedDigest: serder.said,
             }
@@ -134,10 +126,10 @@ async function submitMemberRotation(
         );
         coordination = [notification];
     }
-    await sendExchangeToEachRecipient(context.client, {
-        name: context.aid.name,
-        topic: groupName,
-        sender: context.aid,
+    await sendExchangeToEachRecipient(member.client, {
+        name: member.aid.name,
+        topic: request.groupName,
+        sender: member.aid,
         route: '/multisig/rot',
         payload: {
             gid: serder.pre,
@@ -145,40 +137,26 @@ async function submitMemberRotation(
             rmids: rstates.map(({i}) => i),
         },
         embeds: {rot: [serder, attachment]},
-        recipients: recipientAids
-            .filter(({prefix}) => prefix !== context.aid.prefix)
+        recipients: request.recipients
+            .filter(({prefix}) => prefix !== member.aid.prefix)
             .map(({prefix}) => prefix),
     });
     return {
-        operation,
-        coordination,
+        member: {
+            memberPrefix: member.aid.prefix,
+            operation,
+            notifications: coordination,
+        },
         groupPrefix: serder.pre,
         eventSaid: serder.said,
         eventSequence: String(serder.sn),
     };
 }
 
-/** Convert one member event result into a concrete submission record. */
-function submittedMemberEvent(
-    memberPrefix: string,
-    result: MemberEventResult
-): SubmittedMemberEvent {
-    return {
-        member: {
-            memberPrefix,
-            operation: result.operation,
-            notifications: result.coordination,
-        },
-        groupPrefix: result.groupPrefix,
-        eventSaid: result.eventSaid,
-        eventSequence: result.eventSequence,
-    };
-}
-
 /** Require every member contribution to describe the same group event. */
 function commonEvent(
-    events: SubmittedMemberEvent[]
-): SubmittedMemberEvent {
+    events: GroupMemberEvent[]
+): GroupMemberEvent {
     const first = events[0];
     if (first === undefined) {
         throw new Error('No multisig member event was submitted');
@@ -195,22 +173,20 @@ function commonEvent(
     return first;
 }
 
-/** Build the live group-event result returned to the workflow boundary. */
-function groupEventSubmission(
-    groupPrefix: string,
-    eventSaid: string,
-    eventSequence: string,
-    signingMembers: string[],
-    rotationMembers: string[],
-    members: MemberSubmission[]
+/** Combine matching member contributions into one group event result. */
+export function buildGroupEvent(
+    signingMembers: HabState[],
+    rotationMembers: HabState[],
+    events: GroupMemberEvent[]
 ): GroupEventSubmission {
+    const event = commonEvent(events);
     return {
-        groupPrefix,
-        eventSaid,
-        eventSequence,
-        signingMembers,
-        rotationMembers,
-        members,
+        groupPrefix: event.groupPrefix,
+        eventSaid: event.eventSaid,
+        eventSequence: event.eventSequence,
+        signingMembers: signingMembers.map(({prefix}) => prefix),
+        rotationMembers: rotationMembers.map(({prefix}) => prefix),
+        members: events.map(({member}) => member),
     };
 }
 
@@ -224,13 +200,16 @@ export async function submitGroupInception(
         algo: signify.Algos.group,
         isith: [...request.signingThreshold],
         nsith: [...request.nextThreshold],
-        toad: 1,
-        wits: [request.witnessId],
+        toad: request.witnessThreshold,
+        wits: request.witnessIds,
         states,
         rstates: states,
     };
-    const events: SubmittedMemberEvent[] = [];
-    for (const context of memberContexts(request.members)) {
+    const events: GroupMemberEvent[] = [];
+    for (const context of memberContexts(
+        request.members,
+        request.initiatorPrefix
+    )) {
         const result = await createAIDMultisig(
             context.client,
             context.aid,
@@ -242,18 +221,21 @@ export async function submitGroupInception(
                 coordinator: context.coordinatorPrefix,
             }
         );
-        events.push(
-            submittedMemberEvent(context.aid.prefix, result)
-        );
+        events.push({
+            member: {
+                memberPrefix: context.aid.prefix,
+                operation: result.operation,
+                notifications: result.coordination,
+            },
+            groupPrefix: result.groupPrefix,
+            eventSaid: result.eventSaid,
+            eventSequence: result.eventSequence,
+        });
     }
-    const event = commonEvent(events);
-    return groupEventSubmission(
-        event.groupPrefix,
-        event.eventSaid,
-        event.eventSequence,
-        states.map(({i}) => i),
-        states.map(({i}) => i),
-        events.map(({member}) => member)
+    return buildGroupEvent(
+        request.members.map(({aid}) => aid),
+        request.members.map(({aid}) => aid),
+        events
     );
 }
 
@@ -263,91 +245,55 @@ export async function submitGroupRotation(
 ): Promise<GroupEventSubmission> {
     const signingAids = request.signingMembers.map(({aid}) => aid);
     const rotationAids = request.rotationMembers;
+    if (rotationAids.length === 0) {
+        throw new Error('Group rotation requires next members');
+    }
     if (
-        rotationAids.length !== 3 ||
-        new Set(rotationAids.map(({prefix}) => prefix)).size !== 3
+        new Set(rotationAids.map(({prefix}) => prefix)).size !==
+        rotationAids.length
     ) {
         throw new Error(
-            'Group rotation requires three unique next members'
+            'Group rotation requires unique next members'
         );
     }
-    const states = signingAids.map(({state}) => state);
-    const rstates = rotationAids.map(({state}) => state);
-    const events: SubmittedMemberEvent[] = [];
-    for (const context of memberContexts(request.signingMembers)) {
-        const result = await submitMemberRotation(
-            context,
-            request.groupName,
-            states,
-            rstates,
-            signingAids
-        );
+    const events: GroupMemberEvent[] = [];
+    for (const context of memberContexts(
+        request.signingMembers,
+        request.initiatorPrefix
+    )) {
         events.push(
-            submittedMemberEvent(context.aid.prefix, result)
+            await submitRotation({
+                groupName: request.groupName,
+                member: context,
+                initiatorPrefix: request.initiatorPrefix,
+                signingMembers: signingAids,
+                rotationMembers: rotationAids,
+                recipients: signingAids,
+            })
         );
     }
-    const event = commonEvent(events);
-    return groupEventSubmission(
-        event.groupPrefix,
-        event.eventSaid,
-        event.eventSequence,
-        states.map(({i}) => i),
-        rstates.map(({i}) => i),
-        events.map(({member}) => member)
-    );
+    return buildGroupEvent(signingAids, rotationAids, events);
 }
 
 /**
- * Submit a group rotation while one explicitly named member joins.
+ * Join one concrete member to an already submitted group rotation.
  *
- * This cohesive protocol operation validates the recipient-bound EXN, creates
- * the joining member's indexed signature, fans it out, and joins the group.
+ * This protocol operation validates the recipient-bound EXN, creates the
+ * joining member's indexed signature, fans it out, and joins the group.
  */
-export async function joinGroupRotation(
-    request: JoiningMemberRotationRequest
-): Promise<GroupEventSubmission> {
-    if (request.existingMembers.length !== 2) {
-        throw new Error(
-            'Joining-member rotation requires two existing members'
-        );
-    }
-    const members = [
-        ...request.existingMembers,
-        request.joiningMember,
-    ];
-    const contexts = memberContexts(members);
-    const states = members.map(({aid}) => aid.state);
-    const existing = request.existingMembers;
-    const joining = request.joiningMember;
-
-    const first = await submitMemberRotation(
-        contexts[0],
-        request.groupName,
-        states,
-        states,
-        members.map(({aid}) => aid)
-    );
-    const second = await submitMemberRotation(
-        contexts[1],
-        request.groupName,
-        states,
-        states,
-        members.map(({aid}) => aid)
-    );
-    commonEvent([
-        submittedMemberEvent(existing[0].aid.prefix, first),
-        submittedMemberEvent(existing[1].aid.prefix, second),
-    ]);
-
+export async function joinRotation(
+    request: JoinRotationRequest
+): Promise<GroupMemberEvent> {
+    const joining = request.member;
     const notification = await waitForMatchingNotification(
         joining.client,
         {
             notificationRoute: '/multisig/rot',
             exchangeRoute: '/multisig/rot',
-            sender: members[0].aid.prefix,
+            sender: request.initiatorPrefix,
             recipient: joining.aid.prefix,
             groupPrefix: request.groupPrefix,
-            embeddedDigest: first.eventSaid,
+            embeddedDigest: request.event.eventSaid,
         }
     );
     const requests = await joining.client
@@ -365,34 +311,46 @@ export async function joinGroupRotation(
     const exn = rotationRequest.exn;
     const smids = exn.a.smids;
     const rmids = exn.a.rmids ?? smids;
-    const expectedIds = states.map(({i}) => i);
+    const expectedSigning = request.signingMembers.map(
+        ({prefix}) => prefix
+    );
+    const expectedRotation = request.rotationMembers.map(
+        ({prefix}) => prefix
+    );
     if (
         exn.a.gid !== request.groupPrefix ||
-        JSON.stringify(smids) !== JSON.stringify(expectedIds) ||
-        JSON.stringify(rmids) !== JSON.stringify(expectedIds)
+        JSON.stringify(smids) !== JSON.stringify(expectedSigning) ||
+        JSON.stringify(rmids) !== JSON.stringify(expectedRotation)
     ) {
         throw new Error('Joining member received a divergent rotation proposal');
     }
     const serder = new Serder(exn.e.rot);
-    if (serder.said !== first.eventSaid) {
+    if (
+        serder.said !== request.event.eventSaid ||
+        String(serder.sn) !== request.event.eventSequence
+    ) {
         throw new Error('Joining member received the wrong rotation event');
     }
     const keeper = joining.client.manager?.get(joining.aid);
     if (keeper === undefined) {
         throw new Error('Joining member has no local key manager');
     }
-    const lateIndex = smids.indexOf(joining.aid.prefix);
-    if (lateIndex < 0) {
+    const signingIndex = smids.indexOf(joining.aid.prefix);
+    const rotationIndex = rmids.indexOf(joining.aid.prefix);
+    if (signingIndex < 0 || rotationIndex < 0) {
         throw new Error('Joining member is absent from the signing roster');
     }
     const signatures = await keeper.sign(
         signify.b(serder.raw),
         true,
-        [lateIndex],
-        [lateIndex]
+        [signingIndex],
+        [rotationIndex]
     );
     const siger = new signify.Siger({qb64: signatures[0]});
-    if (siger.index !== lateIndex || siger.ondex !== lateIndex) {
+    if (
+        siger.index !== signingIndex ||
+        siger.ondex !== rotationIndex
+    ) {
         throw new Error(
             'Joining-member signature indices do not match its roster position'
         );
@@ -417,7 +375,7 @@ export async function joinGroupRotation(
         route: '/multisig/rot',
         payload: {gid: request.groupPrefix, smids, rmids},
         embeds: {rot: [serder, attachment]},
-        recipients: existing.map(({aid}) => aid.prefix),
+        recipients: request.recipients.map(({prefix}) => prefix),
     });
     const joinOperation = await joining.client
         .groups()
@@ -429,69 +387,14 @@ export async function joinGroupRotation(
             smids,
             rmids
         );
-    const submissions: MemberSubmission[] = [
-        {
-            memberPrefix: existing[0].aid.prefix,
-            operation: first.operation,
-            notifications: first.coordination,
-        },
-        {
-            memberPrefix: existing[1].aid.prefix,
-            operation: second.operation,
-            notifications: second.coordination,
-        },
-        {
+    return {
+        member: {
             memberPrefix: joining.aid.prefix,
             operation: joinOperation,
             notifications: [notification],
         },
-    ];
-    return groupEventSubmission(
-        request.groupPrefix,
-        first.eventSaid,
-        first.eventSequence,
-        expectedIds,
-        expectedIds,
-        submissions
-    );
-}
-
-/** Validate, complete, and retain evidence for one GEDA-approved group event. */
-export async function completeGroupEvent(
-    request: CompleteGroupEventRequest
-): Promise<SavedGroupEvent> {
-    const event = request.event;
-    const expectedSigning = request.signingMembers.map(
-        ({aid}) => aid.prefix
-    );
-    const expectedRotation = request.rotationMembers.map(
-        ({prefix}) => prefix
-    );
-    if (
-        JSON.stringify(event.signingMembers) !==
-            JSON.stringify(expectedSigning) ||
-        JSON.stringify(event.rotationMembers) !==
-            JSON.stringify(expectedRotation)
-    ) {
-        throw new Error('Pending event rosters do not match active participants');
-    }
-    const clientsByPrefix = new Map(
-        request.signingMembers.map(({client, aid}) => [
-            aid.prefix,
-            client,
-        ])
-    );
-    if (
-        new Set(event.members.map(({memberPrefix}) => memberPrefix)).size !==
-            3 ||
-        event.members.some(
-            ({memberPrefix}) => clientsByPrefix.has(memberPrefix) === false
-        )
-    ) {
-        throw new Error(
-            'Pending operation members do not match the signing roster'
-        );
-    }
-    await completeSavedMemberResults(clientsByPrefix, event.members);
-    return event;
+        groupPrefix: request.groupPrefix,
+        eventSaid: request.event.eventSaid,
+        eventSequence: request.event.eventSequence,
+    };
 }

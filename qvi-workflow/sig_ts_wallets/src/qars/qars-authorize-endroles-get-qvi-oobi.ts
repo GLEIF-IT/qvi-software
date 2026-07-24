@@ -319,7 +319,8 @@ export async function authorizeAgentEndRoles(
         members.map(({client, memberAid}) => ({
             client,
             aid: memberAid,
-        }))
+        })),
+        memberAids[0].prefix
     );
     for (let index = 0; index < contexts.length; index++) {
         const context = contexts[index];

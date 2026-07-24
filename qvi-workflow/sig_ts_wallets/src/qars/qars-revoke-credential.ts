@@ -94,6 +94,7 @@ export async function runRevocation(
             client,
             aid: memberAid,
         })),
+        members[0].memberAid.prefix,
         (context) =>
             revokeCredentialMultisig(
                 context.client,

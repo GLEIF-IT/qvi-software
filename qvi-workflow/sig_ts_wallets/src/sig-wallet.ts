@@ -33,13 +33,15 @@ import {
     type ExpectedCredentialState,
 } from './assertions.ts';
 import {
-    completeGroupEvent,
-    joinGroupRotation,
+    buildGroupEvent,
+    joinRotation,
     submitGroupInception,
     submitGroupRotation,
+    submitRotation,
     type GroupEventSubmission,
-    type SavedGroupEvent,
+    type GroupMemberEvent,
 } from './multisig.ts';
+import {completeSavedMultisigOps} from './coordinated-operation.ts';
 import {notificationReference} from './notifications.ts';
 import {
     ECR_SCHEMA_SAID,
@@ -171,8 +173,18 @@ async function loadPersonWallet(
     return (await loadWallets(config, ['person']))[0];
 }
 
-export interface PendingWorkflowEvent extends SavedGroupEvent {
+export interface PendingWorkflowEvent {
     eventKind: 'inception' | 'rotation';
+    groupPrefix: string;
+    eventSaid: string;
+    eventSequence: string;
+    signingMembers: string[];
+    rotationMembers: string[];
+    members: Array<{
+        memberPrefix: string;
+        operationName: string;
+        notificationIds: string[];
+    }>;
 }
 
 export class UsageError extends Error {}
@@ -464,6 +476,49 @@ export async function readPendingWorkflowEvent(
     };
 }
 
+/** Validate and complete the concrete operations in one pending event. */
+async function completePendingEvent(
+    event: PendingWorkflowEvent,
+    signingWallets: ReadyWallet[],
+    rotationWallets: ReadyWallet[]
+): Promise<void> {
+    const signingMembers = signingWallets.map(({aid}) => aid.prefix);
+    const rotationMembers = rotationWallets.map(({aid}) => aid.prefix);
+    if (
+        JSON.stringify(event.signingMembers) !==
+            JSON.stringify(signingMembers) ||
+        JSON.stringify(event.rotationMembers) !==
+            JSON.stringify(rotationMembers) ||
+        JSON.stringify(
+            event.members.map(({memberPrefix}) => memberPrefix)
+        ) !== JSON.stringify(signingMembers)
+    ) {
+        throw new Error(
+            'Pending event members do not match the requested rosters'
+        );
+    }
+    const clients = new Map(
+        signingWallets.map(({client, aid}) => [aid.prefix, client])
+    );
+    await completeSavedMultisigOps(
+        event.members.map((member) => {
+            const client = clients.get(member.memberPrefix);
+            if (client === undefined) {
+                throw new Error(
+                    `No wallet for pending member ${member.memberPrefix}`
+                );
+            }
+            return {
+                client,
+                result: {
+                    operationName: member.operationName,
+                    notificationIds: member.notificationIds,
+                },
+            };
+        })
+    );
+}
+
 /** Complete one delegated event, assert convergence, then remove its handle. */
 async function completeAndAssert(
     config: WorkflowConfig,
@@ -500,11 +555,11 @@ async function completeAndAssert(
     ]);
     const signingWallets = selectWallets(wallets, signingRoles);
     const rotationWallets = selectWallets(wallets, rotationRoles);
-    await completeGroupEvent({
-        signingMembers: multisigMembers(signingWallets),
-        rotationMembers: rotationWallets.map(({aid}) => aid),
+    await completePendingEvent(
         event,
-    });
+        signingWallets,
+        rotationWallets
+    );
     const state = await assertGroupConvergence(
         signingWallets,
         config.qvi.name,
@@ -945,15 +1000,21 @@ async function submitInceptionAction(
         'Inception member roles'
     );
     const wallets = await loadWallets(config, roles);
+    const initiator = wallets[0];
+    if (initiator === undefined) {
+        throw new UsageError('Inception requires at least one member');
+    }
     const event = saveGroupEvent(
         'inception',
         await submitGroupInception({
             groupName: config.qvi.name,
             delegatorPrefix: args['delegator-prefix'],
             members: multisigMembers(wallets),
+            initiatorPrefix: initiator.aid.prefix,
             signingThreshold: config.qvi.signingThreshold,
             nextThreshold: config.qvi.nextThreshold,
-            witnessId: config.services.witnesses[1].id,
+            witnessIds: [config.services.witnesses[1].id],
+            witnessThreshold: 1,
         })
     );
     await writePendingArtifact(args.artifact, event);
@@ -978,12 +1039,17 @@ async function submitRotationAction(
     ]);
     const signingWallets = selectWallets(wallets, signingRoles);
     const rotationWallets = selectWallets(wallets, rotationRoles);
+    const initiator = signingWallets[0];
+    if (initiator === undefined) {
+        throw new UsageError('Rotation requires at least one signing member');
+    }
     const event = saveGroupEvent(
         'rotation',
         await submitGroupRotation({
             groupName: config.qvi.name,
             signingMembers: multisigMembers(signingWallets),
             rotationMembers: rotationWallets.map(({aid}) => aid),
+            initiatorPrefix: initiator.aid.prefix,
         })
     );
     await writePendingArtifact(args.artifact, event);
@@ -1018,6 +1084,7 @@ async function submitJoiningRotationAction(
     );
     const expectedRoles = [...existingRoles, joiningRoles[0]];
     if (
+        existingRoles.length !== 2 ||
         JSON.stringify(signingRoles) !==
             JSON.stringify(expectedRoles) ||
         JSON.stringify(rotationRoles) !==
@@ -1033,17 +1100,52 @@ async function submitJoiningRotationAction(
         wallets,
         joiningRoles
     )[0];
+    const initiator = existingWallets[0];
+    if (initiator === undefined || joiningWallet === undefined) {
+        throw new UsageError(
+            'Joining rotation requires existing and joining members'
+        );
+    }
+    const signingWallets = selectWallets(wallets, signingRoles);
+    const rotationWallets = selectWallets(wallets, rotationRoles);
+    const signingAids = signingWallets.map(({aid}) => aid);
+    const rotationAids = rotationWallets.map(({aid}) => aid);
     const group = await existingWallets[0].client
         .identifiers()
         .get(config.qvi.name);
-    const event = saveGroupEvent(
-        'rotation',
-        await joinGroupRotation({
+    const events: GroupMemberEvent[] = [];
+    for (const wallet of existingWallets) {
+        events.push(
+            await submitRotation({
+                groupName: config.qvi.name,
+                member: multisigMember(wallet),
+                initiatorPrefix: initiator.aid.prefix,
+                signingMembers: signingAids,
+                rotationMembers: rotationAids,
+                recipients: signingAids,
+            })
+        );
+    }
+    const proposed = buildGroupEvent(
+        signingAids,
+        rotationAids,
+        events
+    );
+    events.push(
+        await joinRotation({
             groupName: config.qvi.name,
             groupPrefix: group.prefix,
-            existingMembers: multisigMembers(existingWallets),
-            joiningMember: multisigMember(joiningWallet),
+            member: multisigMember(joiningWallet),
+            initiatorPrefix: initiator.aid.prefix,
+            signingMembers: signingAids,
+            rotationMembers: rotationAids,
+            recipients: existingWallets.map(({aid}) => aid),
+            event: proposed,
         })
+    );
+    const event = saveGroupEvent(
+        'rotation',
+        buildGroupEvent(signingAids, rotationAids, events)
     );
     await writePendingArtifact(args.artifact, event);
     return {status: 'submitted', event};

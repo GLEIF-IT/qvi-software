@@ -6,7 +6,6 @@ import type {
 
 import {
     completeMultisigOps,
-    completeSavedMultisigOps,
     type MultisigResult,
 } from './coordinated-operation.ts';
 import type {MatchedNotification} from './notifications.ts';
@@ -32,40 +31,40 @@ export interface MemberSubmission {
     notifications: MatchedNotification[];
 }
 
-export interface SavedMemberResult {
-    memberPrefix: string;
-    operationName: string;
-    notificationIds: string[];
-}
-
+/** Validate a concrete member set and its explicit operation initiator. */
 function requireMembers(
-    members: MultisigMember[]
-): [MultisigMember, MultisigMember, MultisigMember] {
-    const hasThreeMembers = members.length === 3;
-    if (hasThreeMembers === false) {
-        throw new Error(
-            `Multisig coordination requires three members; received ${members.length}`
-        );
+    members: MultisigMember[],
+    initiatorPrefix: string
+): void {
+    if (members.length === 0) {
+        throw new Error('Multisig coordination requires at least one member');
     }
     const prefixes = members.map(({aid}) => aid.prefix);
-    const prefixesAreUnique = new Set(prefixes).size === 3;
+    const prefixesAreUnique =
+        new Set(prefixes).size === prefixes.length;
     if (prefixesAreUnique === false) {
         throw new Error('Multisig member prefixes must be unique');
     }
-    return [members[0], members[1], members[2]];
+    if (prefixes.includes(initiatorPrefix) === false) {
+        throw new Error(
+            `Multisig initiator ${initiatorPrefix} is not a member`
+        );
+    }
 }
 
+/** Build member-local operation inputs around an explicit initiator. */
 export function memberContexts(
-    members: MultisigMember[]
+    members: MultisigMember[],
+    initiatorPrefix: string
 ): MultisigMemberContext[] {
-    const [initiator] = requireMembers(members);
-    return members.map((member, index) => ({
+    requireMembers(members, initiatorPrefix);
+    return members.map((member) => ({
         ...member,
         otherMembers: members
             .filter((candidate) => candidate !== member)
             .map(({aid}) => aid),
-        isInitiator: index === 0,
-        coordinatorPrefix: initiator.aid.prefix,
+        isInitiator: member.aid.prefix === initiatorPrefix,
+        coordinatorPrefix: initiatorPrefix,
     }));
 }
 
@@ -74,6 +73,7 @@ export function memberContexts(
  */
 export async function coordinateMultisigOperation(
     members: MultisigMember[],
+    initiatorPrefix: string,
     runMember: RunMemberOperation
 ): Promise<void> {
     const completedMembers: Array<{
@@ -81,37 +81,12 @@ export async function coordinateMultisigOperation(
         result: MultisigResult;
     }> = [];
 
-    for (const context of memberContexts(members)) {
+    for (const context of memberContexts(members, initiatorPrefix)) {
         const result = await runMember(context);
         completedMembers.push({client: context.client, result});
     }
 
     await completeMultisigOps(completedMembers);
-}
-
-/**
- * Completes member results restored from the workflow persistence boundary.
- */
-export async function completeSavedMemberResults(
-    clientsByMemberPrefix: Map<string, SignifyClient>,
-    savedMembers: SavedMemberResult[]
-): Promise<void> {
-    const members = savedMembers.map((member) => {
-        const client = clientsByMemberPrefix.get(member.memberPrefix);
-        if (client === undefined) {
-            throw new Error(
-                `No Signify client for multisig member ${member.memberPrefix}`
-            );
-        }
-        return {
-            client,
-            result: {
-                operationName: member.operationName,
-                notificationIds: member.notificationIds,
-            },
-        };
-    });
-    await completeSavedMultisigOps(members);
 }
 
 export function operationFrom(

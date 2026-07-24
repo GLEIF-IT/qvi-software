@@ -17,6 +17,7 @@ export async function createQviRegistry(
             client,
             aid: memberAid,
         })),
+        members[0].memberAid.prefix,
         (context) => {
             const member = members.find(
                 ({memberAid}) =>
