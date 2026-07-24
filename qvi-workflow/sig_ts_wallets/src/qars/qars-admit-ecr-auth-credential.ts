@@ -1,6 +1,6 @@
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     participantInvocationFromArguments,
     requireNamedArguments,
     runJsonCli,
@@ -24,13 +24,13 @@ export async function checkEcrAuthAdmission(options: {
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'group-name', 'credential-said'],
             [
+                'config',
                 'environment',
-                'group-name',
                 'participant-source',
+                'group-name',
                 'credential-said',
             ]
         );

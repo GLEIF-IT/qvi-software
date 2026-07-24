@@ -11,21 +11,13 @@ import {
     type ParticipantConfig,
 } from '../cli.ts';
 import {createTimestamp} from '../create-aid.ts';
-import {getOrCreateClient} from '../keystore-creation.ts';
-import {
-    assertGroupStateConvergence,
-    readGroupObservation,
-} from '../group-state.ts';
 import {addEndRoleMultisig} from '../multisig-creation.ts';
 import {
     completeCoordinatedOperations,
 } from '../coordinated-operation.ts';
 import {retry} from '../retry.ts';
-import {
-    QVI_INITIAL_SEQUENCE,
-    qviNextThreshold,
-    qviSigningThreshold,
-} from '../qvi-configuration.ts';
+import {memberContexts} from '../multisig-coordinator.ts';
+import {loadQviMembers} from './qvi-context.ts';
 
 export interface AgentEndpoint {
     eid: string;
@@ -42,8 +34,6 @@ export interface AuthorizeEndRoleOptions {
     config: ParticipantConfig;
     groupName: string;
     dataDir: string;
-    groupPrefix?: string;
-    delegatorPrefix?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -179,7 +169,7 @@ async function observeCommonMemberAgentEndpoints(
     return observations[0];
 }
 
-async function assertCommonAuthorizedAgentEids(
+async function requireCommonAuthorizedAgentEids(
     clients: SignifyClient[],
     qviPrefix: string,
     expectedEids: string[]
@@ -254,7 +244,7 @@ export async function collectQviMultisigOobi(
         );
     }
 
-    await assertCommonAuthorizedAgentEids(
+    await requireCommonAuthorizedAgentEids(
         clients,
         qviPrefix,
         concreteEids
@@ -310,61 +300,21 @@ export async function collectQviMultisigOobi(
 export async function authorizeAgentEndRoles(
     options: AuthorizeEndRoleOptions
 ): Promise<QviMultisigOobi> {
-    const config = options.config;
-    const participants = [
-        config.participants.qar1,
-        config.participants.qar2,
-        config.participants.qar3,
-    ];
-    const clients = await Promise.all(
-        participants.map((participant) =>
-            getOrCreateClient(
-                participant.salt,
-                config.environment,
-                participant.keriaHost
-            )
-        )
+    const members = await loadQviMembers(
+        options.config,
+        options.groupName
     );
-    const memberAids = await Promise.all(
-        participants.map((participant, index) =>
-            clients[index]
-                .identifiers()
-                .get(participant.name)
-        )
-    );
-    const memberPrefixes = memberAids.map((member) => member.prefix);
-    const observations = await Promise.all(
-        clients.map((client, index) =>
-            readGroupObservation(
-                client,
-                memberPrefixes[index],
-                options.groupName,
-                memberPrefixes
-            )
-        )
-    );
-    const groupState =
-        assertGroupStateConvergence(
-            observations,
-            memberPrefixes,
-            {
-                prefix: options.groupPrefix,
-                delegator: options.delegatorPrefix,
-                sequence: QVI_INITIAL_SEQUENCE,
-                signingThreshold: qviSigningThreshold(),
-                nextThreshold: qviNextThreshold(),
-            }
-        );
-    const groupAids = observations.map(
-        (observation) => observation.group
-    );
+    const clients = members.map(({client}) => client);
+    const memberAids = members.map(({memberAid}) => memberAid);
+    const groupAids = members.map(({groupAid}) => groupAid);
+    const qviPrefix = groupAids[0].prefix;
 
     let qviOobi: QviMultisigOobi | undefined;
     try {
         qviOobi = await collectQviMultisigOobi(
             clients,
             options.groupName,
-            groupState.prefix
+            qviPrefix
         );
     } catch {
         const responses = await Promise.all(
@@ -387,23 +337,26 @@ export async function authorizeAgentEndRoles(
         const coordinationResults: Array<
             Awaited<ReturnType<typeof addEndRoleMultisig>>
         > = [];
-        for (let index = 0; index < clients.length; index++) {
-            const otherMembers = memberAids.filter(
-                (_, memberIndex) => memberIndex !== index
-            );
-            const participantIsInitiator = index === 0;
-            const coordinationOptions = participantIsInitiator
-                ? {isInitiator: true}
-                : {coordinator: memberAids[0].prefix};
+        const contexts = memberContexts(
+            members.map(({client, memberAid}) => ({
+                client,
+                aid: memberAid,
+            }))
+        );
+        for (let index = 0; index < contexts.length; index++) {
+            const context = contexts[index];
             coordinationResults.push(
                 await addEndRoleMultisig(
-                    clients[index],
+                    context.client,
                     options.groupName,
-                    memberAids[index],
-                    otherMembers,
+                    context.aid,
+                    context.otherMembers,
                     groupAids[index],
                     timestamp,
-                    coordinationOptions
+                    {
+                        isInitiator: context.isInitiator,
+                        coordinator: context.coordinatorPrefix,
+                    }
                 )
             );
         }
@@ -421,32 +374,11 @@ export async function authorizeAgentEndRoles(
                 collectQviMultisigOobi(
                     clients,
                     options.groupName,
-                    groupState.prefix
+                    qviPrefix
                 )
         );
     }
 
-    const finalObservations = await Promise.all(
-        clients.map((client, index) =>
-            readGroupObservation(
-                client,
-                memberPrefixes[index],
-                options.groupName,
-                memberPrefixes
-            )
-        )
-    );
-    assertGroupStateConvergence(
-        finalObservations,
-        memberPrefixes,
-        {
-            prefix: options.groupPrefix,
-            delegator: options.delegatorPrefix,
-            sequence: QVI_INITIAL_SEQUENCE,
-            signingThreshold: qviSigningThreshold(),
-            nextThreshold: qviNextThreshold(),
-        }
-    );
     await fs.writeFile(
         `${options.dataDir}/qvi-oobi.json`,
         JSON.stringify(qviOobi)
@@ -463,8 +395,6 @@ function parseAuthorizeArguments(
         'participant-source',
         'group-name',
         'data-dir',
-        'group-prefix',
-        'delegator-prefix',
     ]);
     requireNamedArguments(args, [
         'group-name',
@@ -474,8 +404,6 @@ function parseAuthorizeArguments(
         config: participantConfigFromArguments(args),
         groupName: args['group-name'],
         dataDir: args['data-dir'],
-        groupPrefix: args['group-prefix'],
-        delegatorPrefix: args['delegator-prefix'],
     };
 }
 

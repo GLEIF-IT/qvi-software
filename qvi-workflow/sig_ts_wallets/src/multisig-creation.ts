@@ -7,9 +7,8 @@ import signify, {
 
 import {
     sendExchangeToEachRecipient,
-    type CoordinatedExchangeReceipt,
 } from './exchanges.ts';
-import {assertCoordinatedEventDigest} from './multisig-coordination.ts';
+import {requireCoordinatedEventDigest} from './multisig-coordination.ts';
 import {
     waitForMatchingNotification,
     type MatchedNotification,
@@ -95,14 +94,14 @@ export async function createAIDMultisig(
     }
 
     if (coordination !== undefined) {
-        assertCoordinatedEventDigest(
+        requireCoordinatedEventDigest(
             coordination.exchange,
             '/multisig/icp',
             serder.said
         );
     }
 
-    const receipts = await sendExchangeToEachRecipient(client, {
+    await sendExchangeToEachRecipient(client, {
         name: aid.name,
         topic: 'multisig',
         sender: aid,
@@ -116,10 +115,6 @@ export async function createAIDMultisig(
         operation: op,
         coordination:
             coordination === undefined ? [] : [coordination],
-        wrapperReceipts: receipts.map((receipt) => ({
-            ...receipt,
-            innerExchangeSaid: serder.said,
-        })),
     };
 }
 
@@ -139,12 +134,10 @@ export async function addEndRoleMultisig(
         '/multisig/rpy'
     );
 
-    const opList: Operation[] = [];
     const coordinatedOperations: Array<{
         operation: Operation;
         coordination: MatchedNotification[];
     }> = [];
-    const receipts: CoordinatedExchangeReceipt[] = [];
     const members = await client.identifiers().members(multisigAID.name);
     const signings = members['signing'];
 
@@ -168,8 +161,6 @@ export async function addEndRoleMultisig(
             .identifiers()
             .addEndRole(multisigAID.name, 'agent', eid, timestamp);
         const op = await endRoleResult.op();
-        opList.push(op);
-
         const rpy = endRoleResult.serder;
         const sigs = endRoleResult.sigs;
         const ghabState1 = multisigAID.state;
@@ -205,13 +196,13 @@ export async function addEndRoleMultisig(
             });
         }
         if (coordination !== undefined) {
-            assertCoordinatedEventDigest(
+            requireCoordinatedEventDigest(
                 coordination.exchange,
                 '/multisig/rpy',
                 rpy.said
             );
         }
-        const endpointReceipts = await sendExchangeToEachRecipient(client, {
+        await sendExchangeToEachRecipient(client, {
             name: aid.name,
             topic: 'multisig',
             sender: aid,
@@ -220,12 +211,6 @@ export async function addEndRoleMultisig(
             embeds: roleembeds,
             recipients: recp,
         });
-        receipts.push(
-            ...endpointReceipts.map((receipt) => ({
-                ...receipt,
-                innerExchangeSaid: rpy.said,
-            }))
-        );
 
         coordinatedOperations.push({
             operation: op,
@@ -235,8 +220,6 @@ export async function addEndRoleMultisig(
     }
 
     return {
-        operations: opList,
         coordinatedOperations,
-        wrapperReceipts: receipts,
     };
 }

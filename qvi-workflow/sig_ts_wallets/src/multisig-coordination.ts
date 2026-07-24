@@ -47,7 +47,7 @@ export function coordinatedEventDigest(
     }
 }
 
-export function assertCoordinatedEventDigest(
+export function requireCoordinatedEventDigest(
     exchange: ExchangeResourceV1,
     route: CoordinatedEventRoute,
     expectedDigest: string

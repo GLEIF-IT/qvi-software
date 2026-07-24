@@ -4,7 +4,7 @@ import {getOrCreateClient} from "../keystore-creation.ts";
 import {getReceivedCredBySchemaAndIssuer} from "../credentials.ts";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     participantInvocationFromArguments,
     requireNamedArguments,
     runJsonCli,
@@ -42,10 +42,10 @@ export async function checkReceivedCredentialPerson(aidInfo: string, schemaSAID:
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'schema-said', 'issuer-prefix'],
             [
+                'config',
                 'environment',
                 'participant-source',
                 'schema-said',

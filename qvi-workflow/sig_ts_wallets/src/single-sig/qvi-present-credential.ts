@@ -9,7 +9,7 @@ import {
 } from "../operations.ts";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     requireNamedArguments,
     runJsonCli,
     singleSigParticipantInvocationFromArguments,
@@ -82,16 +82,10 @@ export async function grantCredential(
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
             [
                 'config',
-                'schema-said',
-                'issuer-prefix',
-                'issuee-prefix',
-                'recipient-prefix',
-            ],
-            [
                 'environment',
                 'participant-source',
                 'schema-said',

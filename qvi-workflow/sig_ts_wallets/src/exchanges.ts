@@ -5,15 +5,6 @@ import type {
     SignifyClient,
 } from 'signify-ts';
 
-export interface ExchangeReceipt {
-    recipient: string;
-    exnSaid: string;
-}
-
-export interface CoordinatedExchangeReceipt extends ExchangeReceipt {
-    innerExchangeSaid: string;
-}
-
 export interface SendExchangeOptions {
     name: string;
     topic: string;
@@ -57,7 +48,7 @@ export interface ExchangeClient {
 export async function sendExchangeToEachRecipient(
     client: ExchangeClient | SignifyClient,
     options: SendExchangeOptions
-): Promise<ExchangeReceipt[]> {
+): Promise<void> {
     const uniqueRecipients = [...new Set(options.recipients)];
     const hasRecipients = uniqueRecipients.length > 0;
     if (hasRecipients === false) {
@@ -67,8 +58,6 @@ export async function sendExchangeToEachRecipient(
     }
 
     const exchangeApi = client.exchanges();
-    const receipts: ExchangeReceipt[] = [];
-
     for (const recipient of uniqueRecipients) {
         try {
             const [exn, signatures, attachment] =
@@ -89,10 +78,6 @@ export async function sendExchangeToEachRecipient(
                 [recipient]
             );
 
-            receipts.push({
-                recipient,
-                exnSaid: exn.said,
-            });
         } catch (error: unknown) {
             const reason =
                 error instanceof Error ? error.message : String(error);
@@ -102,6 +87,4 @@ export async function sendExchangeToEachRecipient(
             );
         }
     }
-
-    return receipts;
 }

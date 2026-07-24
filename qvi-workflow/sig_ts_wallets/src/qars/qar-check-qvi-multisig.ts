@@ -5,7 +5,7 @@ import { TestEnvironmentPreset } from "../resolve-env";
 import fs from 'fs';
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     participantInvocationFromArguments,
     requireNamedArguments,
     runJsonCli,
@@ -60,13 +60,13 @@ export async function recordQviSequence(options: {
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'group-name', 'artifact-dir'],
             [
+                'config',
                 'environment',
-                'group-name',
                 'participant-source',
+                'group-name',
                 'artifact-dir',
             ]
         );

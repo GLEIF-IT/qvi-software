@@ -6,7 +6,7 @@ import fs from 'fs';
 import {parseAidInfoSingleSig} from "../create-aid.ts";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     requireNamedArguments,
     runJsonCli,
     singleSigParticipantInvocationFromArguments,
@@ -99,10 +99,9 @@ export async function setupQviAndPerson(
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'artifact-dir'],
-            ['environment', 'artifact-dir', 'participant-source']
+            ['config', 'environment', 'participant-source', 'artifact-dir']
         );
         requireNamedArguments(parsed, ['artifact-dir']);
         const invocation =

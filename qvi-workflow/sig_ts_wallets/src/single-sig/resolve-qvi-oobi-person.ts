@@ -4,7 +4,7 @@ import {getOrCreateClient} from "../keystore-creation.ts";
 import {getOrCreateContact} from "../agent-contacts.ts";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     requireNamedArguments,
     runJsonCli,
     singleSigParticipantInvocationFromArguments,
@@ -33,13 +33,13 @@ export async function resolveQviOobi(
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'qvi-name', 'qvi-oobi'],
             [
+                'config',
                 'environment',
-                'qvi-name',
                 'participant-source',
+                'qvi-name',
                 'qvi-oobi',
             ]
         );

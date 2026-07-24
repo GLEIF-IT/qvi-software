@@ -9,7 +9,7 @@ import {
 import {credentialSnapshot} from '../credential-state.ts';
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     requireNamedArguments,
     runJsonCli,
     singleSigParticipantInvocationFromArguments,
@@ -63,10 +63,10 @@ export async function admitCredentialQvi(
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'issuer-prefix', 'credential-said'],
             [
+                'config',
                 'environment',
                 'participant-source',
                 'issuer-prefix',

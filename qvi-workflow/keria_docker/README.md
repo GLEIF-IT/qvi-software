@@ -112,6 +112,24 @@ Useful console milestones include the 16 successful challenge directions, the
 delegated QVI prefix and canonical OOBI, credential SAIDs, Sally callback
 messages, and common OOR/ECR revocation TEL digests.
 
+## Code structure
+
+The TypeScript is intentionally split by responsibility so it can double as a
+readable SignifyTS example:
+
+- wallet actions call SignifyTS and return what KERIA actually produced;
+- `multisig-coordinator.ts` assigns member roles, sends member exchanges,
+  correlates follower notifications, and completes member operations;
+- `group-state.ts` and `credential-state.ts` observe wallet state without
+  deciding what this demonstration expects; and
+- the `qars-assert-*.ts` and `person-assert-*.ts` runners contain the
+  demonstration's expectations.
+
+The Bash story keeps those boundaries visible. It runs an action and then
+runs the corresponding assertion as a separate command. Core wallet functions
+therefore do not accept test-only arguments such as an expected schema,
+issuee, issuer, threshold, or status.
+
 ## Runtime layout
 
 With `--keep-runtime`, the generated files are deliberately easy to find:

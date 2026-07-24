@@ -8,265 +8,94 @@ import type {
     SignifyClient,
 } from 'signify-ts';
 
-import {
-    completeCoordinatedOperations,
-    completeCoordinatedOperationsWithValidation,
-} from '../src/coordinated-operation.ts';
+import {completeCoordinatedOperations} from '../src/coordinated-operation.ts';
 import type {
     MatchedNotification,
     Notification,
 } from '../src/notifications.ts';
 
-type OperationOutcome = 'completed' | 'failed';
-
-interface MemberHarness {
-    client: SignifyClient;
-    result: {
-        operation: Operation;
-        coordination: MatchedNotification[];
-    };
-}
-
-function notification(
-    member: string
-): MatchedNotification {
-    const note: Notification = {
-        i: `N${member}`,
-        dt: '2026-01-01T00:00:00.000000+00:00',
-        r: false,
-        a: {
-            r: '/multisig/iss',
-            d: `EExchange${member}`,
-        },
-    };
-    return {
-        note,
-        deliveryNotes: [note],
-        exchangeSaid: `EExchange${member}`,
-        exchange: {
-            exn: {
-                d: `EExchange${member}`,
-            },
-        } as ExchangeResourceV1,
-    };
-}
-
-function memberHarness(
-    member: string,
-    outcome: OperationOutcome,
-    events: string[]
-): MemberHarness {
+function member(
+    name: string,
+    outcome: 'success' | 'failure',
+    trace: string[]
+) {
     const operation = {
-        name: `credential.${member}`,
+        name: `group.${name}`,
         done: false,
     } as Operation;
-    const completed = {
-        name: operation.name,
-        done: true,
-        response: {
-            d: `EIssuance${member}`,
-        },
-    } as CompletedOperation;
-    const failed = {
-        name: operation.name,
-        done: true,
-        error: {
-            code: 500,
-            message: `${member} failed`,
-        },
-    } as Operation;
+    const note: Notification = {
+        i: `N${name}`,
+        dt: '',
+        r: false,
+        a: {r: '/multisig/rot', d: `E${name}`},
+    };
+    const notification: MatchedNotification = {
+        note,
+        deliveryNotes: [note],
+        exchangeSaid: `E${name}`,
+        exchange: {exn: {d: `E${name}`}} as ExchangeResourceV1,
+    };
     const client = {
         operations: () => ({
             wait: async () => {
-                events.push(`completed:${member}`);
-                return outcome === 'completed'
-                    ? completed
-                    : failed;
+                trace.push(`complete:${name}`);
+                if (outcome === 'failure') {
+                    return {
+                        name: operation.name,
+                        done: true,
+                        error: {code: 500, message: `${name} failed`},
+                    };
+                }
+                return {
+                    name: operation.name,
+                    done: true,
+                    response: {},
+                } as CompletedOperation;
             },
         }),
         notifications: () => ({
-            mark: async (notificationId: string) => {
-                events.push(`marked:${notificationId}`);
-                return notificationId;
+            mark: async (id: string) => {
+                trace.push(`mark:${id}`);
+                return id;
             },
-            delete: async (notificationId: string) => {
-                events.push(`deleted:${notificationId}`);
+            delete: async (id: string) => {
+                trace.push(`delete:${id}`);
             },
         }),
     } as unknown as SignifyClient;
-
     return {
         client,
-        result: {
-            operation,
-            coordination: [notification(member)],
-        },
+        result: {operation, coordination: [notification]},
     };
 }
 
 describe('coordinated operation completion', () => {
-    it('consumes notices only after every member operation succeeds', async () => {
-        const events: string[] = [];
-        const members = [
-            memberHarness('qar1', 'completed', events),
-            memberHarness('qar2', 'completed', events),
-            memberHarness('qar3', 'completed', events),
-        ];
-
-        const evidence = await completeCoordinatedOperations(
-            members
+    it('consumes notices after every operation succeeds', async () => {
+        const trace: string[] = [];
+        await completeCoordinatedOperations([
+            member('qar1', 'success', trace),
+            member('qar2', 'success', trace),
+            member('qar3', 'success', trace),
+        ]);
+        const firstNotice = trace.findIndex((entry) =>
+            entry.startsWith('mark:')
         );
-
-        assert.equal(evidence.length, 3);
-        const lastCompletion = Math.max(
-            ...members.map(({result}) =>
-                events.indexOf(
-                    `completed:${result.operation.name.split('.')[1]}`
-                )
-            )
-        );
-        const firstConsumption = events.findIndex(
-            (event) => event.startsWith('marked:')
-        );
-        const allOperationsCompletedBeforeConsumption =
-            lastCompletion >= 0 &&
-            firstConsumption > lastCompletion;
-        assert.equal(
-            allOperationsCompletedBeforeConsumption,
-            true
-        );
+        assert.equal(firstNotice, 3);
     });
 
-    it('retains every notice when one member operation fails', async () => {
-        const events: string[] = [];
-        const members = [
-            memberHarness('qar1', 'completed', events),
-            memberHarness('qar2', 'failed', events),
-            memberHarness('qar3', 'completed', events),
-        ];
-
+    it('retains notices when one operation fails', async () => {
+        const trace: string[] = [];
         await assert.rejects(
-            completeCoordinatedOperations(members),
+            completeCoordinatedOperations([
+                member('qar1', 'success', trace),
+                member('qar2', 'failure', trace),
+                member('qar3', 'success', trace),
+            ]),
             /qar2 failed/
         );
-
-        const notificationWasConsumed = events.some(
-            (event) =>
-                event.startsWith('marked:') ||
-                event.startsWith('deleted:')
-        );
-        assert.equal(notificationWasConsumed, false);
-    });
-
-    it('defers consumption until dependent state materializes and validates', async () => {
-        const events: string[] = [];
-        const members = [
-            memberHarness('qar1', 'completed', events),
-            memberHarness('qar2', 'completed', events),
-            memberHarness('qar3', 'completed', events),
-        ];
-
-        const completion =
-            await completeCoordinatedOperationsWithValidation(
-                members,
-                async (operationEvidence) => {
-                    events.push('credential-materialized:qar1');
-                    events.push('credential-materialized:qar2');
-                    events.push('credential-materialized:qar3');
-                    events.push('credential-convergence-validated');
-                    return {
-                        credentialSaid: 'ECredential',
-                        operationCount: operationEvidence.length,
-                    };
-                }
-            );
-
-        assert.deepEqual(completion.validatedState, {
-            credentialSaid: 'ECredential',
-            operationCount: 3,
-        });
-        assert.equal(completion.operationEvidence.length, 3);
-        const convergenceValidatedAt = events.indexOf(
-            'credential-convergence-validated'
-        );
-        const firstConsumptionAt = events.findIndex(
-            (event) => event.startsWith('marked:')
-        );
-        const convergenceValidatedBeforeConsumption =
-            convergenceValidatedAt >= 0 &&
-            firstConsumptionAt > convergenceValidatedAt;
         assert.equal(
-            convergenceValidatedBeforeConsumption,
-            true
+            trace.some((entry) => entry.startsWith('mark:')),
+            false
         );
-    });
-
-    it('retains every notice when dependent state does not materialize', async () => {
-        const events: string[] = [];
-        const members = [
-            memberHarness('qar1', 'completed', events),
-            memberHarness('qar2', 'completed', events),
-            memberHarness('qar3', 'completed', events),
-        ];
-
-        await assert.rejects(
-            completeCoordinatedOperationsWithValidation(
-                members,
-                async () => {
-                    events.push('credential-materialized:qar1');
-                    events.push('credential-materialized:qar2');
-                    throw new Error(
-                        'QAR3 credential did not materialize'
-                    );
-                }
-            ),
-            /QAR3 credential did not materialize/
-        );
-
-        const everyOperationCompleted = [
-            'qar1',
-            'qar2',
-            'qar3',
-        ].every((member) =>
-            events.includes(`completed:${member}`)
-        );
-        const notificationWasConsumed = events.some(
-            (event) =>
-                event.startsWith('marked:') ||
-                event.startsWith('deleted:')
-        );
-        assert.equal(everyOperationCompleted, true);
-        assert.equal(notificationWasConsumed, false);
-    });
-
-    it('retains every notice when materialized state does not converge', async () => {
-        const events: string[] = [];
-        const members = [
-            memberHarness('qar1', 'completed', events),
-            memberHarness('qar2', 'completed', events),
-            memberHarness('qar3', 'completed', events),
-        ];
-
-        await assert.rejects(
-            completeCoordinatedOperationsWithValidation(
-                members,
-                async () => {
-                    events.push('credential-materialized:qar1');
-                    events.push('credential-materialized:qar2');
-                    events.push('credential-materialized:qar3');
-                    throw new Error(
-                        'QAR credential TEL state diverged'
-                    );
-                }
-            ),
-            /credential TEL state diverged/
-        );
-
-        const notificationWasConsumed = events.some(
-            (event) =>
-                event.startsWith('marked:') ||
-                event.startsWith('deleted:')
-        );
-        assert.equal(notificationWasConsumed, false);
     });
 });

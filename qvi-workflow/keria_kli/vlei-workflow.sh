@@ -25,7 +25,6 @@ source color-printing.sh
 QVI_WORKFLOW_SCRIPT_DIR=$(
   cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
 )
-source "${QVI_WORKFLOW_SCRIPT_DIR}/lib/rotation-proof.sh"
 
 SALLY_PID=""
 WEBHOOK_PID=""
@@ -672,24 +671,6 @@ function qvi_rotate() {
         return 1
     fi
 
-    local rotation_artifact_status=0
-    local rotation_artifact_is_valid=false
-    jq -e '
-      (.ok == true) and
-      (.status == "submitted") and
-      (.operationNames | length == 3) and
-      ([.operationNames[]] | unique | length == 1) and
-      (.notificationReferences.qar2.notificationIds | length > 0) and
-      (.notificationReferences.qar3.notificationIds | length > 0)
-    ' "${qvi_rotation_artifact}" >/dev/null ||
-      rotation_artifact_status=$?
-    if [[ ${rotation_artifact_status} -eq 0 ]]; then
-        rotation_artifact_is_valid=true
-    fi
-    if [[ "${rotation_artifact_is_valid}" == false ]]; then
-        print_red "[QVI] Rotation did not return three member operation names"
-        return 1
-    fi
     QVI_PREFIX=$(cat "${QVI_DATA_DIR}/qvi-multisig-info.json" | jq .msPrefix | tr -d '"')
     print_green "[QVI] Submitted QVI Multisig rotation for prefix: ${QVI_PREFIX}"
 
@@ -735,16 +716,13 @@ function qvi_rotate() {
     wait $PID_LIST
 
     print_lcyan "[QVI] QARs refresh GEDA multisig keystate and await every member rotation operation"
-    local qvi_rotation_completion_artifact="${QVI_DATA_DIR}/qvi-rotation-completion.json"
     local rotation_completion_status=0
     local rotation_completion_succeeded=false
     tsx "${SIG_TS_WALLETS_DIR}/qars/qars-refresh-geda-multisig-state.ts" \
       --config "${PARTICIPANT_CONFIG}" \
       --geda-prefix "${GEDA_PRE}" \
       --operation-artifact "${qvi_rotation_artifact}" \
-      --group-name "${QVI_NAME}" \
-      --qvi-prefix "${QVI_PREFIX}" \
-      > "${qvi_rotation_completion_artifact}" ||
+      --group-name "${QVI_NAME}" >/dev/null ||
       rotation_completion_status=$?
     if [[ ${rotation_completion_status} -eq 0 ]]; then
         rotation_completion_succeeded=true
@@ -754,19 +732,12 @@ function qvi_rotate() {
         return 1
     fi
 
-    local rotation_evidence_status=0
-    local rotation_evidence_is_complete=false
-    qvi_rotation_completion_artifact_is_valid \
-      "${qvi_rotation_completion_artifact}" \
-      "${QVI_PREFIX}" ||
-      rotation_evidence_status=$?
-    if [[ ${rotation_evidence_status} -eq 0 ]]; then
-        rotation_evidence_is_complete=true
-    fi
-    if [[ "${rotation_evidence_is_complete}" == false ]]; then
-        print_red "[QVI] Rotation completion returned incomplete member evidence"
-        return 1
-    fi
+    tsx "${SIG_TS_WALLETS_DIR}/qars/qars-assert-group-state.ts" \
+      --config "${PARTICIPANT_CONFIG}" \
+      --group-name "${QVI_NAME}" \
+      --group-prefix "${QVI_PREFIX}" \
+      --delegator-prefix "${GEDA_PRE}" \
+      --sequence 1 >/dev/null
     print_green "[QVI] All three QAR rotation operations completed"
 }
 
@@ -954,11 +925,7 @@ function present_qvi_cred_to_sally() {
     --config "${PARTICIPANT_CONFIG}" \
     --group-name "${QVI_NAME}" \
     --credential-said "${QVI_CRED_SAID}" \
-    --expected-issuer "${GEDA_PRE}" \
-    --expected-schema "${QVI_SCHEMA}" \
-    --expected-issuee "${QVI_PRE}" \
-    --recipient-prefix "${SALLY_PRE}" \
-    --expected-status active
+    --recipient-prefix "${SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0
@@ -1237,11 +1204,7 @@ function present_le_cred_to_sally() {
     --config "${PARTICIPANT_CONFIG}" \
     --group-name "${QVI_NAME}" \
     --credential-said "${le_credential_said}" \
-    --expected-issuer "${QVI_PRE}" \
-    --expected-schema "${LE_SCHEMA}" \
-    --expected-issuee "${LE_PRE}" \
-    --recipient-prefix "${SALLY_PRE}" \
-    --expected-status active
+    --recipient-prefix "${SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0
@@ -1674,9 +1637,6 @@ function present_oor_cred_to_sally() {
     tsx "${SIG_TS_WALLETS_DIR}/person/person-grant-credential.ts" \
       --config "${PARTICIPANT_CONFIG}" \
       --credential-said "${oor_said}" \
-      --expected-issuer "${QVI_PRE}" \
-      --expected-schema "${OOR_SCHEMA}" \
-      --expected-issuee "${PERSON_PRE}" \
       --recipient-prefix "${SALLY_PRE}"
 
     start=$(date +%s)

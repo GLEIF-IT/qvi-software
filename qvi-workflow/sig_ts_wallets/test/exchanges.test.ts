@@ -51,7 +51,7 @@ describe('sendExchangeToEachRecipient', () => {
             }),
         };
 
-        const receipts = await sendExchangeToEachRecipient(client, {
+        await sendExchangeToEachRecipient(client, {
             name: 'member',
             topic: 'multisig',
             sender: sender(),
@@ -63,10 +63,6 @@ describe('sendExchangeToEachRecipient', () => {
 
         assert.deepEqual(created, ['E2', 'E3']);
         assert.deepEqual(transmitted, [['E2'], ['E3']]);
-        assert.deepEqual(receipts, [
-            {recipient: 'E2', exnSaid: 'EE2'},
-            {recipient: 'E3', exnSaid: 'EE3'},
-        ]);
     });
 
     it('rejects an empty recipient set before creating an EXN', async () => {

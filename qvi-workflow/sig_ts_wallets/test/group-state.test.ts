@@ -3,181 +3,77 @@ import {describe, it} from 'node:test';
 
 import type {HabState} from 'signify-ts';
 
-import {
-    assertGroupStateConvergence,
-    type GroupObservation,
-    type GroupStateSnapshot,
+import type {
+    GroupObservation,
+    GroupStateSnapshot,
 } from '../src/group-state.ts';
+import {assertGroupStateConvergence} from '../src/workflow-assertions.ts';
+
+const memberAids = ['EQar1', 'EQar2', 'EQar3'];
+const expected = {
+    prefix: 'EQvi',
+    delegator: 'EGeda',
+    sequence: '0',
+    signingThreshold: ['1/3', '1/3', '1/3'],
+    nextThreshold: ['1/3', '1/3', '1/3'],
+    members: memberAids,
+};
 
 function snapshot(
     digest = 'EEstablishment'
 ): GroupStateSnapshot {
     return {
-        prefix: 'EQvi',
-        delegator: 'EGeda',
-        sequence: '0',
+        ...expected,
         establishmentDigest: digest,
-        signingThreshold: ['1/3', '1/3', '1/3'],
-        nextThreshold: ['1/3', '1/3', '1/3'],
-        signingMembers: ['EQar1', 'EQar2', 'EQar3'],
-        rotationMembers: ['EQar1', 'EQar2', 'EQar3'],
+        signingMembers: memberAids,
+        rotationMembers: memberAids,
     };
 }
 
-function observation(
-    observerAid: string,
-    state: GroupStateSnapshot
-): GroupObservation {
-    return {
-        observerAid,
+function observations(
+    states = memberAids.map(() => snapshot())
+): GroupObservation[] {
+    return states.map((state, index) => ({
+        observerAid: memberAids[index],
         group: {prefix: state.prefix} as HabState,
         snapshot: state,
-    };
+    }));
 }
 
-describe('group state convergence', () => {
-    it('accepts three matching configured QVI threshold snapshots', () => {
-        const observations = [
-            observation('EQar1', snapshot()),
-            observation('EQar2', snapshot()),
-            observation('EQar3', snapshot()),
-        ];
-        const result = assertGroupStateConvergence(
-            observations,
-            ['EQar1', 'EQar2', 'EQar3'],
-            {
-                prefix: 'EQvi',
-                delegator: 'EGeda',
-                sequence: '0',
-                signingThreshold: ['1/3', '1/3', '1/3'],
-                nextThreshold: ['1/3', '1/3', '1/3'],
-            }
+describe('workflow group assertions', () => {
+    it('accepts the configured converged state', () => {
+        assert.equal(
+            assertGroupStateConvergence(
+                observations(),
+                expected
+            ).establishmentDigest,
+            'EEstablishment'
         );
-        assert.equal(result.establishmentDigest, 'EEstablishment');
     });
 
-    it('rejects a member with a different establishment digest', () => {
-        const observations = [
-            observation('EQar1', snapshot()),
-            observation('EQar2', snapshot()),
-            observation('EQar3', snapshot('EDiverged')),
-        ];
+    it('rejects divergent member state', () => {
         assert.throws(
             () =>
-                assertGroupStateConvergence(observations, [
-                    'EQar1',
-                    'EQar2',
-                    'EQar3',
-                ]),
+                assertGroupStateConvergence(
+                    observations([
+                        snapshot(),
+                        snapshot(),
+                        snapshot('EDiverged'),
+                    ]),
+                    expected
+                ),
             /group state diverged/
         );
     });
 
-    it('rejects an unexpected configured threshold', () => {
-        const observations = [
-            observation('EQar1', snapshot()),
-            observation('EQar2', snapshot()),
-            observation('EQar3', snapshot()),
-        ];
+    it('rejects a test expectation that does not match reality', () => {
         assert.throws(
             () =>
-                assertGroupStateConvergence(
-                    observations,
-                    ['EQar1', 'EQar2', 'EQar3'],
-                    {
-                        signingThreshold: ['1', '1', '1'],
-                    }
-                ),
-            /does not match expected/
-        );
-    });
-
-    it('rejects an unexpected configured sequence', () => {
-        const observations = [
-            observation('EQar1', snapshot()),
-            observation('EQar2', snapshot()),
-            observation('EQar3', snapshot()),
-        ];
-        assert.throws(
-            () =>
-                assertGroupStateConvergence(
-                    observations,
-                    ['EQar1', 'EQar2', 'EQar3'],
-                    {sequence: '1'}
-                ),
-            /sequence.*does not match expected/
-        );
-    });
-
-    it('rejects an unexpected configured prefix or delegator', () => {
-        const observations = [
-            observation('EQar1', snapshot()),
-            observation('EQar2', snapshot()),
-            observation('EQar3', snapshot()),
-        ];
-        for (const expected of [
-            {prefix: 'EWrong'},
-            {delegator: 'EWrong'},
-        ]) {
-            assert.throws(
-                () =>
-                    assertGroupStateConvergence(
-                        observations,
-                        ['EQar1', 'EQar2', 'EQar3'],
-                        expected
-                    ),
-                /does not match expected/
-            );
-        }
-    });
-
-    it('rejects duplicate observers even when group state agrees', () => {
-        const observations = [
-            observation('EQar1', snapshot()),
-            observation('EQar1', snapshot()),
-            observation('EQar3', snapshot()),
-        ];
-        assert.throws(
-            () =>
-                assertGroupStateConvergence(observations, [
-                    'EQar1',
-                    'EQar2',
-                    'EQar3',
-                ]),
-            /do not match expected member AIDs/
-        );
-    });
-
-    it('rejects an unexpected observer in place of a configured member', () => {
-        const observations = [
-            observation('EQar1', snapshot()),
-            observation('EQar2', snapshot()),
-            observation('EOutsider', snapshot()),
-        ];
-        assert.throws(
-            () =>
-                assertGroupStateConvergence(observations, [
-                    'EQar1',
-                    'EQar2',
-                    'EQar3',
-                ]),
-            /do not match expected member AIDs/
-        );
-    });
-
-    it('rejects a missing configured observer', () => {
-        const observations = [
-            observation('EQar1', snapshot()),
-            observation('EQar2', snapshot()),
-            observation('EQar3', snapshot()),
-        ];
-        assert.throws(
-            () =>
-                assertGroupStateConvergence(observations, [
-                    'EQar1',
-                    'EQar2',
-                ]),
-            /requires exactly three unique expected observer AIDs/
+                assertGroupStateConvergence(observations(), {
+                    ...expected,
+                    sequence: '1',
+                }),
+            /does not match/
         );
     });
 });

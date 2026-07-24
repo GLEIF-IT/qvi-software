@@ -95,6 +95,68 @@ run_signify_json() {
     printf '%s\n' "${normalized_result}"
 }
 
+assert_qvi_group_state() {
+    local expected_sequence=$1
+    local assertion_failed=false
+
+    run_signify_json \
+        "${QVI_SIGNIFY_DIR}/qars/qars-assert-group-state.ts" \
+        --group-name "${QVI_NAME}" \
+        --group-prefix "${QVI_PRE}" \
+        --delegator-prefix "${GEDA_PRE}" \
+        --sequence "${expected_sequence}" >/dev/null ||
+        assertion_failed=true
+    if [[ "${assertion_failed}" == true ]]; then
+        fail_workflow \
+            "[QVI] Group state did not converge at sequence ${expected_sequence}"
+    fi
+}
+
+assert_qvi_credential_state() {
+    local credential_said=$1
+    local issuer_prefix=$2
+    local schema=$3
+    local issuee_prefix=$4
+    local status_sequence=$5
+    local assertion_failed=false
+
+    run_signify_json \
+        "${QVI_SIGNIFY_DIR}/qars/qars-assert-credential-state.ts" \
+        --group-name "${QVI_NAME}" \
+        --credential-said "${credential_said}" \
+        --issuer-prefix "${issuer_prefix}" \
+        --schema "${schema}" \
+        --issuee-prefix "${issuee_prefix}" \
+        --status-sequence "${status_sequence}" >/dev/null ||
+        assertion_failed=true
+    if [[ "${assertion_failed}" == true ]]; then
+        fail_workflow \
+            "[QVI] Credential ${credential_said} did not converge at TEL sequence ${status_sequence}"
+    fi
+}
+
+assert_person_credential_state() {
+    local credential_said=$1
+    local issuer_prefix=$2
+    local schema=$3
+    local issuee_prefix=$4
+    local status_sequence=$5
+    local assertion_failed=false
+
+    run_signify_json \
+        "${QVI_SIGNIFY_DIR}/person/person-assert-credential-state.ts" \
+        --credential-said "${credential_said}" \
+        --issuer-prefix "${issuer_prefix}" \
+        --schema "${schema}" \
+        --issuee-prefix "${issuee_prefix}" \
+        --status-sequence "${status_sequence}" >/dev/null ||
+        assertion_failed=true
+    if [[ "${assertion_failed}" == true ]]; then
+        fail_workflow \
+            "[PERSON] Credential ${credential_said} does not match the story"
+    fi
+}
+
 callback_was_recorded() {
     local action=$1
     local credential_said=$2
@@ -975,6 +1037,7 @@ function create_qvi_multisig() {
     if [[ "${completion_failed}" == true ]]; then
         fail_workflow "QVI delegated inception did not converge after GEDA approval"
     fi
+    assert_qvi_group_state 0
 
     print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 }
@@ -989,9 +1052,7 @@ function authorize_qvi_multisig_agent_endpoint_role(){
     authorization_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-authorize-endroles-get-qvi-oobi.ts" \
       --group-name "${QVI_NAME}" \
-      --data-dir "${QVI_DATA_DIR}" \
-      --group-prefix "${QVI_PRE}" \
-      --delegator-prefix "${GEDA_PRE}") ||
+      --data-dir "${QVI_DATA_DIR}") ||
       authorization_failed=true
     if [[ "${authorization_failed}" == true ]]; then
         fail_workflow "QVI agent endpoint-role authorization failed"
@@ -1211,13 +1272,17 @@ admit_qvi_received_credential() {
         "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
         --group-name "${QVI_NAME}" \
         --issuer-prefix "${issuer_prefix}" \
-        --credential-said "${credential_said}" \
-        --expected-schema "${schema}" \
-        --expected-issuee "${QVI_PRE}" >/dev/null ||
+        --credential-said "${credential_said}" >/dev/null ||
         admission_failed=true
     if [[ "${admission_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to admit ${story_label} credential ${credential_said}"
     fi
+    assert_qvi_credential_state \
+        "${credential_said}" \
+        "${issuer_prefix}" \
+        "${schema}" \
+        "${QVI_PRE}" \
+        0
 }
 
 # QVI: Admit QVI credential from GEDA
@@ -1263,11 +1328,8 @@ function present_qvi_cred_to_sally_signify() {
     "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
     --group-name "${QVI_NAME}" \
     --credential-said "${QVI_CRED_SAID}" \
-    --expected-issuer "${GEDA_PRE}" \
-    --expected-schema "${QVI_SCHEMA}" \
-    --expected-issuee "${QVI_PRE}" \
-    --recipient-prefix "${DIRECT_SALLY_PRE}" \
-    --expected-status active >/dev/null || presentation_failed=true
+    --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
+    presentation_failed=true
   if [[ "${presentation_failed}" == true ]]; then
       fail_workflow "[QVI] Failed to transmit the active QVI credential to Sally"
   fi
@@ -1359,6 +1421,12 @@ function create_and_grant_le_credential() {
     fi
     record_qvi_issuance_result "${issuance_result}"
     LE_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
+    assert_qvi_credential_state \
+        "${LE_CRED_SAID}" \
+        "${QVI_PRE}" \
+        "${LE_SCHEMA}" \
+        "${LE_PRE}" \
+        0
 
     echo
     print_lcyan "[QVI] LE Credential created"
@@ -1418,11 +1486,8 @@ function present_le_cred_to_sally() {
     "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
     --group-name "${QVI_NAME}" \
     --credential-said "${LE_CRED_SAID}" \
-    --expected-issuer "${QVI_PRE}" \
-    --expected-schema "${LE_SCHEMA}" \
-    --expected-issuee "${LE_PRE}" \
-    --recipient-prefix "${DIRECT_SALLY_PRE}" \
-    --expected-status active >/dev/null || presentation_failed=true
+    --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
+    presentation_failed=true
   if [[ "${presentation_failed}" == true ]]; then
       fail_workflow "[QVI] Failed to transmit the active LE credential to Sally"
   fi
@@ -1654,6 +1719,12 @@ function create_and_grant_oor_credential() {
     fi
     record_qvi_issuance_result "${issuance_result}"
     OOR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
+    assert_qvi_credential_state \
+        "${OOR_CRED_SAID}" \
+        "${QVI_PRE}" \
+        "${OOR_SCHEMA}" \
+        "${PERSON_PRE}" \
+        0
 
     echo
     print_lcyan "[QVI] OOR credential created"
@@ -1669,13 +1740,17 @@ admit_person_leaf_credential() {
     run_signify_json \
         "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
         --issuer-prefix "${QVI_PRE}" \
-        --credential-said "${credential_said}" \
-        --expected-schema "${schema}" \
-        --expected-issuee "${PERSON_PRE}" >/dev/null ||
+        --credential-said "${credential_said}" >/dev/null ||
         admission_failed=true
     if [[ "${admission_failed}" == true ]]; then
         fail_workflow "[PERSON] Failed to admit ${story_label} credential ${credential_said}"
     fi
+    assert_person_credential_state \
+        "${credential_said}" \
+        "${QVI_PRE}" \
+        "${schema}" \
+        "${PERSON_PRE}" \
+        0
 }
 
 # Person: Admit OOR credential from QVI
@@ -1701,9 +1776,6 @@ function person_present_oor_cred_to_sally() {
     run_signify_json \
       "${QVI_SIGNIFY_DIR}/person/person-grant-credential.ts" \
       --credential-said "${OOR_CRED_SAID}" \
-      --expected-issuer "${QVI_PRE}" \
-      --expected-schema "${OOR_SCHEMA}" \
-      --expected-issuee "${PERSON_PRE}" \
       --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
         credential_transmission_failed=true
     if [[ "${credential_transmission_failed}" == true ]]; then
@@ -1716,7 +1788,7 @@ function person_present_oor_cred_to_sally() {
 function revoke_qvi_leaf_credential() {
     local label=$1
     local credential_said=$2
-    local expected_schema=$3
+    local schema=$3
     local revocation_failed=false
     local revocation_result=""
 
@@ -1724,9 +1796,8 @@ function revoke_qvi_leaf_credential() {
     revocation_result=$(run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qars-revoke-credential.ts" \
         --group-name "${QVI_NAME}" \
-        --credential-said "${credential_said}" \
-        --expected-schema "${expected_schema}" \
-        --expected-issuee "${PERSON_PRE}") || revocation_failed=true
+        --credential-said "${credential_said}") ||
+        revocation_failed=true
     if [[ "${revocation_failed}" == true ]]; then
         fail_workflow "[QVI] ${label} credential revocation failed"
     fi
@@ -1735,6 +1806,12 @@ function revoke_qvi_leaf_credential() {
         jq -r '.revocationTimestamp')
     LAST_REVOCATION_TEL_DIGEST=$(printf '%s\n' "${revocation_result}" |
         jq -r '.revocationTelDigest')
+    assert_qvi_credential_state \
+        "${credential_said}" \
+        "${QVI_PRE}" \
+        "${schema}" \
+        "${PERSON_PRE}" \
+        1
     print_green "[QVI] ${label} credential revocation converged on all three QARs"
     print_lcyan \
         "[QVI] ${label} revocation TEL: ${LAST_REVOCATION_TEL_DIGEST} at ${LAST_REVOCATION_TIMESTAMP}"
@@ -1765,11 +1842,8 @@ function present_revoked_oor_to_sally() {
         "${QVI_SIGNIFY_DIR}/qars/qars-present-credential.ts" \
         --group-name "${QVI_NAME}" \
         --credential-said "${OOR_CRED_SAID}" \
-        --expected-issuer "${QVI_PRE}" \
-        --expected-schema "${OOR_SCHEMA}" \
-        --expected-issuee "${PERSON_PRE}" \
-        --recipient-prefix "${DIRECT_SALLY_PRE}" \
-        --expected-status revoked >/dev/null || credential_transmission_failed=true
+        --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
+        credential_transmission_failed=true
     if [[ "${credential_transmission_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to transmit revoked OOR credential ${OOR_CRED_SAID}"
     fi
@@ -1968,6 +2042,12 @@ function create_and_grant_ecr_credential() {
     fi
     record_qvi_issuance_result "${issuance_result}"
     ECR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
+    assert_qvi_credential_state \
+        "${ECR_CRED_SAID}" \
+        "${QVI_PRE}" \
+        "${ECR_SCHEMA}" \
+        "${PERSON_PRE}" \
+        0
 
     echo
     print_lcyan "[QVI] ECR credential created and granted"

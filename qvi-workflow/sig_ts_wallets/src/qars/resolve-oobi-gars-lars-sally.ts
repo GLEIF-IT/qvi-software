@@ -5,7 +5,7 @@ import { OobiInfo } from "../qvi-data";
 import { parseAidInfo } from "../create-aid";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     participantInvocationFromArguments,
     requireNamedArguments,
     runJsonCli,
@@ -67,10 +67,9 @@ export async function resolveOobis(aidStrArg: string, oobiStrArg: string, enviro
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'oobis'],
-            ['environment', 'participant-source', 'oobis']
+            ['config', 'environment', 'participant-source', 'oobis']
         );
         requireNamedArguments(parsed, ['oobis']);
         const invocation = participantInvocationFromArguments(parsed);

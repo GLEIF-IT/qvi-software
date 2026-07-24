@@ -1,10 +1,4 @@
 import {
-    assertCredentialConvergence,
-    assertExpectedCredential,
-    credentialSnapshot,
-    selectCredential,
-} from '../credential-state.ts';
-import {
     isMainModule,
     parseNamedArguments,
     participantConfigFromArguments,
@@ -13,192 +7,88 @@ import {
     type ParticipantConfig,
 } from '../cli.ts';
 import {createTimestamp} from '../create-aid.ts';
-import {
-    completeMultisigIpex,
-    grantMultisig,
-} from '../credentials.ts';
-import {getOrCreateClient} from '../keystore-creation.ts';
-import {
-    assertGroupStateConvergence,
-    readGroupObservation,
-} from '../group-state.ts';
+import {grantMultisig} from '../credentials.ts';
+import {getCredential} from '../credential-state.ts';
+import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
+import {loadQviMembers} from './qvi-context.ts';
 
 export interface PresentCredentialOptions {
     config: ParticipantConfig;
     groupName: string;
     credentialSaid: string;
-    expectedIssuer: string;
-    expectedSchema: string;
-    expectedIssuee: string;
     recipientPrefix: string;
-    expectedStatus: 'active' | 'revoked';
 }
 
 export async function presentCredential(
     options: PresentCredentialOptions
 ) {
-    const config = options.config;
-    const participants = [
-        config.participants.qar1,
-        config.participants.qar2,
-        config.participants.qar3,
-    ];
-    const clients = await Promise.all(
-        participants.map((participant) =>
-            getOrCreateClient(
-                participant.salt,
-                config.environment,
-                participant.keriaHost
-            )
-        )
+    const members = await loadQviMembers(
+        options.config,
+        options.groupName
     );
-    const memberAids = await Promise.all(
-        participants.map((participant, index) =>
-            clients[index]
-                .identifiers()
-                .get(participant.name)
-        )
-    );
-    const memberPrefixes = memberAids.map(
-        (member) => member.prefix
-    );
-    const groupObservations = await Promise.all(
-        clients.map((client, index) =>
-            readGroupObservation(
-                client,
-                memberPrefixes[index],
-                options.groupName,
-                memberPrefixes
-            )
-        )
-    );
-    assertGroupStateConvergence(
-        groupObservations,
-        memberPrefixes
-    );
-    const groupAids = groupObservations.map(
-        (observation) => observation.group
-    );
-
-    const expected = {
-        said: options.credentialSaid,
-        issuer: options.expectedIssuer,
-        schema: options.expectedSchema,
-        issuee: options.expectedIssuee,
-    };
     const credentials = await Promise.all(
-        clients.map((client) =>
-            selectCredential(client, expected)
+        members.map(({client}) =>
+            getCredential(client, options.credentialSaid)
         )
     );
-    const snapshots = credentials.map((credential, index) =>
-        credentialSnapshot(
-            credential,
-            memberPrefixes[index]
-        )
-    );
-    snapshots.forEach((snapshot) =>
-        assertExpectedCredential(snapshot, expected)
-    );
-    assertCredentialConvergence(snapshots, memberPrefixes);
-    const expectedSequence =
-        options.expectedStatus === 'active' ? '0' : '1';
-    const credentialStatusMatches = snapshots.every(
-        (snapshot) =>
-            snapshot.statusSequence === expectedSequence
-    );
-    if (credentialStatusMatches === false) {
-        throw new Error(
-            `Credential ${options.credentialSaid} is not ${options.expectedStatus} on every QAR`
-        );
-    }
-
     const timestamp = createTimestamp();
-    const grants = [];
-    for (let index = 0; index < clients.length; index++) {
-        const otherMembers = memberAids.filter(
-            (_, memberIndex) => memberIndex !== index
-        );
-        const participantIsInitiator = index === 0;
-        const coordinationOptions = participantIsInitiator
-            ? {isInitiator: true}
-            : {coordinator: memberAids[0].prefix};
-        grants.push(
-            await grantMultisig(
-                clients[index],
-                memberAids[index],
-                otherMembers,
-                groupAids[index],
+    await coordinateMultisigOperation(
+        members.map(({client, memberAid}) => ({
+            client,
+            aid: memberAid,
+        })),
+        (context) => {
+            const memberIndex = members.findIndex(
+                ({memberAid}) =>
+                    memberAid.prefix === context.aid.prefix
+            );
+            if (memberIndex < 0) {
+                throw new Error(
+                    `Missing QVI member ${context.aid.prefix}`
+                );
+            }
+            return grantMultisig(
+                context.client,
+                context.aid,
+                context.otherMembers,
+                members[memberIndex].groupAid,
                 options.recipientPrefix,
-                credentials[index],
+                credentials[memberIndex],
                 timestamp,
-                coordinationOptions
-            )
-        );
-    }
-    await Promise.all(
-        grants.map((grant, index) =>
-            completeMultisigIpex(clients[index], grant)
-        )
+                {
+                    isInitiator: context.isInitiator,
+                    coordinator: context.coordinatorPrefix,
+                }
+            );
+        }
     );
-
     return {
         status: 'presented' as const,
-        credentialSaid: snapshots[0].said,
+        credentialSaid: options.credentialSaid,
         recipientPrefix: options.recipientPrefix,
-    };
-}
-
-function parsePresentationArguments(
-    argv: string[]
-): PresentCredentialOptions {
-    const args = parseNamedArguments(argv, [
-        'config',
-        'environment',
-        'participant-source',
-        'group-name',
-        'credential-said',
-        'expected-issuer',
-        'expected-schema',
-        'expected-issuee',
-        'recipient-prefix',
-        'expected-status',
-    ]);
-    requireNamedArguments(args, [
-        'group-name',
-        'credential-said',
-        'expected-issuer',
-        'expected-schema',
-        'expected-issuee',
-        'recipient-prefix',
-        'expected-status',
-    ]);
-    const expectedStatus = args['expected-status'];
-    const statusIsInvalid =
-        expectedStatus !== 'active' &&
-        expectedStatus !== 'revoked';
-    if (statusIsInvalid) {
-        throw new Error(
-            '--expected-status must be active or revoked'
-        );
-    }
-    return {
-        config: participantConfigFromArguments(args),
-        groupName: args['group-name'],
-        credentialSaid: args['credential-said'],
-        expectedIssuer: args['expected-issuer'],
-        expectedSchema: args['expected-schema'],
-        expectedIssuee: args['expected-issuee'],
-        recipientPrefix: args['recipient-prefix'],
-        expectedStatus,
     };
 }
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const options = parsePresentationArguments(
-            process.argv.slice(2)
-        );
-        return presentCredential(options);
+        const args = parseNamedArguments(process.argv.slice(2), [
+            'config',
+            'environment',
+            'participant-source',
+            'group-name',
+            'credential-said',
+            'recipient-prefix',
+        ]);
+        requireNamedArguments(args, [
+            'group-name',
+            'credential-said',
+            'recipient-prefix',
+        ]);
+        return presentCredential({
+            config: participantConfigFromArguments(args),
+            groupName: args['group-name'],
+            credentialSaid: args['credential-said'],
+            recipientPrefix: args['recipient-prefix'],
+        });
     });
 }

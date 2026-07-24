@@ -1,6 +1,6 @@
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     participantInvocationFromArguments,
     requireNamedArguments,
     runJsonCli,
@@ -30,18 +30,13 @@ export async function checkQarIssuedCredential(
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
             [
                 'config',
-                'group-name',
-                'issuee-prefix',
-                'schema-said',
-            ],
-            [
                 'environment',
-                'group-name',
                 'participant-source',
+                'group-name',
                 'issuee-prefix',
                 'schema-said',
             ]

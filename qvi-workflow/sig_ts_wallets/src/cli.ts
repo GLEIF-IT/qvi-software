@@ -102,32 +102,6 @@ export function parseNamedArguments(
     return parsed;
 }
 
-/**
- * Accepts named arguments while preserving the positional interface used by
- * older sibling workflow drivers.
- */
-export function parseNamedOrPositionalArguments(
-    argv: string[],
-    allowedNames: readonly string[],
-    positionalNames: readonly string[]
-): Record<string, string> {
-    const usesNamedArguments = argv[0]?.startsWith('--') === true;
-    if (usesNamedArguments) {
-        return parseNamedArguments(argv, allowedNames);
-    }
-
-    const positionalCountMatches = argv.length === positionalNames.length;
-    if (positionalCountMatches === false) {
-        throw new Error(
-            `Expected named arguments or exactly ${positionalNames.length} legacy positional arguments`
-        );
-    }
-
-    return Object.fromEntries(
-        positionalNames.map((name, index) => [name, argv[index]])
-    );
-}
-
 export function requireNamedArguments(
     parsed: Record<string, string>,
     requiredNames: readonly string[]

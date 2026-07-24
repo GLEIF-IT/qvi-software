@@ -8,7 +8,7 @@ import signify, {
 } from 'signify-ts';
 
 import {sendExchangeToEachRecipient} from './exchanges.ts';
-import {assertCoordinatedEventDigest} from './multisig-coordination.ts';
+import {requireCoordinatedEventDigest} from './multisig-coordination.ts';
 import {
     consumeNotification,
     waitForMatchingNotification,
@@ -75,14 +75,14 @@ export async function createRegistryMultisig(
     }
 
     if (coordination !== undefined) {
-        assertCoordinatedEventDigest(
+        requireCoordinatedEventDigest(
             coordination.exchange,
             '/multisig/vcp',
             serder.said
         );
     }
 
-    const receipts = await sendExchangeToEachRecipient(client, {
+    await sendExchangeToEachRecipient(client, {
         name: aid.name,
         topic: 'registry',
         sender: aid,
@@ -96,10 +96,6 @@ export async function createRegistryMultisig(
         operation: op,
         coordination:
             coordination === undefined ? [] : [coordination],
-        wrapperReceipts: receipts.map((receipt) => ({
-            ...receipt,
-            innerExchangeSaid: serder.said,
-        })),
     };
 }
 
@@ -188,14 +184,14 @@ export async function issueCredentialMultisig(
     }
 
     if (coordination !== undefined) {
-        assertCoordinatedEventDigest(
+        requireCoordinatedEventDigest(
             coordination.exchange,
             '/multisig/iss',
             credResult.iss.said
         );
     }
 
-    const receipts = await sendExchangeToEachRecipient(client, {
+    await sendExchangeToEachRecipient(client, {
         name: aid.name,
         topic: 'multisig',
         sender: aid,
@@ -212,10 +208,6 @@ export async function issueCredentialMultisig(
         operation: op,
         coordination:
             coordination === undefined ? [] : [coordination],
-        wrapperReceipts: receipts.map((receipt) => ({
-            ...receipt,
-            innerExchangeSaid: credResult.iss.said,
-        })),
     };
 }
 
@@ -269,14 +261,14 @@ export async function revokeCredentialMultisig(
     }
 
     if (coordination !== undefined) {
-        assertCoordinatedEventDigest(
+        requireCoordinatedEventDigest(
             coordination.exchange,
             '/multisig/rev',
             result.rev.said
         );
     }
 
-    const receipts = await sendExchangeToEachRecipient(client, {
+    await sendExchangeToEachRecipient(client, {
         name: aid.name,
         topic: 'multisig',
         sender: aid,
@@ -294,10 +286,6 @@ export async function revokeCredentialMultisig(
         operation: result.op,
         coordination:
             coordination === undefined ? [] : [coordination],
-        wrapperReceipts: receipts.map((receipt) => ({
-            ...receipt,
-            innerExchangeSaid: result.rev.said,
-        })),
     };
 }
 
@@ -452,7 +440,7 @@ export async function grantMultisig(
             credentialSaid: credential.sad.d,
             embeddedDigest: grant.said,
         });
-        assertCoordinatedEventDigest(
+        requireCoordinatedEventDigest(
             coordination.exchange,
             '/multisig/exn',
             grant.said
@@ -477,7 +465,7 @@ export async function grantMultisig(
     };
     const recp = otherMembersAIDs.map((aid) => aid.prefix);
 
-    const receipts = await sendExchangeToEachRecipient(client, {
+    await sendExchangeToEachRecipient(client, {
         name: aid.name,
         topic: 'multisig',
         sender: aid,
@@ -493,29 +481,12 @@ export async function grantMultisig(
         operation,
         coordination:
             coordination === undefined ? [] : [coordination],
-        innerExchangeSaid: grant.said,
-        wrapperReceipts: receipts,
     };
 }
 
 export interface MultisigIpexResult {
     operation: ExchangeOperation;
     coordination: MatchedNotification[];
-    innerExchangeSaid: string;
-    wrapperReceipts: Array<{
-        recipient: string;
-        exnSaid: string;
-    }>;
-}
-
-export async function completeMultisigIpex(
-    client: SignifyClient,
-    result: MultisigIpexResult
-): Promise<void> {
-    await waitOperation(client, result.operation);
-    for (const notification of result.coordination) {
-        await consumeNotification(client, notification);
-    }
 }
 
 /**
@@ -617,7 +588,7 @@ export async function admitMultisig(
             credentialSaid,
             embeddedDigest: admit.said,
         });
-        assertCoordinatedEventDigest(
+        requireCoordinatedEventDigest(
             coordination.exchange,
             '/multisig/exn',
             admit.said
@@ -642,7 +613,7 @@ export async function admitMultisig(
     };
     const recp = otherMembersAIDs.map((aid) => aid.prefix);
 
-    const receipts = await sendExchangeToEachRecipient(client, {
+    await sendExchangeToEachRecipient(client, {
         name: aid.name,
         topic: 'multisig',
         sender: aid,
@@ -661,7 +632,5 @@ export async function admitMultisig(
             coordination === undefined
                 ? [grantNotification]
                 : [grantNotification, coordination],
-        innerExchangeSaid: admit.said,
-        wrapperReceipts: receipts,
     };
 }

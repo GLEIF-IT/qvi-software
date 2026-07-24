@@ -1,6 +1,6 @@
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     requireNamedArguments,
     runJsonCli,
     singleSigParticipantInvocationFromArguments,
@@ -23,10 +23,10 @@ export async function checkQviReceivedCredential(options: {
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'credential-said'],
             [
+                'config',
                 'environment',
                 'participant-source',
                 'credential-said',

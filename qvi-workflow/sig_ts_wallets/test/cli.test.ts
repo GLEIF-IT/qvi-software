@@ -9,9 +9,8 @@ import {join} from 'node:path';
 import {describe, it} from 'node:test';
 
 import {
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     participantConfigFromArguments,
-    participantInvocationFromArguments,
     singleSigParticipantInvocationFromArguments,
 } from '../src/cli.ts';
 
@@ -30,9 +29,12 @@ const workflowRunnerModules = [
     '../src/qars/qars-ecr-credential-create.ts',
     '../src/qars/qars-revoke-credential.ts',
     '../src/qars/qars-present-credential.ts',
+    '../src/qars/qars-assert-group-state.ts',
+    '../src/qars/qars-assert-credential-state.ts',
     '../src/person-resolve-qvi-oobi.ts',
     '../src/person/person-admit-credential.ts',
     '../src/person/person-grant-credential.ts',
+    '../src/person/person-assert-credential-state.ts',
     '../src/keria-challenge.ts',
     '../src/qars/qar-check-issued-credential.ts',
     '../src/qars/qars-admit-ecr-auth-credential.ts',
@@ -62,15 +64,14 @@ describe('workflow runner command lines', () => {
     });
 
     it('accepts named arguments and rejects unknown options', () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             [
                 '--config',
                 '/run/qvi/participants.json',
                 '--credential-said',
                 'ECredential',
             ],
-            ['config', 'credential-said'],
-            ['environment', 'participant-source', 'credential-said']
+            ['config', 'credential-said']
         );
         assert.deepEqual(parsed, {
             config: '/run/qvi/participants.json',
@@ -79,36 +80,22 @@ describe('workflow runner command lines', () => {
 
         assert.throws(
             () =>
-                parseNamedOrPositionalArguments(
+                parseNamedArguments(
                     ['--unknown', 'value'],
-                    ['config'],
-                    ['environment']
+                    ['config']
                 ),
             /Unknown argument/
         );
     });
 
-    it('retains the exact legacy positional mapping for sibling workflows', () => {
-        const parsed = parseNamedOrPositionalArguments(
-            [
-                'docker-tsx',
-                '/run/qvi/participants.json',
-                'ECredential',
-            ],
-            ['config', 'credential-said'],
-            ['environment', 'participant-source', 'credential-said']
-        );
-        assert.deepEqual(parsed, {
-            environment: 'docker-tsx',
-            'participant-source': '/run/qvi/participants.json',
-            'credential-said': 'ECredential',
-        });
-        assert.deepEqual(
-            participantInvocationFromArguments(parsed),
-            {
-                environment: 'docker-tsx',
-                participantSource: '/run/qvi/participants.json',
-            }
+    it('rejects positional workflow arguments', () => {
+        assert.throws(
+            () =>
+                parseNamedArguments(
+                    ['docker-tsx', 'ECredential'],
+                    ['environment', 'credential-said']
+                ),
+            /named --option value pairs/
         );
     });
 

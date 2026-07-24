@@ -4,7 +4,7 @@ import {TestEnvironmentPreset} from "../resolve-env";
 import {parseAidInfo} from "../create-aid";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     participantInvocationFromArguments,
     requireNamedArguments,
     runJsonCli,
@@ -32,10 +32,9 @@ export async function resolveQVIOobi(aidInfo: string, alias: string, oobi: strin
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'alias', 'oobi'],
-            ['environment', 'participant-source', 'alias', 'oobi']
+            ['config', 'environment', 'participant-source', 'alias', 'oobi']
         );
         requireNamedArguments(parsed, ['alias', 'oobi']);
         const invocation = participantInvocationFromArguments(parsed);

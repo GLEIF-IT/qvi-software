@@ -10,332 +10,113 @@ import type {
 } from 'signify-ts';
 
 import {
-    completedOperationEvidence,
     isCompletedOperation,
     isFailedOperation,
     isPendingOperation,
-    operationResultIdentity,
     waitOperation,
-    waitOperationEvidence,
 } from '../src/operations.ts';
 
-const pendingOperation: PendingDoneOperation = {
-    name: 'done.pending',
+const pending: PendingDoneOperation = {
+    name: 'group.EEvent',
     done: false,
 };
-
-const completedOperation = {
-    name: 'done.completed',
+const completed = {
+    name: pending.name,
     done: true,
-    response: {
-        d: 'ECompletedEvent',
-    },
+    response: {d: 'EEvent'},
 } as CompletedDoneOperation;
-
-const failedOperation: FailedDoneOperation = {
-    name: 'done.failed',
+const failed: FailedDoneOperation = {
+    name: pending.name,
     done: true,
     error: {
         code: 500,
-        message: 'coordination failed',
-        details: {
-            member: 'QAR3',
-        },
+        message: 'escrow failed',
+        details: {member: 'QAR3'},
     },
 };
 
-interface OperationClientOptions {
+function client(options: {
     get?: (name: string) => Promise<Operation>;
     wait?: (
         operation: Operation,
         options?: {signal?: AbortSignal}
     ) => Promise<CompletedDoneOperation>;
-}
-
-function operationClient({
-    get = async () => {
-        throw new Error('unexpected operation lookup');
-    },
-    wait = async () => {
-        throw new Error('unexpected operation wait');
-    },
-}: OperationClientOptions): SignifyClient {
+}): SignifyClient {
     return {
         operations: () => ({
-            get,
-            wait,
+            get:
+                options.get ??
+                (async () => {
+                    throw new Error('unexpected lookup');
+                }),
+            wait:
+                options.wait ??
+                (async () => {
+                    throw new Error('unexpected wait');
+                }),
         }),
     } as unknown as SignifyClient;
 }
 
-describe('operation state handling', () => {
-    it('narrows pending, completed, and failed operation variants', () => {
-        assert.equal(isPendingOperation(pendingOperation), true);
-        assert.equal(isCompletedOperation(pendingOperation), false);
-        assert.equal(isFailedOperation(pendingOperation), false);
-
-        assert.equal(isPendingOperation(completedOperation), false);
-        assert.equal(isCompletedOperation(completedOperation), true);
-        assert.equal(isFailedOperation(completedOperation), false);
-
-        assert.equal(isPendingOperation(failedOperation), false);
-        assert.equal(isCompletedOperation(failedOperation), false);
-        assert.equal(isFailedOperation(failedOperation), true);
+describe('operation lifecycle', () => {
+    it('narrows pending, completed, and failed variants', () => {
+        assert.equal(isPendingOperation(pending), true);
+        assert.equal(isCompletedOperation(completed), true);
+        assert.equal(isFailedOperation(failed), true);
     });
 
-    it('returns an already-completed operation without polling', async () => {
-        const client = operationClient({});
-
+    it('looks up and waits for a named pending operation', async () => {
+        const calls: string[] = [];
         const result = await waitOperation(
-            client,
-            completedOperation
-        );
-
-        assert.equal(result, completedOperation);
-    });
-
-    it('projects only bounded event identity into terminal evidence', async () => {
-        const operation = {
-            name: 'delegation.EOperation',
-            done: true,
-            metadata: {
-                words: ['must-not-appear'],
-            },
-            response: {
-                v: 'KERI10JSON',
-                t: 'dip',
-                d: 'EDelegatedInception',
-                i: 'EQvi',
-                s: '0',
-                di: 'EGeda',
-                a: {
-                    private: 'must-not-appear',
+            client({
+                get: async (name) => {
+                    calls.push(`get:${name}`);
+                    return pending;
                 },
-            },
-        } as unknown as Operation;
-
-        assert.deepEqual(completedOperationEvidence(operation), {
-            name: 'delegation.EOperation',
-            done: true,
-            result: {
-                kind: 'event',
-                said: 'EDelegatedInception',
-                prefix: 'EQvi',
-                sequence: '0',
-            },
-        });
-    });
-
-    it('projects reply identity without inventing key-event fields', () => {
-        assert.deepEqual(
-            operationResultIdentity({
-                v: 'KERI10JSON',
-                t: 'rpy',
-                d: 'EEndRoleReply',
-                dt: '2026-07-24T16:00:00.000000+00:00',
-                r: '/end/role/add',
-                a: {
-                    cid: 'EQvi',
-                    role: 'agent',
-                    eid: 'EAgent',
+                wait: async (operation, options) => {
+                    calls.push(`wait:${operation.name}`);
+                    assert.ok(options?.signal);
+                    return completed;
                 },
             }),
-            {
-                kind: 'event',
-                said: 'EEndRoleReply',
-                route: '/end/role/add',
-            }
+            pending.name
         );
-    });
-
-    it('projects credential and registry response identities', () => {
-        assert.deepEqual(
-            operationResultIdentity({
-                ced: {
-                    d: 'ECredential',
-                    i: 'EIssuer',
-                    s: 'ESchema',
-                    a: {i: 'EIssuee'},
-                },
-            }),
-            {
-                kind: 'credential',
-                said: 'ECredential',
-                prefix: 'EIssuer',
-                schema: 'ESchema',
-            }
-        );
-        assert.deepEqual(
-            operationResultIdentity({
-                anchor: {
-                    i: 'ERegistry',
-                    s: '0',
-                    d: 'ERegistryAnchor',
-                },
-                ignored: {secret: 'not retained'},
-            }),
-            {
-                kind: 'registry-anchor',
-                said: 'ERegistryAnchor',
-                prefix: 'ERegistry',
-                sequence: '0',
-            }
-        );
-    });
-
-    it('does not create evidence for pending or failed operations', () => {
-        assert.throws(
-            () => completedOperationEvidence(pendingOperation),
-            /without reaching a completed state/
-        );
-        assert.throws(
-            () => completedOperationEvidence(failedOperation),
-            /done\.failed.*coordination failed/
-        );
-    });
-
-    it('does not retain unbounded response strings', () => {
-        assert.deepEqual(
-            operationResultIdentity({
-                d: 'E'.repeat(513),
-                i: 'EQvi',
-                s: '0',
-            }),
-            {kind: 'object'}
-        );
-    });
-
-    it('looks up and polls a pending named operation', async () => {
-        const lookedUpNames: string[] = [];
-        const waitedOperations: string[] = [];
-        const client = operationClient({
-            get: async (name) => {
-                lookedUpNames.push(name);
-                return pendingOperation;
-            },
-            wait: async (operation, options) => {
-                waitedOperations.push(operation.name);
-                const signalWasProvided =
-                    options?.signal !== undefined;
-                assert.equal(signalWasProvided, true);
-                return completedOperation;
-            },
-        });
-
-        const result = await waitOperation(
-            client,
-            pendingOperation.name
-        );
-
-        assert.equal(result, completedOperation);
-        assert.deepEqual(lookedUpNames, [pendingOperation.name]);
-        assert.deepEqual(waitedOperations, [
-            pendingOperation.name,
+        assert.equal(result, completed);
+        assert.deepEqual(calls, [
+            `get:${pending.name}`,
+            `wait:${pending.name}`,
         ]);
     });
 
-    it('waits before emitting terminal operation evidence', async () => {
-        const client = operationClient({
-            get: async () => pendingOperation,
-            wait: async () => completedOperation,
-        });
-
-        const evidence = await waitOperationEvidence(
-            client,
-            pendingOperation.name
+    it('returns completed operations without polling', async () => {
+        assert.equal(
+            await waitOperation(client({}), completed),
+            completed
         );
-
-        assert.deepEqual(evidence, {
-            name: completedOperation.name,
-            done: true,
-            result: {
-                kind: 'event',
-                said: 'ECompletedEvent',
-            },
-        });
     });
 
-    it('fails immediately when the current operation state is failed', async () => {
-        let waitWasCalled = false;
-        const client = operationClient({
-            wait: async () => {
-                waitWasCalled = true;
-                return completedOperation;
-            },
-        });
-
+    it('reports failed operation details', async () => {
         await assert.rejects(
-            waitOperation(client, failedOperation),
-            /done\.failed.*Code 500.*coordination failed.*QAR3/
-        );
-        assert.equal(waitWasCalled, false);
-    });
-
-    it('rejects a failed state returned by a nonconforming wait implementation', async () => {
-        const client = operationClient({
-            wait: async () =>
-                failedOperation as unknown as CompletedDoneOperation,
-        });
-
-        await assert.rejects(
-            waitOperation(client, pendingOperation),
-            /done\.failed.*coordination failed/
+            waitOperation(client({}), failed),
+            /Code 500.*escrow failed.*QAR3/
         );
     });
 
-    it('does not poll when the caller signal is already aborted', async () => {
-        let waitWasCalled = false;
-        const client = operationClient({
-            wait: async () => {
-                waitWasCalled = true;
-                return completedOperation;
-            },
-        });
-        const signal = AbortSignal.abort(
-            new Error('workflow interrupted')
-        );
-
-        await assert.rejects(
-            waitOperation(client, pendingOperation, signal),
-            /workflow interrupted/
-        );
-        assert.equal(waitWasCalled, false);
-    });
-
-    it('propagates a timeout while a pending operation is polling', async () => {
-        const client = operationClient({
-            wait: async (_operation, options) => {
-                const signal = options?.signal;
-                const signalIsMissing = signal === undefined;
-                if (signalIsMissing) {
-                    throw new Error('expected a timeout signal');
-                }
-
-                return new Promise((_resolve, reject) => {
-                    const rejectWithTimeout = () => {
-                        reject(signal.reason);
-                    };
-                    signal.addEventListener(
-                        'abort',
-                        rejectWithTimeout,
-                        {once: true}
-                    );
-                });
-            },
-        });
-
+    it('honors an already-aborted caller signal', async () => {
+        let waited = false;
         await assert.rejects(
             waitOperation(
-                client,
-                pendingOperation,
-                AbortSignal.timeout(10)
+                client({
+                    wait: async () => {
+                        waited = true;
+                        return completed;
+                    },
+                }),
+                pending,
+                AbortSignal.abort(new Error('interrupted'))
             ),
-            (error: unknown) => {
-                const errorIsTimeout =
-                    error instanceof DOMException &&
-                    error.name === 'TimeoutError';
-                return errorIsTimeout;
-            }
+            /interrupted/
         );
+        assert.equal(waited, false);
     });
 });

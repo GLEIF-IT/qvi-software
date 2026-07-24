@@ -5,7 +5,7 @@ import {parseAidInfoSingleSig} from "../create-aid.ts";
 import {parseOobiInfoSingleSig} from "./oobis.ts";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     requireNamedArguments,
     runJsonCli,
     singleSigParticipantInvocationFromArguments,
@@ -39,10 +39,9 @@ export async function resolveOobis(
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'oobis'],
-            ['environment', 'participant-source', 'oobis']
+            ['config', 'environment', 'participant-source', 'oobis']
         );
         requireNamedArguments(parsed, ['oobis']);
         const invocation =

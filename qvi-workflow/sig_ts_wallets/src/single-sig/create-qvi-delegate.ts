@@ -6,7 +6,7 @@ import {resolveOobi} from "../oobis.ts";
 import fs from "fs";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     requireNamedArguments,
     runJsonCli,
     singleSigParticipantInvocationFromArguments,
@@ -55,19 +55,13 @@ export async function createQviDelegate(
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
             [
                 'config',
-                'qvi-name',
-                'oobis',
-                'delegator-prefix',
-                'artifact-dir',
-            ],
-            [
                 'environment',
-                'qvi-name',
                 'participant-source',
+                'qvi-name',
                 'oobis',
                 'delegator-prefix',
                 'artifact-dir',

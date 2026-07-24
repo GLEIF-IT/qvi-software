@@ -1,390 +1,116 @@
-import fs from "fs";
-import {CredentialData, CredentialSubject, Salter} from "signify-ts";
-import {createTimestamp, parseAidInfo} from "../create-aid";
-import {getOrCreateAID, getOrCreateClient} from "../keystore-creation";
-import {resolveEnvironment, TestEnvironmentPreset} from "../resolve-env";
+import fs from 'node:fs';
+
 import {
-    completeMultisigIpex,
-    getIssuedCredential,
-    grantMultisig,
-    issueCredentialMultisig,
-    requireCredential,
-} from "../credentials";
-import {
-    assertIssuedCredentialConvergence,
-    credentialSnapshot,
-} from '../credential-state.ts';
-import {
-    completeCoordinatedOperations,
-} from '../coordinated-operation.ts';
+    Salter,
+    type CredentialData,
+    type CredentialSubject,
+} from 'signify-ts';
+
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
-    participantInvocationFromArguments,
+    parseNamedArguments,
+    participantConfigFromArguments,
     requireNamedArguments,
     runJsonCli,
+    type ParticipantConfig,
 } from '../cli.ts';
+import {createTimestamp} from '../create-aid.ts';
+import {issueAndGrantCredential} from './issue-and-grant.ts';
+import {loadQviMembers} from './qvi-context.ts';
 
-const ECR_SCHEMA_SAID = 'EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw';
+export const ECR_SCHEMA_SAID =
+    'EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw';
 
-export interface CreateEcrCredentialOptions {
+async function jsonFile(path: string) {
+    return JSON.parse(await fs.promises.readFile(path, 'utf8'));
+}
+
+export async function createEcrCredential(options: {
+    config: ParticipantConfig;
     groupName: string;
     dataDir: string;
-    participantSource: string;
     issueePrefix: string;
-    environment: TestEnvironmentPreset;
-}
-
-export interface EcrCredentialArtifact {
-    ecrCredSAID: string;
-    ecrCredIssuer: string;
-    ecrCredIssuee: string;
-}
-
-export interface CreateEcrCredentialResult {
-    artifact: EcrCredentialArtifact;
-    registryId: string;
-    telDigest: string;
-}
-
-/**
- * Uses QAR1, QAR2, and QAR3 to issue the ECR credential to the person AID.
- */
-export async function createEcrCredential(
-    options: CreateEcrCredentialOptions
-): Promise<CreateEcrCredentialResult> {
-    const {
-        groupName,
-        dataDir,
-        participantSource,
-        issueePrefix,
-        environment,
-    } = options;
-    const {witnessIds} = resolveEnvironment(environment);
-    const [, WIL] = witnessIds;
-
-    // get Clients
-    const {QAR1, QAR2, QAR3} = parseAidInfo(participantSource);
-    const QAR1Client = await getOrCreateClient(QAR1.salt, environment, 1);
-    const QAR2Client = await getOrCreateClient(QAR2.salt, environment, 2);
-    const QAR3Client = await getOrCreateClient(QAR3.salt, environment, 3);
-
-    // get AIDs
-    const aidConfigQARs = {
-        toad: 1,
-        wits: [WIL],
-    };
-    const [
-            QAR1Id,
-            QAR2Id,
-            QAR3Id,
-    ] = await Promise.all([
-        getOrCreateAID(QAR1Client, QAR1.name, aidConfigQARs),
-        getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
-        getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
-    ]);
-    const memberPrefixes = [
-        QAR1Id.prefix,
-        QAR2Id.prefix,
-        QAR3Id.prefix,
-    ];
-
-    const qviAids = await Promise.all([
-        QAR1Client.identifiers().get(groupName),
-        QAR2Client.identifiers().get(groupName),
-        QAR3Client.identifiers().get(groupName),
-    ]);
-    const qviAID = qviAids[0];
-    const qviPrefixConverged = qviAids.every(
-        (group) => group.prefix === qviAID.prefix
+}) {
+    const members = await loadQviMembers(
+        options.config,
+        options.groupName
     );
-    if (qviPrefixConverged === false) {
-        throw new Error('QARs disagree on the QVI prefix');
-    }
-
-    // Reuse an existing ECR credential only while all three QARs observe the
-    // same active issuance event.
-    let ecrCredByQAR1 = await getIssuedCredential(
-        QAR1Client,
-        qviAID.prefix,
-        issueePrefix,
-        ECR_SCHEMA_SAID
-    );
-    let ecrCredbyQAR2 = await getIssuedCredential(
-        QAR2Client,
-        qviAID.prefix,
-        issueePrefix,
-        ECR_SCHEMA_SAID
-    );
-    let ecrCredbyQAR3 = await getIssuedCredential(
-        QAR3Client,
-        qviAID.prefix,
-        issueePrefix,
-        ECR_SCHEMA_SAID
-    );
-
-    
-    const existingCredentials = [
-        ecrCredByQAR1,
-        ecrCredbyQAR2,
-        ecrCredbyQAR3,
-    ];
-    const everyQarHasCredential = existingCredentials.every(
-        (credential) => credential !== undefined
-    );
-    const noQarHasCredential = existingCredentials.every(
-        (credential) => credential === undefined
-    );
-    if (everyQarHasCredential) {
-        const snapshots = existingCredentials.map(
-            (credential, index) =>
-                credentialSnapshot(
-                    requireCredential(
-                        credential,
-                        `QAR${index + 1} ECR credential`
-                    ),
-                    memberPrefixes[index]
-                )
-        );
-        assertIssuedCredentialConvergence(
-            snapshots,
-            memberPrefixes,
-            'ECR credential'
-        );
-        console.log("ECR credential already exists");
-        return {
-            artifact: {
-                ecrCredSAID: snapshots[0].said,
-                ecrCredIssuer: snapshots[0].issuer,
-                ecrCredIssuee: snapshots[0].issuee,
-            },
-            registryId: snapshots[0].registry,
-            telDigest: snapshots[0].currentTelDigest,
-        };
-    }
-
-    const onlySomeQarsHaveCredential = noQarHasCredential === false;
-    if (onlySomeQarsHaveCredential) {
+    const registries = await members[0].client
+        .registries()
+        .list(options.groupName);
+    if (registries.length !== 1) {
         throw new Error(
-            'ECR credential exists on only a subset of QARs'
+            `QVI requires one registry; found ${registries.length}`
         );
     }
-    console.log("ECR Credential does not exist, creating and granting");
-
-    const registries = await QAR1Client.registries().list(groupName);
-    const registryCountIsInvalid = registries.length !== 1;
-    if (registryCountIsInvalid) {
-        throw new Error(
-            `Expected one QVI registry; found ${registries.length}`
-        );
-    }
-    const qviRegistry = registries[0];
-
-    const ecrData = JSON.parse(
-        await fs.promises.readFile(
-            `${dataDir}/temp-data/ecr-data.json`,
-            'utf-8'
-        )
-    );
-    const ecrAuthEdge = JSON.parse(
-        await fs.promises.readFile(
-            `${dataDir}/temp-data/ecr-auth-edge.json`,
-            'utf-8'
-        )
-    );
-    const ecrRules = JSON.parse(
-        await fs.promises.readFile(
-            `${dataDir}/rules/ecr-rules.json`,
-            'utf-8'
-        )
-    );
-
-    const kargsSub: CredentialSubject = {
-        i: issueePrefix,
+    const subject: CredentialSubject = {
+        i: options.issueePrefix,
         dt: createTimestamp(),
         u: new Salter({}).qb64,
-        ...ecrData,
+        ...(await jsonFile(
+            `${options.dataDir}/temp-data/ecr-data.json`
+        )),
     };
-    const kargsIss: CredentialData = {
+    const data: CredentialData = {
         u: new Salter({}).qb64,
-        i: qviAID.prefix,
-        ri: qviRegistry.regk,
+        i: members[0].groupAid.prefix,
+        ri: registries[0].regk,
         s: ECR_SCHEMA_SAID,
-        a: kargsSub,
-        e: ecrAuthEdge,
-        r: ecrRules,
+        a: subject,
+        e: await jsonFile(
+            `${options.dataDir}/temp-data/ecr-auth-edge.json`
+        ),
+        r: await jsonFile(
+            `${options.dataDir}/rules/ecr-rules.json`
+        ),
     };
-    const IssOp1 = await issueCredentialMultisig(
-        QAR1Client,
-        QAR1Id,
-        [QAR2Id, QAR3Id],
-        qviAID.name,
-        kargsIss,
-        {isInitiator: true}
-    );
-    const IssOp2 = await issueCredentialMultisig(
-        QAR2Client,
-        QAR2Id,
-        [QAR1Id, QAR3Id],
-        qviAID.name,
-        kargsIss,
-        {coordinator: QAR1Id.prefix}
-    );
-    const IssOp3 = await issueCredentialMultisig(
-        QAR3Client,
-        QAR3Id,
-        [QAR1Id, QAR2Id],
-        qviAID.name,
-        kargsIss,
-        {coordinator: QAR1Id.prefix}
-    );
-
-    await completeCoordinatedOperations([
-        {client: QAR1Client, result: IssOp1},
-        {client: QAR2Client, result: IssOp2},
-        {client: QAR3Client, result: IssOp3},
-    ]);
-
-    ecrCredByQAR1 = await getIssuedCredential(
-        QAR1Client,
-        qviAID.prefix,
-        issueePrefix,
-        ECR_SCHEMA_SAID
-    );
-    ecrCredbyQAR2 = await getIssuedCredential(
-        QAR2Client,
-        qviAID.prefix,
-        issueePrefix,
-        ECR_SCHEMA_SAID
-    );
-    ecrCredbyQAR3 = await getIssuedCredential(
-        QAR3Client,
-        qviAID.prefix,
-        issueePrefix,
-        ECR_SCHEMA_SAID
-    );
-
-    const issuedCredentials = [
-        requireCredential(ecrCredByQAR1, 'QAR1 ECR credential'),
-        requireCredential(ecrCredbyQAR2, 'QAR2 ECR credential'),
-        requireCredential(ecrCredbyQAR3, 'QAR3 ECR credential'),
-    ];
-    const issuedSnapshots = issuedCredentials.map(
-        (credential, index) =>
-            credentialSnapshot(
-                credential,
-                memberPrefixes[index]
-            )
-    );
-    assertIssuedCredentialConvergence(
-        issuedSnapshots,
-        memberPrefixes,
-        'ECR credential'
-    );
-
-    const grantTime = createTimestamp();
-    console.log("IPEX Granting ECR credential to Person...");
-    const grant1 = await grantMultisig(
-        QAR1Client,
-        QAR1Id,
-        [QAR2Id, QAR3Id],
-        qviAids[0],
-        issueePrefix,
-        issuedCredentials[0],
-        grantTime,
-        {isInitiator: true}
-    );
-    const grant2 = await grantMultisig(
-        QAR2Client,
-        QAR2Id,
-        [QAR1Id, QAR3Id],
-        qviAids[1],
-        issueePrefix,
-        issuedCredentials[1],
-        grantTime,
-        {coordinator: QAR1Id.prefix}
-    );
-    const grant3 = await grantMultisig(
-        QAR3Client,
-        QAR3Id,
-        [QAR1Id, QAR2Id],
-        qviAids[2],
-        issueePrefix,
-        issuedCredentials[2],
-        grantTime,
-        {coordinator: QAR1Id.prefix}
-    );
-    await Promise.all([
-        completeMultisigIpex(QAR1Client, grant1),
-        completeMultisigIpex(QAR2Client, grant2),
-        completeMultisigIpex(QAR3Client, grant3),
-    ]);
-
-    return {
-        artifact: {
-            ecrCredSAID: issuedSnapshots[0].said,
-            ecrCredIssuer: issuedSnapshots[0].issuer,
-            ecrCredIssuee: issuedSnapshots[0].issuee,
-        },
-        registryId: issuedSnapshots[0].registry,
-        telDigest: issuedSnapshots[0].currentTelDigest,
-    };
-}
-
-function parseEcrCredentialArguments(
-    argv: string[]
-): CreateEcrCredentialOptions & {artifactDir: string} {
-    const parsed = parseNamedOrPositionalArguments(
-        argv,
-        [
-            'config',
-            'group-name',
-            'data-dir',
-            'issuee-prefix',
-            'artifact-dir',
-        ],
-        [
-            'environment',
-            'group-name',
-            'data-dir',
-            'participant-source',
-            'issuee-prefix',
-            'artifact-dir',
-        ]
-    );
-    requireNamedArguments(parsed, [
-        'group-name',
-        'data-dir',
-        'issuee-prefix',
-        'artifact-dir',
-    ]);
-    const invocation = participantInvocationFromArguments(parsed);
-    return {
-        groupName: parsed['group-name'],
-        dataDir: parsed['data-dir'],
-        participantSource: invocation.participantSource,
-        issueePrefix: parsed['issuee-prefix'],
-        artifactDir: parsed['artifact-dir'],
-        environment: invocation.environment,
-    };
+    const issued = await issueAndGrantCredential({
+        config: options.config,
+        groupName: options.groupName,
+        issueePrefix: options.issueePrefix,
+        credentialData: data,
+    });
+    return issued[0].snapshot;
 }
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const options = parseEcrCredentialArguments(
-            process.argv.slice(2)
-        );
-        const result = await createEcrCredential(options);
+        const args = parseNamedArguments(process.argv.slice(2), [
+            'config',
+            'environment',
+            'participant-source',
+            'group-name',
+            'data-dir',
+            'issuee-prefix',
+            'artifact-dir',
+        ]);
+        requireNamedArguments(args, [
+            'group-name',
+            'data-dir',
+            'issuee-prefix',
+            'artifact-dir',
+        ]);
+        const snapshot = await createEcrCredential({
+            config: participantConfigFromArguments(args),
+            groupName: args['group-name'],
+            dataDir: args['data-dir'],
+            issueePrefix: args['issuee-prefix'],
+        });
+        const artifact = {
+            ecrCredSAID: snapshot.said,
+            ecrCredIssuer: snapshot.issuer,
+            ecrCredIssuee: snapshot.issuee,
+        };
         await fs.promises.writeFile(
-            `${options.artifactDir}/ecr-cred-info.json`,
-            JSON.stringify(result.artifact)
+            `${args['artifact-dir']}/ecr-cred-info.json`,
+            JSON.stringify(artifact)
         );
         return {
-            status: 'converged',
-            credential: result.artifact,
-            credentialSaid: result.artifact.ecrCredSAID,
-            registryId: result.registryId,
-            telDigest: result.telDigest,
+            status: 'issued',
+            credential: artifact,
+            credentialSaid: snapshot.said,
+            registryId: snapshot.registry,
+            telDigest: snapshot.currentTelDigest,
         };
     });
 }

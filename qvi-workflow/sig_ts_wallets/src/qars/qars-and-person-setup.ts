@@ -7,7 +7,7 @@ import fs from 'fs';
 import {waitOperation} from "../operations.ts";
 import {
     isMainModule,
-    parseNamedOrPositionalArguments,
+    parseNamedArguments,
     participantInvocationFromArguments,
     requireNamedArguments,
     runJsonCli,
@@ -288,10 +288,9 @@ export async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnv
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
-        const parsed = parseNamedOrPositionalArguments(
+        const parsed = parseNamedArguments(
             process.argv.slice(2),
-            ['config', 'data-dir'],
-            ['environment', 'data-dir', 'participant-source']
+            ['config', 'environment', 'participant-source', 'data-dir']
         );
         requireNamedArguments(parsed, ['data-dir']);
         const invocation = participantInvocationFromArguments(parsed);
