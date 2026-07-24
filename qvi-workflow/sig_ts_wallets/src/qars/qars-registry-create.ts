@@ -1,56 +1,23 @@
-import fs from 'node:fs';
-
-import {randomNonce} from 'signify-ts';
-
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
-import {createRegistryMultisig} from '../credentials.ts';
-import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
+import type {GroupMember} from '../client.ts';
+import {createRegistry} from '../credentials.ts';
 import {retry} from '../retry.ts';
-import {loadQviMembers} from './qvi-context.ts';
 
+/** Create the QVI registry and require it to converge across all members. */
 export async function createQviRegistry(
-    config: ParticipantConfig,
+    members: GroupMember[],
     groupName: string,
     registryName: string
 ) {
-    const members = await loadQviMembers(config, groupName);
-    const nonce = randomNonce();
-    await coordinateMultisigOperation(
-        members.map(({client, memberAid}) => ({
-            client,
-            aid: memberAid,
-        })),
-        (context) => {
-            const member = members.find(
-                ({memberAid}) =>
-                    memberAid.prefix === context.aid.prefix
-            );
-            if (member === undefined) {
-                throw new Error(
-                    `Missing QVI member ${context.aid.prefix}`
-                );
-            }
-            return createRegistryMultisig(
-                context.client,
-                context.aid,
-                context.otherMembers,
-                member.groupAid,
-                registryName,
-                nonce,
-                {
-                    isInitiator: context.isInitiator,
-                    coordinator: context.coordinatorPrefix,
-                }
-            );
-        }
-    );
+    const initiator = members[0];
+    if (initiator === undefined) {
+        throw new Error('Registry creation requires group members');
+    }
+    await createRegistry({
+        members,
+        initiatorPrefix: initiator.memberAid.prefix,
+        groupName,
+        registryName,
+    });
     return retry(async () => {
         const registryLists = await Promise.all(
             members.map(({client}) =>
@@ -71,33 +38,5 @@ export async function createQviRegistry(
             );
         }
         return {registryRegk: registryId};
-    });
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'group-name',
-            'registry-name',
-            'data-dir',
-        ]);
-        requireNamedArguments(args, [
-            'group-name',
-            'registry-name',
-            'data-dir',
-        ]);
-        const registry = await createQviRegistry(
-            participantConfigFromArguments(args),
-            args['group-name'],
-            args['registry-name']
-        );
-        await fs.promises.writeFile(
-            `${args['data-dir']}/qvi-registry-info.json`,
-            JSON.stringify(registry)
-        );
-        return {status: 'created', ...registry};
     });
 }

@@ -1,0 +1,43 @@
+name: Compatibility checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: qvi-workflow/sig_ts_wallets/package-lock.json
+      - name: Install TypeScript dependencies
+        working-directory: qvi-workflow/sig_ts_wallets
+        run: npm ci
+      - name: Typecheck
+        working-directory: qvi-workflow/sig_ts_wallets
+        run: npm run typecheck
+      - name: Focused TypeScript tests
+        working-directory: qvi-workflow/sig_ts_wallets
+        run: npm test
+      - name: Callback recorder tests
+        working-directory: qvi-workflow/keria_docker
+        run: python -m unittest discover callback_recorder/tests
+      - name: Shell workflow contract
+        run: qvi-workflow/keria_docker/tests/workflow-contract-test.sh
+      - name: Shell syntax
+        run: find qvi-workflow -name '*.sh' -print0 | xargs -0 -n1 bash -n
+      - name: Compose rendering
+        working-directory: qvi-workflow/keria_docker
+        run: >-
+          docker compose
+          --env-file keria-signify-docker.env
+          -f docker-compose-keria_signify_qvi.yaml
+          config >/dev/null
+      - name: Whitespace
+        run: git diff --check

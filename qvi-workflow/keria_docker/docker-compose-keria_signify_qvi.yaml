@@ -3,8 +3,6 @@
 # - keria configured to use the demo witnesses
 # - vLEI server for credential schema caching
 
-x-keri_1_2-image: &keri_1_2-image
-  image: gleif/keri:1.2.9
 x-keri_1_1-image: &keri_1_1-image
   image: weboftrust/keri:1.1.32
 
@@ -41,6 +39,7 @@ volumes:
   keria1-vol:
   keria2-vol:
   keria3-vol:
+  keria4-vol:
 
 services:
   # vLEI schema caching server
@@ -120,7 +119,6 @@ services:
     volumes:
       - ./runtime/config/keria/keria1.json:/keria/config/keri/cf/keria.json
       - keria1-vol:/usr/local/var/keri
-    command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
       <<: *healthcheck
@@ -145,7 +143,6 @@ services:
     volumes:
       - ./runtime/config/keria/keria2.json:/keria/config/keri/cf/keria.json
       - keria2-vol:/usr/local/var/keri
-    command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
       <<: *healthcheck
@@ -170,7 +167,30 @@ services:
     volumes:
       - ./runtime/config/keria/keria3.json:/keria/config/keri/cf/keria.json
       - keria3-vol:/usr/local/var/keri
-    command: --config-dir /keria/config --config-file keria --name keria --loglevel INFO
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
+      <<: *healthcheck
+    entrypoint: [ 'keria', 'start', '--config-dir', '/keria/config', '--config-file', 'keria', '--name', 'keria', '--loglevel', 'INFO' ]
+    depends_on:
+      vlei-server:
+        condition: service_healthy
+      qar-witnesses:
+        condition: service_healthy
+      person-witnesses:
+        condition: service_healthy
+
+  keria4:
+    stop_grace_period: 1s
+    <<: *keria-image
+    environment:
+      - KERI_AGENT_CORS=True
+      - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=UTF-8
+      - PYTHONWARNINGS=ignore::SyntaxWarning
+      - KERIA_RELEASER_TIMEOUT=3600
+    volumes:
+      - ./runtime/config/keria/keria4.json:/keria/config/keri/cf/keria.json
+      - keria4-vol:/usr/local/var/keri
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:3902/spec.yaml" ]
       <<: *healthcheck
@@ -210,7 +230,7 @@ services:
       - SALLY_SALT=${DIRECT_SALLY_SALT}
       - SALLY_PASSCODE=${DIRECT_SALLY_PASSCODE}
       - WEBHOOK_HOST=${WEBHOOK_HOST}
-      - GEDA_PRE=${GEDA_PRE}
+      - GEDA_PRE=${GEDA_PRE:-}
       - PYTHONWARNINGS=ignore::SyntaxWarning
       - SALLY_PORT=9823
     volumes:
@@ -240,17 +260,6 @@ services:
       - ./runtime/config:/config
       - ./runtime/acdc-info:/acdc-info
 
-  kli2:
-    <<: *keri_1_2-image
-    profiles: [ "jobs" ]
-    entrypoint: kli
-    environment:
-      PYTHONWARNINGS: ignore::SyntaxWarning
-    volumes:
-      - ./runtime/keystores:/usr/local/var/keri
-      - ./runtime/config:/config
-      - ./runtime/acdc-info:/acdc-info
-
   signify:
     image: gleif/vlei-workflow-signify:1.0.0
     build:
@@ -259,9 +268,8 @@ services:
     profiles: [ "jobs" ]
     entrypoint: tsx
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-docker-tsx}
-      SIGTS_AIDS: ${SIGTS_AIDS}
       QVI_OPERATION_TIMEOUT_SECONDS: ${WORKFLOW_TIMEOUT_SECONDS:-120}
     volumes:
+      - ./runtime/config/participants.json:/vlei-workflow/participants.json:ro
       - ./runtime/qvi_data:/vlei-workflow/qvi_data
       - ./runtime/acdc-info:/acdc-info

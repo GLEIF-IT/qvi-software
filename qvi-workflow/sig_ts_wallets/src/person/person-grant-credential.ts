@@ -1,43 +1,31 @@
-import {Serder} from 'signify-ts';
+import {Serder, type HabState, type SignifyClient} from 'signify-ts';
 
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {getCredential} from '../credential-state.ts';
-import {getOrCreateClient} from '../keystore-creation.ts';
 import {
     requireOperationResponse,
     waitOperation,
 } from '../operations.ts';
 
 export interface PersonPresentationOptions {
-    config: ParticipantConfig;
+    client: SignifyClient;
+    personAid: HabState;
     credentialSaid: string;
     recipientPrefix: string;
 }
 
+/** Present one credential directly from a concrete person wallet. */
 export async function presentPersonCredential(
     options: PersonPresentationOptions
 ) {
-    const person = options.config.participants.person;
-    const client = await getOrCreateClient(
-        person.salt,
-        options.config.environment,
-        person.keriaHost
-    );
+    const client = options.client;
     const credential = await getCredential(
         client,
         options.credentialSaid
     );
     const [grant, signatures, attachment] =
         await client.ipex().grant({
-            senderName: person.name,
+            senderName: options.personAid.name,
             acdc: new Serder(credential.sad),
             anc: new Serder(credential.anc),
             iss: new Serder(credential.iss),
@@ -46,7 +34,7 @@ export async function presentPersonCredential(
             datetime: createTimestamp(),
         });
     const operation = await client.ipex().submitGrant(
-        person.name,
+        options.personAid.name,
         grant,
         signatures,
         attachment,
@@ -66,25 +54,4 @@ export async function presentPersonCredential(
         credentialSaid: options.credentialSaid,
         recipientPrefix: options.recipientPrefix,
     };
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'credential-said',
-            'recipient-prefix',
-        ]);
-        requireNamedArguments(args, [
-            'credential-said',
-            'recipient-prefix',
-        ]);
-        return presentPersonCredential({
-            config: participantConfigFromArguments(args),
-            credentialSaid: args['credential-said'],
-            recipientPrefix: args['recipient-prefix'],
-        });
-    });
 }

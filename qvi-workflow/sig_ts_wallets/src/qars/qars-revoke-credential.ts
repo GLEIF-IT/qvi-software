@@ -1,23 +1,14 @@
-import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
 import {createTimestamp} from '../create-aid.ts';
+import type {GroupMember} from '../client.ts';
 import {
     credentialSnapshot,
     getCredential,
     type CredentialSnapshot,
 } from '../credential-state.ts';
-import {revokeCredentialMultisig} from '../credentials.ts';
-import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
-import {loadQviMembers} from './qvi-context.ts';
+import {revokeCredential} from '../credentials.ts';
 
 export interface RevokeCredentialOptions {
-    config: ParticipantConfig;
+    members: GroupMember[];
     groupName: string;
     credentialSaid: string;
 }
@@ -30,6 +21,7 @@ export interface RevocationResult {
     revocationTimestamp: string;
 }
 
+/** Require one value to agree across all QVI members. */
 function commonValue(
     values: string[],
     description: string
@@ -46,6 +38,7 @@ function commonValue(
     return first;
 }
 
+/** Require one credential status sequence across all QVI members. */
 function commonCredentialStatus(
     snapshots: CredentialSnapshot[]
 ): string {
@@ -55,13 +48,11 @@ function commonCredentialStatus(
     );
 }
 
+/** Revoke one credential and require the new TEL state to converge. */
 export async function runRevocation(
     options: RevokeCredentialOptions
 ): Promise<RevocationResult> {
-    const members = await loadQviMembers(
-        options.config,
-        options.groupName
-    );
+    const members = options.members;
     const qviPrefix = commonValue(
         members.map(({groupAid}) => groupAid.prefix),
         'QVI prefix'
@@ -96,26 +87,18 @@ export async function runRevocation(
         );
     }
 
+    const initiator = members[0];
+    if (initiator === undefined) {
+        throw new Error('Credential revocation requires group members');
+    }
     const timestamp = createTimestamp();
-    await coordinateMultisigOperation(
-        members.map(({client, memberAid}) => ({
-            client,
-            aid: memberAid,
-        })),
-        (context) =>
-            revokeCredentialMultisig(
-                context.client,
-                context.aid,
-                context.otherMembers,
-                options.groupName,
-                options.credentialSaid,
-                timestamp,
-                {
-                    isInitiator: context.isInitiator,
-                    coordinator: context.coordinatorPrefix,
-                }
-            )
-    );
+    await revokeCredential({
+        members,
+        initiatorPrefix: initiator.memberAid.prefix,
+        groupName: options.groupName,
+        credentialSaid: options.credentialSaid,
+        timestamp,
+    });
 
     const after = await Promise.all(
         members.map(async ({client, memberAid}) =>
@@ -144,25 +127,4 @@ export async function runRevocation(
         ),
         revocationTimestamp: timestamp,
     };
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'group-name',
-            'credential-said',
-        ]);
-        requireNamedArguments(args, [
-            'group-name',
-            'credential-said',
-        ]);
-        return runRevocation({
-            config: participantConfigFromArguments(args),
-            groupName: args['group-name'],
-            credentialSaid: args['credential-said'],
-        });
-    });
 }

@@ -3,9 +3,7 @@ import {describe, it} from 'node:test';
 
 import type {SignifyClient} from 'signify-ts';
 
-import {
-    collectQviMultisigOobi,
-} from '../src/qars/qars-authorize-endroles-get-qvi-oobi.ts';
+import {assertQviEndRoles} from '../src/assertions.ts';
 
 const QVI_PREFIX = 'EQviPrefix';
 const AGENT_EIDS = ['EAgentOne', 'EAgentTwo', 'EAgentThree'];
@@ -69,17 +67,26 @@ function qualifiedOobi(eid: string, index: number): string {
     );
 }
 
+/** Assert endpoint evidence with the deterministic test fixture. */
+async function assertOobi(
+    clients: SignifyClient[],
+    expectedEndpoints = AGENT_ENDPOINTS_BY_EID
+) {
+    return await assertQviEndRoles(
+        clients,
+        'qvi',
+        QVI_PREFIX,
+        expectedEndpoints
+    );
+}
+
 describe('QVI multisig OOBI', () => {
     it('strips the agent suffix from one qualified multisig OOBI', async () => {
         const clients = AGENT_EIDS.map((eid) =>
             agentClient({eid})
         );
 
-        const result = await collectQviMultisigOobi(
-            clients,
-            'qvi',
-            QVI_PREFIX
-        );
+        const result = await assertOobi(clients);
 
         assert.equal(result.qviPrefix, QVI_PREFIX);
         assert.equal(
@@ -105,7 +112,7 @@ describe('QVI multisig OOBI', () => {
         );
 
         await assert.rejects(
-            collectQviMultisigOobi(clients, 'qvi', QVI_PREFIX),
+            assertOobi(clients),
             /enumerated an unexpected QVI agent OOBI/
         );
     });
@@ -116,7 +123,7 @@ describe('QVI multisig OOBI', () => {
         );
 
         await assert.rejects(
-            collectQviMultisigOobi(clients, 'qvi', QVI_PREFIX),
+            assertOobi(clients),
             /no qualified QVI agent OOBI to canonicalize/
         );
     });
@@ -130,7 +137,7 @@ describe('QVI multisig OOBI', () => {
         );
 
         await assert.rejects(
-            collectQviMultisigOobi(clients, 'qvi', QVI_PREFIX),
+            assertOobi(clients),
             /do not observe the exact authorized QVI agent EIDs/
         );
     });
@@ -151,21 +158,39 @@ describe('QVI multisig OOBI', () => {
         );
 
         await assert.rejects(
-            collectQviMultisigOobi(clients, 'qvi', QVI_PREFIX),
+            assertOobi(clients),
             /disagree on QVI member agent endpoint locations/
         );
     });
 
-    it('rejects duplicate agent EIDs before accepting endpoint evidence', async () => {
-        const clients = [
-            agentClient({eid: AGENT_EIDS[0]}),
-            agentClient({eid: AGENT_EIDS[0]}),
-            agentClient({eid: AGENT_EIDS[2]}),
+    it('rejects a converged endpoint outside workflow config', async () => {
+        const endpoints = [
+            'http://unexpected-1:3902/',
+            'http://unexpected-2:3902/',
+            'http://unexpected-3:3902/',
         ];
+        const clients = AGENT_EIDS.map((eid) =>
+            agentClient({eid, endpointOverrides: endpoints})
+        );
 
         await assert.rejects(
-            collectQviMultisigOobi(clients, 'qvi', QVI_PREFIX),
-            /agent EIDs are not unique/
+            assertOobi(clients),
+            /do not match the workflow/
+        );
+    });
+
+    it('rejects duplicate agent EIDs before accepting endpoint evidence', async () => {
+        const clients = AGENT_EIDS.map((eid) =>
+            agentClient({eid})
+        );
+
+        await assert.rejects(
+            assertOobi(clients, [
+                AGENT_ENDPOINTS_BY_EID[0],
+                AGENT_ENDPOINTS_BY_EID[0],
+                AGENT_ENDPOINTS_BY_EID[2],
+            ]),
+            /agent EIDs and URLs must be unique/
         );
     });
 });

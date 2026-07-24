@@ -6,32 +6,35 @@ import type {
 } from 'signify-ts';
 
 import {
-    isMainModule,
-    parseNamedArguments,
-    participantConfigFromArguments,
-    requireNamedArguments,
-    runJsonCli,
-    type ParticipantConfig,
-} from '../cli.ts';
+    connectClient,
+    loadGroupMembers,
+    type WorkflowConfig,
+} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
+import {OOR_SCHEMA_SAID} from '../credentials.ts';
 import {issueAndGrantCredential} from './issue-and-grant.ts';
-import {loadQviMembers} from './qvi-context.ts';
 
-export const OOR_SCHEMA_SAID =
-    'EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy';
-
+/** Read one workflow credential fragment from disk. */
 async function jsonFile(path: string) {
     return JSON.parse(await fs.promises.readFile(path, 'utf8'));
 }
 
+/** Build, issue, and grant the official-organizational-role credential. */
 export async function createOorCredential(options: {
-    config: ParticipantConfig;
+    config: WorkflowConfig;
     groupName: string;
     dataDir: string;
     issueePrefix: string;
 }) {
-    const members = await loadQviMembers(
-        options.config,
+    const participants = options.config.qvi.finalMembers.map(
+        (role) => options.config.participants[role]
+    );
+    const clients = await Promise.all(
+        participants.map(connectClient)
+    );
+    const members = await loadGroupMembers(
+        clients,
+        participants.map(({name}) => name),
         options.groupName
     );
     const registries = await members[0].client
@@ -62,52 +65,10 @@ export async function createOorCredential(options: {
         ),
     };
     const issued = await issueAndGrantCredential({
-        config: options.config,
+        members,
         groupName: options.groupName,
         issueePrefix: options.issueePrefix,
         credentialData: data,
     });
     return issued[0].snapshot;
-}
-
-if (isMainModule(import.meta.url)) {
-    await runJsonCli(async () => {
-        const args = parseNamedArguments(process.argv.slice(2), [
-            'config',
-            'environment',
-            'participant-source',
-            'group-name',
-            'data-dir',
-            'issuee-prefix',
-            'artifact-dir',
-        ]);
-        requireNamedArguments(args, [
-            'group-name',
-            'data-dir',
-            'issuee-prefix',
-            'artifact-dir',
-        ]);
-        const snapshot = await createOorCredential({
-            config: participantConfigFromArguments(args),
-            groupName: args['group-name'],
-            dataDir: args['data-dir'],
-            issueePrefix: args['issuee-prefix'],
-        });
-        const artifact = {
-            oorCredSAID: snapshot.said,
-            oorCredIssuer: snapshot.issuer,
-            oorCredIssuee: snapshot.issuee,
-        };
-        await fs.promises.writeFile(
-            `${args['artifact-dir']}/oor-cred-info.json`,
-            JSON.stringify(artifact)
-        );
-        return {
-            status: 'issued',
-            credential: artifact,
-            credentialSaid: snapshot.said,
-            registryId: snapshot.registry,
-            telDigest: snapshot.currentTelDigest,
-        };
-    });
 }

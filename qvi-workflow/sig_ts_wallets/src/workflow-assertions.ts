@@ -21,6 +21,8 @@ export interface ExpectedGroupState {
     signingThreshold: string | string[];
     nextThreshold: string | string[];
     members: string[];
+    signingMembers?: string[];
+    rotationMembers?: string[];
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
@@ -48,15 +50,20 @@ export function assertGroupStateConvergence(
             `QAR group state diverged: ${JSON.stringify(observations.map(({snapshot}) => snapshot))}`
         );
     }
-    const expectedMembers = sortAids(expected.members);
+    const expectedSigningMembers = sortAids(
+        expected.signingMembers ?? expected.members
+    );
+    const expectedRotationMembers = sortAids(
+        expected.rotationMembers ?? expected.members
+    );
     const expectedState = {
         prefix: expected.prefix,
         delegator: expected.delegator,
         sequence: expected.sequence,
         signingThreshold: expected.signingThreshold,
         nextThreshold: expected.nextThreshold,
-        signingMembers: expectedMembers,
-        rotationMembers: expectedMembers,
+        signingMembers: expectedSigningMembers,
+        rotationMembers: expectedRotationMembers,
     };
     const actualState = {
         prefix: baseline.prefix,
