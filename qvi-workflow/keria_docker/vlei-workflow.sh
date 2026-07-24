@@ -47,6 +47,7 @@ export WORKFLOW_TIMEOUT_SECONDS
 KEEP_RUNTIME=false
 PAUSE_ENABLED=false
 WORKFLOW_MODE=default
+WORKFLOW_STOP_AFTER=""
 HELP_REQUESTED=false
 START_TIME=0
 
@@ -2372,31 +2373,56 @@ function ecr_auth_and_ecr_cred() {
   ecr_cred || return 1
 }
 
+# Exit successfully after the requested top-level workflow phase. The EXIT
+# trap owns cleanup and honors --keep-runtime.
+stop_after() {
+  local completed_phase=$1
+
+  if [[ "${WORKFLOW_STOP_AFTER}" != "${completed_phase}" ]]; then
+    return 0
+  fi
+
+  print_lcyan "Stopped after ${completed_phase} as requested"
+  exit 0
+}
+
 # Main workflow driving the end to end QVI credentialing and reporting process
 function main_flow() {
   print_lcyan "--------------------------------------------------------------------------------"
   print_lcyan "                       Running canonical QVI workflow"
   print_lcyan "--------------------------------------------------------------------------------"
   setup || return 1
+  stop_after setup
   geda_delegation_to_qvi || return 1
+  stop_after geda_delegation_to_qvi
   qvi_credential || return 1
+  stop_after qvi_credential
 
   le_creation_and_granting || return 1
+  stop_after le_creation_and_granting
   pause "Press [ENTER] to present LE credential to Sally" || return 1
   le_sally_presentation || return 1
+  stop_after le_sally_presentation
 
   oor_auth_and_oor_cred || return 1
+  stop_after oor_auth_and_oor_cred
   pause "Press [ENTER] to present OOR to Sally" || return 1
   person_present_oor_cred_to_sally || return 1
+  stop_after person_present_oor_cred_to_sally
 
   revoke_oor_credential || return 1
+  stop_after revoke_oor_credential
   present_revoked_oor_to_sally || return 1
+  stop_after present_revoked_oor_to_sally
 
   ecr_auth_and_ecr_cred || return 1
+  stop_after ecr_auth_and_ecr_cred
   revoke_ecr_credential || return 1
+  stop_after revoke_ecr_credential
 
   pause "Press [enter] to end workflow" || return 1
   end_workflow || return 1
+  stop_after end_workflow
 }
 
 # Runs the workflow and presents the LE credential to GLEIF Staging Sally
@@ -2454,9 +2480,17 @@ usage() {
         "  -a, --alias ALIAS     Alias for --alternate (default: alternate)" \
         "  -o, --oobi OOBI       OOBI URL for --alternate" \
         "      --timeout SECONDS Timeout for each bounded operation (default: 120)" \
+        "      --stop-after PHASE Stop successfully after a major canonical phase" \
         "      --keep-runtime    Preserve runtime/ and the Compose stack" \
         "      --pause           Pause at story checkpoints" \
-        "  -h, --help            Display this help message"
+        "  -h, --help            Display this help message" \
+        "" \
+        "Stop phases:" \
+        "  setup, geda_delegation_to_qvi, qvi_credential," \
+        "  le_creation_and_granting, le_sally_presentation," \
+        "  oor_auth_and_oor_cred, person_present_oor_cred_to_sally," \
+        "  revoke_oor_credential, present_revoked_oor_to_sally," \
+        "  ecr_auth_and_ecr_cred, revoke_ecr_credential, end_workflow"
 }
 
 select_workflow_mode() {
@@ -2505,6 +2539,35 @@ parse_arguments() {
                 fi
                 WORKFLOW_TIMEOUT_SECONDS=$2
                 export WORKFLOW_TIMEOUT_SECONDS
+                shift 2
+                ;;
+            --stop-after)
+                option_has_value=false
+                [[ $# -ge 2 && -n "${2:-}" ]] && option_has_value=true
+                if [[ "${option_has_value}" == false ]]; then
+                    print_red "Error: --stop-after requires a phase"
+                    return 2
+                fi
+                case "$2" in
+                    setup|\
+                    geda_delegation_to_qvi|\
+                    qvi_credential|\
+                    le_creation_and_granting|\
+                    le_sally_presentation|\
+                    oor_auth_and_oor_cred|\
+                    person_present_oor_cred_to_sally|\
+                    revoke_oor_credential|\
+                    present_revoked_oor_to_sally|\
+                    ecr_auth_and_ecr_cred|\
+                    revoke_ecr_credential|\
+                    end_workflow)
+                        WORKFLOW_STOP_AFTER=$2
+                        ;;
+                    *)
+                        print_red "Error: unknown --stop-after phase: $2"
+                        return 2
+                        ;;
+                esac
                 shift 2
                 ;;
             -a|--alias)
@@ -2568,6 +2631,11 @@ parse_arguments() {
     if [[ "${alternate_option_was_customized}" == true &&
           "${alternate_mode_is_selected}" == false ]]; then
         print_red "--alias and --oobi require --alternate"
+        return 2
+    fi
+    if [[ -n "${WORKFLOW_STOP_AFTER}" &&
+          "${WORKFLOW_MODE}" != default ]]; then
+        print_red "--stop-after is available only for the canonical default workflow"
         return 2
     fi
 }
