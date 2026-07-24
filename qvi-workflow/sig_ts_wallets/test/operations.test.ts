@@ -126,6 +126,28 @@ describe('operation state handling', () => {
         });
     });
 
+    it('projects reply identity without inventing key-event fields', () => {
+        assert.deepEqual(
+            operationResultIdentity({
+                v: 'KERI10JSON',
+                t: 'rpy',
+                d: 'EEndRoleReply',
+                dt: '2026-07-24T16:00:00.000000+00:00',
+                r: '/end/role/add',
+                a: {
+                    cid: 'EQvi',
+                    role: 'agent',
+                    eid: 'EAgent',
+                },
+            }),
+            {
+                kind: 'event',
+                said: 'EEndRoleReply',
+                route: '/end/role/add',
+            }
+        );
+    });
+
     it('projects credential and registry response identities', () => {
         assert.deepEqual(
             operationResultIdentity({

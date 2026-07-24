@@ -24,6 +24,17 @@ import {
     completeCoordinatedOperations,
 } from '../coordinated-operation.ts';
 import {retry} from '../retry.ts';
+import {
+    QVI_INITIAL_SEQUENCE,
+    qviNextThreshold,
+    qviSigningThreshold,
+} from '../qvi-configuration.ts';
+import {
+    assertRepeatedDirectedFanout,
+    canonicalOperationEvidence,
+    canonicalReceipts,
+    canonicalStrings,
+} from '../workflow-contracts.ts';
 
 export interface AgentEndpoint {
     eid: string;
@@ -56,6 +67,8 @@ export interface AuthorizeEndRoleOptions {
     configPath: string;
     groupName: string;
     dataDir: string;
+    groupPrefix?: string;
+    delegatorPrefix?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -146,6 +159,14 @@ function readMemberAgentEndpoints(
     endpoints.sort((left, right) => left.eid.localeCompare(right.eid));
 
     const observedEids = endpoints.map(({eid}) => eid);
+    const endpointUrls = endpoints.map(({url}) => url);
+    const endpointUrlsAreUnique =
+        new Set(endpointUrls).size === endpointUrls.length;
+    if (endpointUrlsAreUnique === false) {
+        throw new Error(
+            'QVI member agents must expose three distinct endpoint URLs'
+        );
+    }
     const expectedSorted = [...expectedEids].sort();
     const endpointEidsAreExact =
         JSON.stringify(observedEids) === JSON.stringify(expectedSorted);
@@ -350,7 +371,14 @@ export async function authorizeAgentEndRoles(
     const groupState =
         assertGroupStateConvergence(
             observations,
-            memberPrefixes
+            memberPrefixes,
+            {
+                prefix: options.groupPrefix,
+                delegator: options.delegatorPrefix,
+                sequence: QVI_INITIAL_SEQUENCE,
+                signingThreshold: qviSigningThreshold(),
+                nextThreshold: qviNextThreshold(),
+            }
         );
     const groupAids = observations.map(
         (observation) => observation.group
@@ -426,25 +454,103 @@ export async function authorizeAgentEndRoles(
         );
     }
 
+    const coordinationReceipts = coordinationResults.flatMap((entry) =>
+        entry.result.wrapperReceipts.map((receipt) => ({
+            sender: entry.sender,
+            ...receipt,
+        }))
+    );
+    if (operationEvidence.length > 0) {
+        const expectedOperationNames = qviOobi.agentEndpoints.flatMap(
+            ({eid}) =>
+                Array.from(
+                    {length: 3},
+                    () =>
+                        `endrole.${groupState.prefix}.agent.${eid}`
+                )
+        );
+        const observedOperationNames = operationEvidence.map(
+            ({name}) => name
+        );
+        const operationNamesAreExact =
+            JSON.stringify(canonicalStrings(observedOperationNames)) ===
+            JSON.stringify(canonicalStrings(expectedOperationNames));
+        if (operationNamesAreExact === false) {
+            throw new Error(
+                'QVI agent end-role operation names do not cover each agent on every QAR'
+            );
+        }
+        const terminalEvidenceIsExact = operationEvidence.every(
+            ({done, result}) =>
+                done === true &&
+                result.kind === 'event' &&
+                typeof result.said === 'string' &&
+                result.said.length > 0 &&
+                result.route === '/end/role/add'
+        );
+        if (terminalEvidenceIsExact === false) {
+            throw new Error(
+                'QVI agent end-role operations did not return terminal /end/role/add reply events'
+            );
+        }
+        assertRepeatedDirectedFanout(
+            coordinationReceipts,
+            memberPrefixes,
+            3,
+            'QVI agent end-role coordination'
+        );
+        const innerEventSaids = coordinationReceipts.map(
+            ({innerExchangeSaid}) => innerExchangeSaid
+        );
+        const uniqueInnerEventSaids = new Set(innerEventSaids);
+        const eachEndRoleWasSentToEveryPeer =
+            uniqueInnerEventSaids.size === 3 &&
+            [...uniqueInnerEventSaids].every(
+                (said) =>
+                    innerEventSaids.filter(
+                        (candidate) => candidate === said
+                    ).length === 6
+            );
+        if (eachEndRoleWasSentToEveryPeer === false) {
+            throw new Error(
+                'QVI agent end-role coordination did not fan out each endpoint event to every peer'
+            );
+        }
+        const evidenceSaids = new Set(
+            operationEvidence.map(({result}) => result.said)
+        );
+        const evidenceMatchesCoordinatedEvents =
+            evidenceSaids.size === uniqueInnerEventSaids.size &&
+            [...evidenceSaids].every(
+                (said) =>
+                    typeof said === 'string' &&
+                    uniqueInnerEventSaids.has(said)
+            );
+        if (evidenceMatchesCoordinatedEvents === false) {
+            throw new Error(
+                'QVI endpoint-role terminal events do not match the coordinated events'
+            );
+        }
+    }
+
     const proof = {
         ...qviOobi,
         groupState,
-        groupObservations: observations.map(
-            ({observerAid, snapshot}) => ({
+        groupObservations: observations
+            .map(({observerAid, snapshot}) => ({
                 observerAid,
                 snapshot,
-            })
-        ),
-        operationNames: operationEvidence.map(
-            (operation) => operation.name
-        ),
-        operationEvidence,
-        coordinationReceipts: coordinationResults.flatMap((entry) =>
-            entry.result.wrapperReceipts.map((receipt) => ({
-                sender: entry.sender,
-                ...receipt,
             }))
+            .sort((left, right) =>
+                left.observerAid.localeCompare(right.observerAid)
+            ),
+        operationNames: canonicalStrings(
+            operationEvidence.map((operation) => operation.name)
         ),
+        operationEvidence:
+            canonicalOperationEvidence(operationEvidence),
+        coordinationReceipts:
+            canonicalReceipts(coordinationReceipts),
     };
     const artifact: Omit<QviAgentProof, 'operationEvidence'> = {
         qviPrefix: proof.qviPrefix,
@@ -470,6 +576,8 @@ function parseAuthorizeArguments(
         'config',
         'group-name',
         'data-dir',
+        'group-prefix',
+        'delegator-prefix',
     ]);
     requireNamedArguments(args, [
         'config',
@@ -480,6 +588,8 @@ function parseAuthorizeArguments(
         configPath: args.config,
         groupName: args['group-name'],
         dataDir: args['data-dir'],
+        groupPrefix: args['group-prefix'],
+        delegatorPrefix: args['delegator-prefix'],
     };
 }
 

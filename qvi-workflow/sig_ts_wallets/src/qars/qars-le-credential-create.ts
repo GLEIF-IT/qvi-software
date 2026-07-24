@@ -28,6 +28,11 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
+import {
+    assertIssuanceContract,
+    canonicalObserverSnapshots,
+    canonicalOperationEvidence,
+} from '../workflow-contracts.ts';
 
 const LE_SCHEMA_SAID = 'ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY';
 
@@ -157,17 +162,29 @@ export async function createLeCredential(
             'LE credential'
         );
         console.log("LE credential already exists");
-        return {
+        const result: CreateLeCredentialResult = {
             artifact: {
                 leCredSAID: snapshots[0].said,
                 leCredIssuer: snapshots[0].issuer,
                 leCredIssuee: snapshots[0].issuee,
             },
-            observations: snapshots,
+            observations:
+                canonicalObserverSnapshots(snapshots),
             operationEvidence: [],
             issuanceReceipts: [],
             coordinationReceipts: [],
         };
+        assertIssuanceContract(
+            result,
+            memberPrefixes,
+            {
+                issuer: qviAID.prefix,
+                schema: LE_SCHEMA_SAID,
+                issuee: issueePrefix,
+            },
+            'LE credential'
+        );
+        return result;
     }
 
     const onlySomeQarsHaveCredential = noQarHasCredential === false;
@@ -324,14 +341,15 @@ export async function createLeCredential(
         completeMultisigIpex(QAR3Client, grant3),
     ]);
 
-    return {
+    const result: CreateLeCredentialResult = {
         artifact: {
             leCredSAID: issuedSnapshots[0].said,
             leCredIssuer: issuedSnapshots[0].issuer,
             leCredIssuee: issuedSnapshots[0].issuee,
         },
-        observations: issuedSnapshots,
-        operationEvidence,
+        observations: canonicalObserverSnapshots(issuedSnapshots),
+        operationEvidence:
+            canonicalOperationEvidence(operationEvidence),
         issuanceReceipts: [
             ...IssOp1.wrapperReceipts.map((receipt) => ({
                 sender: QAR1Id.prefix,
@@ -348,7 +366,11 @@ export async function createLeCredential(
                 ...receipt,
                 innerExchangeSaid: issuedSnapshots[2].currentTelDigest,
             })),
-        ],
+        ].sort((left, right) =>
+            `${left.sender}\u0000${left.recipient}`.localeCompare(
+                `${right.sender}\u0000${right.recipient}`
+            )
+        ),
         coordinationReceipts: [
             ...grant1.wrapperReceipts.map((receipt) => ({
                 sender: QAR1Id.prefix,
@@ -365,8 +387,23 @@ export async function createLeCredential(
                 ...receipt,
                 innerExchangeSaid: grant3.innerExchangeSaid,
             })),
-        ],
+        ].sort((left, right) =>
+            `${left.sender}\u0000${left.recipient}`.localeCompare(
+                `${right.sender}\u0000${right.recipient}`
+            )
+        ),
     };
+    assertIssuanceContract(
+        result,
+        memberPrefixes,
+        {
+            issuer: qviAID.prefix,
+            schema: LE_SCHEMA_SAID,
+            issuee: issueePrefix,
+        },
+        'LE credential'
+    );
+    return result;
 }
 
 function parseLeCredentialArguments(

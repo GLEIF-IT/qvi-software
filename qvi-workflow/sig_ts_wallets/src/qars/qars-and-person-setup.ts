@@ -40,6 +40,18 @@ function requireEndpointOobi(value: unknown, description: string): string {
     return firstOobi;
 }
 
+function requireAgentEid(
+    value: string | undefined,
+    description: string
+): string {
+    const eidIsMissing =
+        typeof value !== 'string' || value.length === 0;
+    if (eidIsMissing) {
+        throw new Error(`${description} has no connected agent AID`);
+    }
+    return value;
+}
+
 // Create AIDs for the QARs and the person based on the command line arguments
 // aidInfoArg format: "qar1|Alice|salt1,qar2|Bob|salt2,qar3|Charlie|salt3,person|David|salt4"
 export async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnvironmentPreset) {
@@ -213,6 +225,10 @@ export async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnv
     return {
         QAR1: {
             aid: QAR1Id.prefix,
+            agentEid: requireAgentEid(
+                QAR1Client.agent?.pre,
+                'QAR1'
+            ),
             agentOobi: requireEndpointOobi(
                 QAR1AgentOobiResp,
                 'QAR1 agent role'
@@ -224,6 +240,10 @@ export async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnv
         },
         QAR2: {
             aid: QAR2Id.prefix,
+            agentEid: requireAgentEid(
+                QAR2Client.agent?.pre,
+                'QAR2'
+            ),
             agentOobi: requireEndpointOobi(
                 QAR2AgentOobiResp,
                 'QAR2 agent role'
@@ -235,6 +255,10 @@ export async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnv
         },
         QAR3: {
             aid: QAR3Id.prefix,
+            agentEid: requireAgentEid(
+                QAR3Client.agent?.pre,
+                'QAR3'
+            ),
             agentOobi: requireEndpointOobi(
                 QAR3AgentOobiResp,
                 'QAR3 agent role'
@@ -246,6 +270,10 @@ export async function setupQVIAndPerson(aidInfoArg: string, environment: TestEnv
         },
         PERSON: {
             aid: personId.prefix,
+            agentEid: requireAgentEid(
+                personClient.agent?.pre,
+                'Person'
+            ),
             agentOobi: requireEndpointOobi(
                 personAgentOobiResp,
                 'Person agent role'

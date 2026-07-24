@@ -6,7 +6,10 @@ import {
     getReceivedCredential,
     requireCredential
 } from "../credentials";
-import {credentialSnapshot} from '../credential-state.ts';
+import {
+    assertExpectedCredential,
+    credentialSnapshot,
+} from '../credential-state.ts';
 import {
     isMainModule,
     parseNamedOrPositionalArguments,
@@ -24,7 +27,14 @@ import {
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-export async function admitCredential(aidInfo: string, issuerPrefix: string, credSAID: string, environment: TestEnvironmentPreset) {
+export async function admitCredential(
+    aidInfo: string,
+    issuerPrefix: string,
+    credSAID: string,
+    environment: TestEnvironmentPreset,
+    expectedSchema?: string,
+    expectedIssuee?: string
+) {
     const {PERSON} = parseAidInfo(aidInfo);
     const PersonClient = await getOrCreateClient(PERSON.salt, environment, 1);
 
@@ -43,20 +53,39 @@ export async function admitCredential(aidInfo: string, issuerPrefix: string, cre
     } else{
         console.log(`Credential ${credSAID} already admitted`);
     }
-    return credentialSnapshot(
+    const snapshot = credentialSnapshot(
         requireCredential(
             cred,
             `Person credential ${credSAID}`
         ),
         PersonId.prefix
     );
+    assertExpectedCredential(snapshot, {
+        said: credSAID,
+        issuer: issuerPrefix,
+        schema: expectedSchema ?? snapshot.schema,
+        issuee: expectedIssuee ?? PersonId.prefix,
+    });
+    const credentialIsActive = snapshot.statusSequence === '0';
+    if (credentialIsActive === false) {
+        throw new Error(
+            `Person credential ${credSAID} is not active at TEL sequence 0`
+        );
+    }
+    return snapshot;
 }
 
 if (isMainModule(import.meta.url)) {
     await runJsonCli(async () => {
         const parsed = parseNamedOrPositionalArguments(
             process.argv.slice(2),
-            ['config', 'issuer-prefix', 'credential-said'],
+            [
+                'config',
+                'issuer-prefix',
+                'credential-said',
+                'expected-schema',
+                'expected-issuee',
+            ],
             [
                 'environment',
                 'participant-source',
@@ -73,7 +102,9 @@ if (isMainModule(import.meta.url)) {
             invocation.participantSource,
             parsed['issuer-prefix'],
             parsed['credential-said'],
-            invocation.environment
+            invocation.environment,
+            parsed['expected-schema'],
+            parsed['expected-issuee']
         );
         return {
             status: 'admitted',

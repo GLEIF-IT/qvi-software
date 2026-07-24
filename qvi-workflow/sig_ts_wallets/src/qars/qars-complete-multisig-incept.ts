@@ -18,6 +18,11 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
+import {QVI_INITIAL_SEQUENCE} from '../qvi-configuration.ts';
+import {
+    assertTerminalOperationEvidence,
+    canonicalOperationEvidence,
+} from '../workflow-contracts.ts';
 
 type MemberScopedInceptionOperations = [
     qar1: string,
@@ -31,6 +36,7 @@ export interface MemberInceptionCoordination {
 }
 
 interface InceptionCompletionArtifact {
+    msPrefix: string;
     operationNames: string[];
     coordinationNotifications: MemberInceptionCoordination[];
 }
@@ -139,6 +145,7 @@ function readInceptionCompletionArtifact(
     const artifactWasNotProvided = artifactPath === undefined;
     if (artifactWasNotProvided) {
         return {
+            msPrefix: '',
             operationNames: [],
             coordinationNotifications: [],
         };
@@ -177,6 +184,16 @@ function readInceptionCompletionArtifact(
             'Delegated inception artifact has no valid operationNames array'
         );
     }
+    const msPrefix = (
+        artifact as Record<string, unknown>
+    ).msPrefix;
+    const multisigPrefixIsInvalid =
+        typeof msPrefix !== 'string' || msPrefix.length === 0;
+    if (multisigPrefixIsInvalid) {
+        throw new Error(
+            'Delegated inception artifact has no valid msPrefix'
+        );
+    }
     const coordinationNotifications = (
         artifact as Record<string, unknown>
     ).coordinationNotifications;
@@ -184,6 +201,7 @@ function readInceptionCompletionArtifact(
         coordinationNotifications === undefined;
     if (coordinationIsMissing) {
         return {
+            msPrefix,
             operationNames: operationNames as string[],
             coordinationNotifications: [],
         };
@@ -235,6 +253,7 @@ function readInceptionCompletionArtifact(
         );
     }
     return {
+        msPrefix,
         operationNames: operationNames as string[],
         coordinationNotifications:
             coordinationNotifications as MemberInceptionCoordination[],
@@ -260,10 +279,29 @@ if (isMainModule(import.meta.url)) {
             inception.operationNames,
             inception.coordinationNotifications
         );
+        const operationWasProvided =
+            inception.operationNames.length > 0;
+        if (operationWasProvided) {
+            assertTerminalOperationEvidence(
+                operationEvidence,
+                Array.from({length: 3}, () => ({
+                    name: `group.${inception.msPrefix}`,
+                    result: {
+                        kind: 'event',
+                        said: inception.msPrefix,
+                        prefix: inception.msPrefix,
+                        sequence: QVI_INITIAL_SEQUENCE,
+                    },
+                })),
+                'Delegated inception completion'
+            );
+        }
         return {
             status: 'completed',
             gedaPrefix: parsed['geda-prefix'],
-            operationEvidence,
+            qviPrefix: inception.msPrefix,
+            operationEvidence:
+                canonicalOperationEvidence(operationEvidence),
         };
     });
 }

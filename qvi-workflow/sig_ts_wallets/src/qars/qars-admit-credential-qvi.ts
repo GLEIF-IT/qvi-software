@@ -8,7 +8,8 @@ import {
     waitForCredential,
 } from "../credentials";
 import {
-    assertCredentialConvergence,
+    assertExpectedCredential,
+    assertIssuedCredentialConvergence,
     credentialSnapshot,
     type CredentialSnapshot,
 } from '../credential-state.ts';
@@ -22,25 +23,42 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
+import {canonicalObserverSnapshots} from '../workflow-contracts.ts';
 
 function admittedCredentialSnapshots(
     credentials: Array<
         Awaited<ReturnType<typeof getReceivedCredential>>
     >,
     memberPrefixes: string[],
-    credentialSaid: string
+    expected: {
+        said: string;
+        issuer: string;
+        schema?: string;
+        issuee: string;
+    }
 ): CredentialSnapshot[] {
     const snapshots = credentials.map((credential, index) =>
         credentialSnapshot(
             requireCredential(
                 credential,
-                `QAR${index + 1} admitted credential ${credentialSaid}`
+                `QAR${index + 1} admitted credential ${expected.said}`
             ),
             memberPrefixes[index]
         )
     );
-    assertCredentialConvergence(snapshots, memberPrefixes);
-    return snapshots;
+    const completeExpectation = {
+        ...expected,
+        schema: expected.schema ?? snapshots[0].schema,
+    };
+    snapshots.forEach((snapshot) =>
+        assertExpectedCredential(snapshot, completeExpectation)
+    );
+    assertIssuedCredentialConvergence(
+        snapshots,
+        memberPrefixes,
+        `Credential ${expected.said}`
+    );
+    return canonicalObserverSnapshots(snapshots);
 }
 
 /**
@@ -53,7 +71,15 @@ function admittedCredentialSnapshots(
  * @param environment the runtime environment to use for resolving environment variables
  * @returns {Promise<{qviMsOobi: string}>} Object containing the delegatee QVI multisig AID OOBI
  */
-export async function admitCredentialQvi(multisigName: string, aidInfo: string, issuerPrefix: string, credSAID: string, environment: TestEnvironmentPreset) {
+export async function admitCredentialQvi(
+    multisigName: string,
+    aidInfo: string,
+    issuerPrefix: string,
+    credSAID: string,
+    environment: TestEnvironmentPreset,
+    expectedSchema?: string,
+    expectedIssuee?: string
+) {
     const {witnessIds} = resolveEnvironment(environment);
     const [WAN, WIL, WES] = witnessIds; // QARs use WIL, Person uses WES
 
@@ -95,6 +121,12 @@ export async function admitCredentialQvi(multisigName: string, aidInfo: string, 
     if (groupPrefixConverged === false) {
         throw new Error('QARs disagree on the QVI prefix');
     }
+    const credentialExpectation = {
+        said: credSAID,
+        issuer: issuerPrefix,
+        schema: expectedSchema,
+        issuee: expectedIssuee ?? groupAids[0].prefix,
+    };
     // Skip if a QVI AID has already been incepted.
     
     const initiallyObservedCredentials = await Promise.all([
@@ -166,7 +198,7 @@ export async function admitCredentialQvi(multisigName: string, aidInfo: string, 
                     return admittedCredentialSnapshots(
                         admittedCredentials,
                         memberPrefixes,
-                        credSAID
+                        credentialExpectation
                     );
                 }
             );
@@ -176,7 +208,7 @@ export async function admitCredentialQvi(multisigName: string, aidInfo: string, 
     return admittedCredentialSnapshots(
         observedCredentials,
         memberPrefixes,
-        credSAID
+        credentialExpectation
     );
 }
 
@@ -189,6 +221,8 @@ if (isMainModule(import.meta.url)) {
                 'group-name',
                 'issuer-prefix',
                 'credential-said',
+                'expected-schema',
+                'expected-issuee',
             ],
             [
                 'environment',
@@ -209,7 +243,9 @@ if (isMainModule(import.meta.url)) {
             invocation.participantSource,
             parsed['issuer-prefix'],
             parsed['credential-said'],
-            invocation.environment
+            invocation.environment,
+            parsed['expected-schema'],
+            parsed['expected-issuee']
         );
         return {
             status: 'admitted',

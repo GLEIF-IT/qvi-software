@@ -5,6 +5,7 @@ import type {CredentialResult} from 'signify-ts';
 
 import {
     assertCredentialConvergence,
+    assertExpectedCredential,
     assertIssuedCredentialConvergence,
     credentialSnapshot,
 } from '../src/credential-state.ts';
@@ -71,6 +72,45 @@ describe('credential snapshots', () => {
             () => credentialSnapshot(aggregate, 'EQar1'),
             /aggregate attributes/
         );
+    });
+
+    it('rejects the wrong issuer, schema, issuee, or SAID', () => {
+        const snapshot = credentialSnapshot(
+            credential('0', 'EIssuance'),
+            'EQar1'
+        );
+        const expectations = [
+            {
+                said: 'EWrong',
+                issuer: 'EIssuer',
+                schema: 'ESchema',
+                issuee: 'EIssuee',
+            },
+            {
+                said: 'ECredential',
+                issuer: 'EWrong',
+                schema: 'ESchema',
+                issuee: 'EIssuee',
+            },
+            {
+                said: 'ECredential',
+                issuer: 'EIssuer',
+                schema: 'EWrong',
+                issuee: 'EIssuee',
+            },
+            {
+                said: 'ECredential',
+                issuer: 'EIssuer',
+                schema: 'ESchema',
+                issuee: 'EWrong',
+            },
+        ];
+        for (const expected of expectations) {
+            assert.throws(
+                () => assertExpectedCredential(snapshot, expected),
+                /expected/
+            );
+        }
     });
 
     it('rejects divergent three-member TEL state', () => {

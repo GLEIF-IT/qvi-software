@@ -90,6 +90,13 @@ The revoked-credential log grammar is intentionally isolated to Sally 1.0.2.
 Fixture tests protect that version-specific adapter from silently accepting a
 different message.
 
+`workflow_contracts.py` is separate from that Sally-specific code. Its
+`contact-binding` command parses KLI's whitespace-delimited contact JSON
+stream from stdin and validates one exact alias-to-prefix binding. Its
+`challenge-manifest` command validates the exact eight relationships and
+sixteen directed receipts in the proof JSONL. Each command emits one compact
+JSON result and exits nonzero for malformed or incorrect evidence.
+
 Run the standard-library test suite with:
 
 ```sh

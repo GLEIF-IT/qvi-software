@@ -28,6 +28,11 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
+import {
+    assertIssuanceContract,
+    canonicalObserverSnapshots,
+    canonicalOperationEvidence,
+} from '../workflow-contracts.ts';
 
 const OOR_SCHEMA_SAID = 'EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy';
 
@@ -165,17 +170,29 @@ export async function createOorCredential(
             'OOR credential'
         );
         console.log("OOR credential already exists");
-        return {
+        const result: CreateOorCredentialResult = {
             artifact: {
                 oorCredSAID: snapshots[0].said,
                 oorCredIssuer: snapshots[0].issuer,
                 oorCredIssuee: snapshots[0].issuee,
             },
-            observations: snapshots,
+            observations:
+                canonicalObserverSnapshots(snapshots),
             operationEvidence: [],
             issuanceReceipts: [],
             coordinationReceipts: [],
         };
+        assertIssuanceContract(
+            result,
+            memberPrefixes,
+            {
+                issuer: qviAID.prefix,
+                schema: OOR_SCHEMA_SAID,
+                issuee: issueePrefix,
+            },
+            'OOR credential'
+        );
+        return result;
     }
 
     const onlySomeQarsHaveCredential = noQarHasCredential === false;
@@ -332,14 +349,15 @@ export async function createOorCredential(
         completeMultisigIpex(QAR3Client, grant3),
     ]);
 
-    return {
+    const result: CreateOorCredentialResult = {
         artifact: {
             oorCredSAID: issuedSnapshots[0].said,
             oorCredIssuer: issuedSnapshots[0].issuer,
             oorCredIssuee: issuedSnapshots[0].issuee,
         },
-        observations: issuedSnapshots,
-        operationEvidence,
+        observations: canonicalObserverSnapshots(issuedSnapshots),
+        operationEvidence:
+            canonicalOperationEvidence(operationEvidence),
         issuanceReceipts: [
             ...IssOp1.wrapperReceipts.map((receipt) => ({
                 sender: QAR1Id.prefix,
@@ -356,7 +374,11 @@ export async function createOorCredential(
                 ...receipt,
                 innerExchangeSaid: issuedSnapshots[2].currentTelDigest,
             })),
-        ],
+        ].sort((left, right) =>
+            `${left.sender}\u0000${left.recipient}`.localeCompare(
+                `${right.sender}\u0000${right.recipient}`
+            )
+        ),
         coordinationReceipts: [
             ...grant1.wrapperReceipts.map((receipt) => ({
                 sender: QAR1Id.prefix,
@@ -373,8 +395,23 @@ export async function createOorCredential(
                 ...receipt,
                 innerExchangeSaid: grant3.innerExchangeSaid,
             })),
-        ],
+        ].sort((left, right) =>
+            `${left.sender}\u0000${left.recipient}`.localeCompare(
+                `${right.sender}\u0000${right.recipient}`
+            )
+        ),
     };
+    assertIssuanceContract(
+        result,
+        memberPrefixes,
+        {
+            issuer: qviAID.prefix,
+            schema: OOR_SCHEMA_SAID,
+            issuee: issueePrefix,
+        },
+        'OOR credential'
+    );
+    return result;
 }
 
 function parseOorCredentialArguments(

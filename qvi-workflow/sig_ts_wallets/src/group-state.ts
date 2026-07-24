@@ -22,6 +22,7 @@ export interface GroupObservation {
 export interface ExpectedGroupState {
     prefix?: string;
     delegator?: string;
+    sequence?: string;
     signingThreshold?: string | string[];
     nextThreshold?: string | string[];
 }
@@ -87,6 +88,14 @@ export function assertGroupStateConvergence(
         'Group-state convergence'
     );
     const baseline = observations[0].snapshot;
+    const establishmentDigestIsMissing =
+        typeof baseline.establishmentDigest !== 'string' ||
+        baseline.establishmentDigest.length === 0;
+    if (establishmentDigestIsMissing) {
+        throw new Error(
+            'QVI group state has no establishment event digest'
+        );
+    }
     const baselineJson = JSON.stringify(baseline);
     const stateConverged = observations.every(
         (observation) =>
@@ -103,6 +112,7 @@ export function assertGroupStateConvergence(
     > = [
         ['prefix', baseline.prefix, expected.prefix],
         ['delegator', baseline.delegator, expected.delegator],
+        ['sequence', baseline.sequence, expected.sequence],
         [
             'signing threshold',
             baseline.signingThreshold,

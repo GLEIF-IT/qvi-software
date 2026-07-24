@@ -28,6 +28,11 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
+import {
+    assertIssuanceContract,
+    canonicalObserverSnapshots,
+    canonicalOperationEvidence,
+} from '../workflow-contracts.ts';
 
 const ECR_SCHEMA_SAID = 'EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw';
 
@@ -165,17 +170,29 @@ export async function createEcrCredential(
             'ECR credential'
         );
         console.log("ECR credential already exists");
-        return {
+        const result: CreateEcrCredentialResult = {
             artifact: {
                 ecrCredSAID: snapshots[0].said,
                 ecrCredIssuer: snapshots[0].issuer,
                 ecrCredIssuee: snapshots[0].issuee,
             },
-            observations: snapshots,
+            observations:
+                canonicalObserverSnapshots(snapshots),
             operationEvidence: [],
             issuanceReceipts: [],
             coordinationReceipts: [],
         };
+        assertIssuanceContract(
+            result,
+            memberPrefixes,
+            {
+                issuer: qviAID.prefix,
+                schema: ECR_SCHEMA_SAID,
+                issuee: issueePrefix,
+            },
+            'ECR credential'
+        );
+        return result;
     }
 
     const onlySomeQarsHaveCredential = noQarHasCredential === false;
@@ -335,14 +352,15 @@ export async function createEcrCredential(
         completeMultisigIpex(QAR3Client, grant3),
     ]);
 
-    return {
+    const result: CreateEcrCredentialResult = {
         artifact: {
             ecrCredSAID: issuedSnapshots[0].said,
             ecrCredIssuer: issuedSnapshots[0].issuer,
             ecrCredIssuee: issuedSnapshots[0].issuee,
         },
-        observations: issuedSnapshots,
-        operationEvidence,
+        observations: canonicalObserverSnapshots(issuedSnapshots),
+        operationEvidence:
+            canonicalOperationEvidence(operationEvidence),
         issuanceReceipts: [
             ...IssOp1.wrapperReceipts.map((receipt) => ({
                 sender: QAR1Id.prefix,
@@ -359,7 +377,11 @@ export async function createEcrCredential(
                 ...receipt,
                 innerExchangeSaid: issuedSnapshots[2].currentTelDigest,
             })),
-        ],
+        ].sort((left, right) =>
+            `${left.sender}\u0000${left.recipient}`.localeCompare(
+                `${right.sender}\u0000${right.recipient}`
+            )
+        ),
         coordinationReceipts: [
             ...grant1.wrapperReceipts.map((receipt) => ({
                 sender: QAR1Id.prefix,
@@ -376,8 +398,23 @@ export async function createEcrCredential(
                 ...receipt,
                 innerExchangeSaid: grant3.innerExchangeSaid,
             })),
-        ],
+        ].sort((left, right) =>
+            `${left.sender}\u0000${left.recipient}`.localeCompare(
+                `${right.sender}\u0000${right.recipient}`
+            )
+        ),
     };
+    assertIssuanceContract(
+        result,
+        memberPrefixes,
+        {
+            issuer: qviAID.prefix,
+            schema: ECR_SCHEMA_SAID,
+            issuee: issueePrefix,
+        },
+        'ECR credential'
+    );
+    return result;
 }
 
 function parseEcrCredentialArguments(

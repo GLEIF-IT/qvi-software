@@ -48,6 +48,7 @@ describe('group state convergence', () => {
             {
                 prefix: 'EQvi',
                 delegator: 'EGeda',
+                sequence: '0',
                 signingThreshold: ['1/3', '1/3', '1/3'],
                 nextThreshold: ['1/3', '1/3', '1/3'],
             }
@@ -89,6 +90,45 @@ describe('group state convergence', () => {
                 ),
             /does not match expected/
         );
+    });
+
+    it('rejects an unexpected configured sequence', () => {
+        const observations = [
+            observation('EQar1', snapshot()),
+            observation('EQar2', snapshot()),
+            observation('EQar3', snapshot()),
+        ];
+        assert.throws(
+            () =>
+                assertGroupStateConvergence(
+                    observations,
+                    ['EQar1', 'EQar2', 'EQar3'],
+                    {sequence: '1'}
+                ),
+            /sequence.*does not match expected/
+        );
+    });
+
+    it('rejects an unexpected configured prefix or delegator', () => {
+        const observations = [
+            observation('EQar1', snapshot()),
+            observation('EQar2', snapshot()),
+            observation('EQar3', snapshot()),
+        ];
+        for (const expected of [
+            {prefix: 'EWrong'},
+            {delegator: 'EWrong'},
+        ]) {
+            assert.throws(
+                () =>
+                    assertGroupStateConvergence(
+                        observations,
+                        ['EQar1', 'EQar2', 'EQar3'],
+                        expected
+                    ),
+                /does not match expected/
+            );
+        }
     });
 
     it('rejects duplicate observers even when group state agrees', () => {

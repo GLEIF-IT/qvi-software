@@ -12,6 +12,15 @@ import {
     requireNamedArguments,
     runJsonCli,
 } from '../cli.ts';
+import {
+    qviNextThreshold,
+    qviSigningThreshold,
+} from '../qvi-configuration.ts';
+import {
+    assertExactDirectedFanout,
+    canonicalReceipts,
+    canonicalStrings,
+} from '../workflow-contracts.ts';
 
 
 /**
@@ -47,13 +56,18 @@ export async function createQviMultisig(multisigName: string, aidInfo: string, d
         getOrCreateAID(QAR2Client, QAR2.name, aidConfigQARs),
         getOrCreateAID(QAR3Client, QAR3.name, aidConfigQARs),
     ]);
+    const memberPrefixes = [
+        QAR1Id.prefix,
+        QAR2Id.prefix,
+        QAR3Id.prefix,
+    ];
 
     const rstates = [QAR1Id.state, QAR2Id.state, QAR3Id.state];
     const kargsMultisigAID: CreateIdentiferArgs = {
         delpre: delpre,
         algo: signify.Algos.group,
-        isith: ['1/3', '1/3', '1/3'],
-        nsith: ['1/3', '1/3', '1/3'],
+        isith: qviSigningThreshold(),
+        nsith: qviNextThreshold(),
         toad: aidConfigQARs.toad,
         wits: aidConfigQARs.wits,
         states: [...rstates],
@@ -107,6 +121,35 @@ export async function createQviMultisig(multisigName: string, aidInfo: string, d
     ];
     
     
+    const operationNames = inceptions.map(
+        (inception) => inception.operation.name
+    );
+    const coordinationReceipts = inceptions.flatMap(
+        (inception) =>
+            inception.wrapperReceipts.map((receipt) => ({
+                sender: inception.sender,
+                ...receipt,
+            }))
+    );
+    const expectedOperationName = `group.${qar1Ms.prefix}`;
+    const operationNamesAreExact =
+        operationNames.length === 3 &&
+        operationNames.every(
+            (operationName) =>
+                operationName === expectedOperationName
+        );
+    if (operationNamesAreExact === false) {
+        throw new Error(
+            'Delegated inception did not return one matching member operation per QAR'
+        );
+    }
+    assertExactDirectedFanout(
+        coordinationReceipts,
+        memberPrefixes,
+        'Delegated inception coordination',
+        qar1Ms.prefix
+    );
+
     return {
         msPrefix: qar1Ms.prefix,
         delegationAnchor: {
@@ -114,9 +157,7 @@ export async function createQviMultisig(multisigName: string, aidInfo: string, d
             s: '0',
             d: qar1Ms.prefix,
         },
-        operationNames: inceptions.map(
-            (inception) => inception.operation.name
-        ),
+        operationNames: canonicalStrings(operationNames),
         coordinationNotifications: inceptions.map(
             (inception) => ({
                 memberPrefix: inception.sender,
@@ -125,13 +166,8 @@ export async function createQviMultisig(multisigName: string, aidInfo: string, d
                 ),
             })
         ),
-        coordinationReceipts: inceptions.flatMap(
-            (inception) =>
-                inception.wrapperReceipts.map((receipt) => ({
-                    sender: inception.sender,
-                    ...receipt,
-                }))
-        ),
+        coordinationReceipts:
+            canonicalReceipts(coordinationReceipts),
     }
 }
 

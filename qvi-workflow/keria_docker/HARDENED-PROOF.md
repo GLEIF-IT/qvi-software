@@ -176,3 +176,21 @@ as sensitive until it is removed.
 The JSONL manifest and summary identify the dependencies and record detached
 KLI jobs, challenge receipts, common QVI state, credential/TEL convergence,
 Sally callbacks, and the final status and duration.
+
+## JSON ownership
+
+Validation stays with the component that understands the data:
+
+- SignifyTS runners validate KERIA, multisig, credential, operation, and TEL
+  contracts before returning `{ok:true}`.
+- The workflow-contract Python adapter validates KLI contact JSON and aggregate
+  challenge-manifest evidence.
+- Bash checks command status and orchestrates the story.
+- `jq` in the Bash driver only extracts scalar fields, constructs JSON,
+  projects or tags proof records, normalizes one JSON result, and formats JSON
+  for display.
+
+Collections are canonicalized by their TypeScript or Python producer before
+Bash receives them. Domain predicates, comparisons, filtering, deduplication,
+and sorting do not belong in the driver's `jq` programs. The focused
+`tests/jq-serialization-policy-test.sh` guard makes that boundary executable.

@@ -25,6 +25,13 @@ import {
 import {
     completeCoordinatedOperations,
 } from '../coordinated-operation.ts';
+import {
+    assertRevocationContract,
+    canonicalObserverSnapshots,
+    canonicalOperationEvidence,
+    canonicalReceipts,
+    canonicalStrings,
+} from '../workflow-contracts.ts';
 
 export interface RevokeCredentialOptions {
     configPath: string;
@@ -146,18 +153,24 @@ export async function runRevocation(
         (snapshot) => snapshot.statusSequence === '1'
     );
     if (credentialIsRevokedOnEveryQar) {
-        return {
+        const result: RevocationResult = {
             status: 'already-revoked',
             credentialSaid: options.credentialSaid,
             qviPrefix: qvi.prefix,
             operationNames: [],
             operationEvidence: [],
-            before,
-            after: before,
+            before: canonicalObserverSnapshots(before),
+            after: canonicalObserverSnapshots(before),
             revocationTelDigest: before[0].currentTelDigest,
             revocationTimestamp: credentials[0].status.dt,
             coordinationReceipts: [],
         };
+        assertRevocationContract(
+            result,
+            expectedMemberPrefixes,
+            expectedCredential
+        );
+        return result;
     }
 
     const credentialIsIssuedOnEveryQar = before.every(
@@ -246,26 +259,35 @@ export async function runRevocation(
         );
     }
 
-    return {
+    const coordinationReceipts = revocations.flatMap(
+        (revocation, index) =>
+            revocation.wrapperReceipts.map((receipt) => ({
+                sender: memberAids[index].prefix,
+                ...receipt,
+            }))
+    );
+    const result: RevocationResult = {
         status: 'revoked',
         credentialSaid: options.credentialSaid,
         qviPrefix: qvi.prefix,
-        operationNames: operationEvidence.map(
+        operationNames: canonicalStrings(operationEvidence.map(
             (operation) => operation.name
-        ),
-        operationEvidence,
-        before,
-        after,
+        )),
+        operationEvidence:
+            canonicalOperationEvidence(operationEvidence),
+        before: canonicalObserverSnapshots(before),
+        after: canonicalObserverSnapshots(after),
         revocationTelDigest: after[0].currentTelDigest,
         revocationTimestamp: timestamp,
-        coordinationReceipts: revocations.flatMap(
-            (revocation, index) =>
-                revocation.wrapperReceipts.map((receipt) => ({
-                    sender: memberAids[index].prefix,
-                    ...receipt,
-                }))
-        ),
+        coordinationReceipts:
+            canonicalReceipts(coordinationReceipts),
     };
+    assertRevocationContract(
+        result,
+        expectedMemberPrefixes,
+        expectedCredential
+    );
+    return result;
 }
 
 function parseRevocationArguments(

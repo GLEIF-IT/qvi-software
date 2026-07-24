@@ -66,9 +66,10 @@ utc_now() {
 
 run_signify_json() {
     local result_json=""
+    local normalized_result=""
     local command_status=0
     local command_failed=false
-    local result_is_valid=false
+    local normalization_failed=false
 
     result_json=$(sig_tsx "$@") || command_status=$?
     [[ "${command_status}" -ne 0 ]] && command_failed=true
@@ -76,22 +77,22 @@ run_signify_json() {
         return "${command_status}"
     fi
 
-    printf '%s\n' "${result_json}" |
-        jq -e -s 'length == 1 and .[0].ok == true' >/dev/null 2>&1 &&
-        result_is_valid=true
-    if [[ "${result_is_valid}" == false ]]; then
-        print_red "Signify runner did not emit exactly one successful JSON result"
+    normalized_result=$(printf '%s\n' "${result_json}" |
+        jq -c '.') || normalization_failed=true
+    if [[ "${normalization_failed}" == true ]]; then
+        print_red "Signify runner did not emit valid JSON"
         return 1
     fi
 
-    printf '%s\n' "${result_json}" | jq -c '.'
+    printf '%s\n' "${normalized_result}"
 }
 
 run_sally_evidence() {
     local evidence_output=""
+    local normalized_evidence=""
     local evidence_status=0
     local evidence_command_failed=false
-    local evidence_is_valid=false
+    local normalization_failed=false
 
     evidence_output=$(workflow_compose exec -T hook \
         python3 /app/evidence.py "$@" 2>&1) || evidence_status=$?
@@ -101,17 +102,20 @@ run_sally_evidence() {
         return "${evidence_status}"
     fi
 
-    printf '%s\n' "${evidence_output}" |
-        jq -e '.ok == true and (.evidence | type == "object")' \
-        >/dev/null 2>&1 &&
-        evidence_is_valid=true
-    if [[ "${evidence_is_valid}" == false ]]; then
-        printf 'Sally evidence validator returned an invalid result: %s\n' \
+    normalized_evidence=$(printf '%s\n' "${evidence_output}" |
+        jq -c '.') || normalization_failed=true
+    if [[ "${normalization_failed}" == true ]]; then
+        printf 'Sally evidence validator returned invalid JSON: %s\n' \
             "${evidence_output}"
         return 1
     fi
 
-    printf '%s\n' "${evidence_output}" | jq -c '.'
+    printf '%s\n' "${normalized_evidence}"
+}
+
+run_workflow_contract() {
+    workflow_compose exec -T hook \
+        python3 /app/workflow_contracts.py "$@"
 }
 
 record_sally_evidence() {
@@ -408,6 +412,7 @@ PERSON_PRE=
 OOR_CRED_SAID=
 ECR_CRED_SAID=
 LE_CRED_SAID=
+LAST_ISSUED_CREDENTIAL_SAID=
 LAST_REVOCATION_TIMESTAMP=
 OOR_REVOCATION_TIMESTAMP=
 ECR_CALLBACK_BOUNDARY=
@@ -694,12 +699,13 @@ load_sally_prefixes() {
 function setup_keria_identifiers() {
   local setup_failed=false
   local qvi_setup_data=""
+  local setup_fields=""
 
   print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
-  run_signify_json \
+  qvi_setup_data=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-and-person-setup.ts" \
       --config "${PARTICIPANT_CONFIG_CONTAINER}" \
-      --data-dir "${QVI_DATA_DIR}" >/dev/null || setup_failed=true
+      --data-dir "${QVI_DATA_DIR}") || setup_failed=true
   if [[ "${setup_failed}" == true ]]; then
       fail_workflow "Unable to create the QAR and Person identifiers"
   fi
@@ -707,18 +713,29 @@ function setup_keria_identifiers() {
   print_green "QVI and Person Identifiers from SignifyTS + KERIA are "
   # Extract prefixes from the SignifyTS output because they are dynamically generated and unique each run.
   # They are needed for doing OOBI resolutions to connect SignifyTS AIDs to KERIpy AIDs.
-  qvi_setup_data=$(<"${LOCAL_QVI_DATA_DIR}/qars-and-person-info.json")
-  QAR1_PRE=$(printf '%s\n' "${qvi_setup_data}" | jq -er ".QAR1.aid")
-  QAR2_PRE=$(printf '%s\n' "${qvi_setup_data}" | jq -er ".QAR2.aid")
-  QAR3_PRE=$(printf '%s\n' "${qvi_setup_data}" | jq -er ".QAR3.aid")
-  PERSON_PRE=$(printf '%s\n' "${qvi_setup_data}" | jq -er ".PERSON.aid")
-  QAR1_OOBI=$(printf '%s\n' "${qvi_setup_data}" | jq -er ".QAR1.agentOobi")
-  QAR2_OOBI=$(printf '%s\n' "${qvi_setup_data}" | jq -er ".QAR2.agentOobi")
-  QAR3_OOBI=$(printf '%s\n' "${qvi_setup_data}" | jq -er ".QAR3.agentOobi")
-  PERSON_OOBI=$(printf '%s\n' "${qvi_setup_data}" | jq -er ".PERSON.agentOobi")
-  QAR1_AGENT_EID=$(printf '%s\n' "${QAR1_OOBI}" | awk -F/ '{print $NF}')
-  QAR2_AGENT_EID=$(printf '%s\n' "${QAR2_OOBI}" | awk -F/ '{print $NF}')
-  QAR3_AGENT_EID=$(printf '%s\n' "${QAR3_OOBI}" | awk -F/ '{print $NF}')
+  setup_fields=$(printf '%s\n' "${qvi_setup_data}" |
+      jq -r '
+        .participants |
+        [
+          .QAR1.aid,
+          .QAR1.agentOobi,
+          .QAR1.agentEid,
+          .QAR2.aid,
+          .QAR2.agentOobi,
+          .QAR2.agentEid,
+          .QAR3.aid,
+          .QAR3.agentOobi,
+          .QAR3.agentEid,
+          .PERSON.aid,
+          .PERSON.agentOobi
+        ] |
+        @tsv
+      ')
+  IFS=$'\t' read -r \
+      QAR1_PRE QAR1_OOBI QAR1_AGENT_EID \
+      QAR2_PRE QAR2_OOBI QAR2_AGENT_EID \
+      QAR3_PRE QAR3_OOBI QAR3_AGENT_EID \
+      PERSON_PRE PERSON_OOBI <<< "${setup_fields}"
 
   # Show dyncamic, extracted Signify identifiers and OOBIs
   print_green     "QAR1   Prefix: $QAR1_PRE"
@@ -922,8 +939,7 @@ function verify_kli_contact_binding() {
     local expected_responder_prefix=$4
     local contacts_json=""
     local contact_query_failed=false
-    local observed_responder_prefix=""
-    local responder_prefix_matches=false
+    local binding_validation_failed=false
 
     contacts_json=$(kli contacts list \
         --name "${verifier_name}" \
@@ -932,16 +948,12 @@ function verify_kli_contact_binding() {
         fail_workflow "Unable to inspect ${verifier_name}'s contacts before challenge verification"
     fi
 
-    observed_responder_prefix=$(printf '%s\n' "${contacts_json}" |
-        jq -rs \
-            --arg alias "${responder_name}" \
-            '[.. | objects | select(.alias? == $alias) | (.id? // .prefix?)] |
-             map(select(type == "string" and length > 0)) |
-             unique |
-             if length == 1 then .[0] else empty end')
-    [[ "${observed_responder_prefix}" == "${expected_responder_prefix}" ]] &&
-        responder_prefix_matches=true
-    if [[ "${responder_prefix_matches}" == false ]]; then
+    printf '%s\n' "${contacts_json}" |
+        run_workflow_contract contact-binding \
+            --alias "${responder_name}" \
+            --expected-prefix "${expected_responder_prefix}" >/dev/null ||
+        binding_validation_failed=true
+    if [[ "${binding_validation_failed}" == true ]]; then
         fail_workflow "Contact ${responder_name} did not resolve to its expected prefix for ${verifier_name}"
     fi
 }
@@ -985,8 +997,6 @@ function keria_challenge_action() {
     local peer_prefix=$3
     local result_json=""
     local challenge_action_failed=false
-    local result_matches_request=false
-    local expected_status=""
 
     result_json=$(run_signify_json "${QVI_SIGNIFY_DIR}/keria-challenge.ts" \
         --config /run/qvi/participants.json \
@@ -999,26 +1009,8 @@ function keria_challenge_action() {
         fail_workflow "KERIA challenge ${action} failed for ${participant} and ${peer_prefix}"
     fi
 
-    expected_status=verified
-    [[ "${action}" == respond ]] && expected_status=responded
-    jq -e \
-        --arg status "${expected_status}" \
-        --arg participant "${participant}" \
-        --arg peerPrefix "${peer_prefix}" \
-        --arg challengeDigest "${CHALLENGE_DIGEST}" \
-        '
-          .status == $status and
-          .participant == $participant and
-          .peerPrefix == $peerPrefix and
-          .challengeDigest == $challengeDigest and
-          (.responseExnSaid | type == "string" and length > 0)
-        ' <<< "${result_json}" >/dev/null && result_matches_request=true
-    if [[ "${result_matches_request}" == false ]]; then
-        fail_workflow "KERIA challenge ${action} result did not match the requested exchange"
-    fi
-
     KERIA_CHALLENGE_EXN_SAID=$(printf '%s\n' "${result_json}" |
-        jq -r '.responseExnSaid // .exnSaid // empty')
+        jq -r '.responseExnSaid')
 }
 
 function record_challenge_receipt() {
@@ -1029,27 +1021,54 @@ function record_challenge_receipt() {
     local verifier_type=$5
     local response_exn_said=$6
     local verified_at
+    local response_said_is_present=false
+    local receipt_json=""
 
     verified_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    append_proof_record "$(jq -cn \
-        --arg relationship "${relationship}" \
-        --arg direction "${direction}" \
-        --arg challengerPrefix "${challenger_prefix}" \
-        --arg responderPrefix "${responder_prefix}" \
-        --arg verifierType "${verifier_type}" \
-        --arg challengeDigest "${CHALLENGE_DIGEST}" \
-        --arg verifiedAt "${verified_at}" \
-        --arg responseExnSaid "${response_exn_said}" \
-        '{
-            type: "challenge",
-            relationship: $relationship,
-            direction: $direction,
-            challengerPrefix: $challengerPrefix,
-            responderPrefix: $responderPrefix,
-            verifierType: $verifierType,
-            challengeDigest: $challengeDigest,
-            verifiedAt: $verifiedAt
-        } + if $responseExnSaid == "" then {} else {responseExnSaid: $responseExnSaid} end')"
+    [[ -n "${response_exn_said}" ]] &&
+        response_said_is_present=true
+    if [[ "${response_said_is_present}" == true ]]; then
+        receipt_json=$(jq -cn \
+            --arg relationship "${relationship}" \
+            --arg direction "${direction}" \
+            --arg challengerPrefix "${challenger_prefix}" \
+            --arg responderPrefix "${responder_prefix}" \
+            --arg verifierType "${verifier_type}" \
+            --arg challengeDigest "${CHALLENGE_DIGEST}" \
+            --arg verifiedAt "${verified_at}" \
+            --arg responseExnSaid "${response_exn_said}" \
+            '{
+                type: "challenge",
+                relationship: $relationship,
+                direction: $direction,
+                challengerPrefix: $challengerPrefix,
+                responderPrefix: $responderPrefix,
+                verifierType: $verifierType,
+                challengeDigest: $challengeDigest,
+                verifiedAt: $verifiedAt,
+                responseExnSaid: $responseExnSaid
+            }')
+    else
+        receipt_json=$(jq -cn \
+            --arg relationship "${relationship}" \
+            --arg direction "${direction}" \
+            --arg challengerPrefix "${challenger_prefix}" \
+            --arg responderPrefix "${responder_prefix}" \
+            --arg verifierType "${verifier_type}" \
+            --arg challengeDigest "${CHALLENGE_DIGEST}" \
+            --arg verifiedAt "${verified_at}" \
+            '{
+                type: "challenge",
+                relationship: $relationship,
+                direction: $direction,
+                challengerPrefix: $challengerPrefix,
+                responderPrefix: $responderPrefix,
+                verifierType: $verifierType,
+                challengeDigest: $challengeDigest,
+                verifiedAt: $verifiedAt
+            }')
+    fi
+    append_proof_record "${receipt_json}"
 }
 
 function complete_challenge_direction() {
@@ -1137,25 +1156,12 @@ function challenge_relationship() {
 }
 
 function validate_challenge_receipts() {
-    local expected_receipt_keys=$1
-    local receipt_set_matches=false
+    local validation_failed=false
 
-    jq -es \
-        --argjson expected "${expected_receipt_keys}" \
-        '
-        [.[] | select(.type == "challenge")] as $receipts |
-        ($receipts | length == 16) and
-        ([$receipts[] | "\(.relationship)|\(.direction)"] |
-            sort | unique) == ($expected | sort) and
-        all($receipts[];
-            (.challengerPrefix | type == "string" and length > 0) and
-            (.responderPrefix | type == "string" and length > 0) and
-            (.verifierType == "kli" or .verifierType == "keria") and
-            (.challengeDigest | test("^[0-9a-f]{64}$")) and
-            (.verifiedAt | type == "string" and length > 0))
-        ' "${PROOF_MANIFEST}" >/dev/null &&
-        receipt_set_matches=true
-    if [[ "${receipt_set_matches}" == false ]]; then
+    run_workflow_contract challenge-manifest \
+        --manifest /proof/manifest.jsonl >/dev/null ||
+        validation_failed=true
+    if [[ "${validation_failed}" == true ]]; then
         fail_workflow "Challenge proof did not contain the exact 16 complete relationship directions"
     fi
 }
@@ -1241,8 +1247,6 @@ function challenge_response() {
   local right_name
   local right_passcode
   local right_prefix
-  local expected_receipt_lines=""
-  local expected_receipt_keys=""
 
   print_green "------------------------------Authenticating Keystore control with Challenge Responses------------------------------"
 
@@ -1264,13 +1268,9 @@ function challenge_response() {
       challenge_relationship "${relationship}" \
           "${left_type}" "${left_id}" "${left_name}" "${left_passcode}" "${left_prefix}" \
           "${right_type}" "${right_id}" "${right_name}" "${right_passcode}" "${right_prefix}"
-      expected_receipt_lines="${expected_receipt_lines}${relationship}|${left_id}->${right_id}"$'\n'
-      expected_receipt_lines="${expected_receipt_lines}${relationship}|${right_id}->${left_id}"$'\n'
   done
 
-  expected_receipt_keys=$(printf '%s' "${expected_receipt_lines}" |
-      jq -Rsc 'split("\n") | map(select(length > 0))')
-  validate_challenge_receipts "${expected_receipt_keys}"
+  validate_challenge_receipts
   print_green "[challenge] Completed 16 directed responses across 8 trust relationships"
 }
 
@@ -1280,9 +1280,14 @@ function create_multisig_icp_config() {
     PRE1=$1
     PRE2=$2
     local wit_pre=$3
-    cat "${WORKFLOW_CONFIG_DIR}/template-multi-sig-incept-config.jq" | \
-        jq ".aids = [\"$PRE1\",\"$PRE2\"]" | \
-        jq ".wits = [\"$wit_pre\"]" > "${WORKFLOW_CONFIG_DIR}/multi-sig-incept-config.json"
+    jq \
+        --arg first_aid "${PRE1}" \
+        --arg second_aid "${PRE2}" \
+        --arg witness "${wit_pre}" \
+        '.aids = [$first_aid, $second_aid] |
+         .wits = [$witness]' \
+        "${WORKFLOW_CONFIG_DIR}/template-multi-sig-incept-config.jq" \
+        > "${WORKFLOW_CONFIG_DIR}/multi-sig-incept-config.json"
 
     print_lcyan "Multisig inception config JSON:"
     print_lcyan "$(cat "${WORKFLOW_CONFIG_DIR}/multi-sig-incept-config.json")"
@@ -1404,102 +1409,13 @@ function qars_resolve_geda_oobi() {
     fi
 }
 
-qvi_inception_submission_is_exact() {
-    local submission=$1
-    local group_prefix=$2
-    local qar1_prefix=$3
-    local qar2_prefix=$4
-    local qar3_prefix=$5
-
-    printf '%s\n' "${submission}" |
-        jq -e \
-            --arg prefix "${group_prefix}" \
-            --arg qar1 "${qar1_prefix}" \
-            --arg qar2 "${qar2_prefix}" \
-            --arg qar3 "${qar3_prefix}" \
-            '
-              . as $inception |
-              .status == "inception-submitted" and
-              .msPrefix == $prefix and
-              (.operationNames | length == 3) and
-              all(
-                .operationNames[];
-                . == ("group." + $prefix)
-              ) and
-              (.coordinationReceipts | length == 6) and
-              all(
-                .coordinationReceipts[];
-                (.exnSaid | type == "string" and length > 0) and
-                (.innerExchangeSaid | type == "string" and length > 0)
-              ) and
-              ([.coordinationReceipts[].innerExchangeSaid] |
-                unique == [$prefix]) and
-              ([.coordinationReceipts[] |
-                  "\(.sender)|\(.recipient)"] |
-                  unique | length == 6) and
-              all(
-                [$qar1, $qar2, $qar3][];
-                . as $sender |
-                ([$inception.coordinationReceipts[] |
-                    select(.sender == $sender) |
-                    .recipient] |
-                    sort) ==
-                    ([$qar1, $qar2, $qar3] |
-                     map(select(. != $sender)) |
-                     sort)
-              )
-            ' >/dev/null
-}
-
-qvi_endrole_operation_names_are_exact() {
-    local artifact_path=$1
-    local group_prefix=$2
-    local qar1_agent_eid=$3
-    local qar2_agent_eid=$4
-    local qar3_agent_eid=$5
-
-    jq -e \
-        --arg prefix "${group_prefix}" \
-        --arg eid1 "${qar1_agent_eid}" \
-        --arg eid2 "${qar2_agent_eid}" \
-        --arg eid3 "${qar3_agent_eid}" \
-        '
-          [
-            ("endrole." + $prefix + ".agent." + $eid1),
-            ("endrole." + $prefix + ".agent." + $eid2),
-            ("endrole." + $prefix + ".agent." + $eid3)
-          ] as $logicalOperations |
-          (.operationNames | length == 9) and
-          (.operationNames | sort) ==
-            (($logicalOperations + $logicalOperations + $logicalOperations) |
-              sort)
-        ' \
-        "${artifact_path}" >/dev/null
-}
-
-qvi_registry_operation_names_are_exact() {
-    local registry_result=$1
-    local registry_prefix=$2
-
-    printf '%s\n' "${registry_result}" |
-        jq -e \
-            --arg expectedName "registry.${registry_prefix}" \
-            '
-              (.operationNames | length == 3) and
-              all(.operationNames[]; . == $expectedName)
-            ' >/dev/null
-}
-
 # QAR: Create delegated multisig QVI AID with GEDA as delegator
 function create_qvi_multisig() {
     local delegator_prefix=""
-    local delegated_multisig_info=""
     local creation_result=""
     local creation_failed=false
-    local creation_result_is_exact=false
     local completion_result=""
     local completion_failed=false
-    local completion_result_is_exact=false
 
     print_yellow "Creating QVI multisig AID with GEDA as delegator"
 
@@ -1521,19 +1437,9 @@ function create_qvi_multisig() {
         fail_workflow "QVI delegated inception could not be submitted"
     fi
 
-    delegated_multisig_info=$(<"${LOCAL_QVI_DATA_DIR}/qvi-multisig-info.json")
     print_yellow "Delegated Multisig Info:"
-    QVI_PRE=$(printf '%s\n' "${delegated_multisig_info}" | jq -er .msPrefix)
-    qvi_inception_submission_is_exact \
-        "${creation_result}" \
-        "${QVI_PRE}" \
-        "${QAR1_PRE}" \
-        "${QAR2_PRE}" \
-        "${QAR3_PRE}" &&
-        creation_result_is_exact=true
-    if [[ "${creation_result_is_exact}" == false ]]; then
-        fail_workflow "QVI inception did not prove exact per-recipient coordination"
-    fi
+    QVI_PRE=$(printf '%s\n' "${creation_result}" |
+        jq -r '.msPrefix')
     append_proof_record "$(printf '%s\n' "${creation_result}" |
         jq -c '. + {type:"qvi-operation",operation:"delegated-inception"}')"
     echo
@@ -1566,33 +1472,6 @@ function create_qvi_multisig() {
         fail_workflow "QVI delegated inception did not converge after GEDA approval"
     fi
 
-    MULTISIG_INFO=$(<"${LOCAL_QVI_DATA_DIR}/qvi-multisig-info.json")
-    QVI_PRE=$(printf '%s\n' "${MULTISIG_INFO}" | jq -er .msPrefix)
-    printf '%s\n' "${completion_result}" |
-        jq -e \
-            --arg qvi "${QVI_PRE}" \
-            --argjson expectedNames \
-              "$(printf '%s\n' "${MULTISIG_INFO}" |
-                  jq -c '.operationNames')" \
-            '
-              .status == "completed" and
-              (.operationEvidence | length == 3) and
-              ([.operationEvidence[].name] | sort) ==
-                ($expectedNames | sort) and
-              all(
-                .operationEvidence[];
-                .done == true and
-                .error == null and
-                .result.kind == "event" and
-                .result.said == $qvi and
-                .result.prefix == $qvi and
-                .result.sequence == "0"
-              )
-            ' >/dev/null &&
-        completion_result_is_exact=true
-    if [[ "${completion_result_is_exact}" == false ]]; then
-        fail_workflow "QVI delegated inception completion did not retain three terminal operation results"
-    fi
     append_proof_record "$(printf '%s\n' "${completion_result}" |
         jq -c \
             '{type:"qvi-operation",operation:"delegated-inception-completion"} + .')"
@@ -1602,143 +1481,37 @@ function create_qvi_multisig() {
 # QVI: Authorize all agent endpoint roles and derive one multisig OOBI.
 QVI_OOBI=""
 function authorize_qvi_multisig_agent_endpoint_role(){
-    local oobi_artifact="${LOCAL_QVI_DATA_DIR}/qvi-oobi.json"
-    local oobi_artifact_is_valid=false
     local authorization_result=""
     local authorization_failed=false
-    local authorization_result_is_exact=false
-    local endrole_operation_names_are_exact=false
+    local qvi_state_record=""
 
     print_yellow "Authorizing QVI multisig agent endpoint role"
     authorization_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-authorize-endroles-get-qvi-oobi.ts" \
       --config /run/qvi/participants.json \
       --group-name "${QVI_NAME}" \
-      --data-dir "${QVI_DATA_DIR}") || authorization_failed=true
+      --data-dir "${QVI_DATA_DIR}" \
+      --group-prefix "${QVI_PRE}" \
+      --delegator-prefix "${GEDA_PRE}") ||
+      authorization_failed=true
     if [[ "${authorization_failed}" == true ]]; then
         fail_workflow "QVI agent endpoint-role authorization failed"
     fi
 
-    jq -e \
-      --arg qviPrefix "${QVI_PRE}" \
-      --arg delegator "${GEDA_PRE}" \
-      --arg qar1 "${QAR1_PRE}" \
-      --arg qar2 "${QAR2_PRE}" \
-      --arg qar3 "${QAR3_PRE}" \
-      --arg eid1 "${QAR1_AGENT_EID}" \
-      --arg eid2 "${QAR2_AGENT_EID}" \
-      --arg eid3 "${QAR3_AGENT_EID}" \
-      '
-        . as $root |
-        .qviPrefix == $qviPrefix and
-        (
-          .multisigOobi |
-          capture(
-            "^https?://[^/]+(?<path>/[^?#]*)(?:[?#].*)?$"
-          ).path
-        ) == "/oobi/\($qviPrefix)" and
-        (.agentEndpoints | length == 3) and
-        ([.agentEndpoints[].eid] | unique | length == 3) and
-        ([.agentEndpoints[].url] | unique | length == 3) and
-        ([.agentEndpoints[].eid] | sort) ==
-          ([$eid1, $eid2, $eid3] | sort) and
-        all(
-          .agentEndpoints[];
-          (.url | test("^https?://"))
-        ) and
-        .groupState.prefix == $qviPrefix and
-        .groupState.delegator == $delegator and
-        .groupState.sequence == "0" and
-        .groupState.signingThreshold == ["1/3", "1/3", "1/3"] and
-        .groupState.nextThreshold == ["1/3", "1/3", "1/3"] and
-        (.groupState.establishmentDigest | type == "string" and length > 0) and
-        (.groupState.signingMembers | sort) == ([$qar1, $qar2, $qar3] | sort) and
-        (.groupState.rotationMembers | sort) == ([$qar1, $qar2, $qar3] | sort) and
-        (.groupObservations | length == 3) and
-        ([.groupObservations[].observerAid] | sort) ==
-          ([$qar1, $qar2, $qar3] | sort) and
-        all(.groupObservations[]; .snapshot == $root.groupState) and
-        (.coordinationReceipts | length == 18) and
-        all(.coordinationReceipts[];
-            (.exnSaid | type == "string" and length > 0) and
-            (.innerExchangeSaid | type == "string" and length > 0)) and
-        ([.coordinationReceipts[].innerExchangeSaid] |
-          unique | length == 3) and
-        all(
-          [$qar1, $qar2, $qar3][];
-          . as $sender |
-          all(
-            [$qar1, $qar2, $qar3][] |
-              select(. != $sender);
-            . as $recipient |
-            ([ $root.coordinationReceipts[] |
-                select(
-                  .sender == $sender and
-                  .recipient == $recipient
-                ) ] |
-                length) == 3
-          )
-        )
-      ' "${oobi_artifact}" >/dev/null && oobi_artifact_is_valid=true
-    if [[ "${oobi_artifact_is_valid}" == false ]]; then
-        fail_workflow \
-            "QVI agent OOBI artifact did not prove the expected endpoints, group state, and coordination"
-    fi
-
-    qvi_endrole_operation_names_are_exact \
-        "${oobi_artifact}" \
-        "${QVI_PRE}" \
-        "${QAR1_AGENT_EID}" \
-        "${QAR2_AGENT_EID}" \
-        "${QAR3_AGENT_EID}" &&
-        endrole_operation_names_are_exact=true
-    if [[ "${endrole_operation_names_are_exact}" == false ]]; then
-        fail_workflow \
-            "QVI endpoint-role artifact did not record three member observations of each logical end-role operation"
-    fi
-
-    printf '%s\n' "${authorization_result}" |
-        jq -e \
-            --argjson expectedNames \
-              "$(jq -c '.operationNames' "${oobi_artifact}")" \
-            --argjson expectedSaids \
-              "$(jq -c \
-                  '[.coordinationReceipts[].innerExchangeSaid] |
-                    unique' \
-                  "${oobi_artifact}")" \
-            '
-              . as $root |
-              (.operationEvidence | length == 9) and
-              ([.operationEvidence[].name] | sort) ==
-                ($expectedNames | sort) and
-              ($expectedSaids | length == 3) and
-              ([.operationEvidence[].result.said] | unique | sort) ==
-                ($expectedSaids | sort) and
-              all(
-                $expectedSaids[];
-                . as $said |
-                ([$root.operationEvidence[] |
-                    select(.result.said == $said)] |
-                    length) == 3
-              ) and
-              all(
-                .operationEvidence[];
-                .done == true and
-                .error == null and
-                .result.kind == "event" and
-                (.result.said |
-                  type == "string" and length > 0) and
-                .result.route == "/end/role/add"
-              )
-            ' >/dev/null &&
-        authorization_result_is_exact=true
-    if [[ "${authorization_result_is_exact}" == false ]]; then
-        fail_workflow "QVI endpoint-role authorization did not retain nine terminal operation results"
-    fi
-
-    QVI_OOBI=$(jq -er '.multisigOobi' "${oobi_artifact}")
-
-    append_proof_record "$(jq -c '{type: "qvi-state"} + .' "${oobi_artifact}")"
+    QVI_OOBI=$(printf '%s\n' "${authorization_result}" |
+        jq -r '.multisigOobi')
+    qvi_state_record=$(printf '%s\n' "${authorization_result}" |
+        jq -c '{
+            type: "qvi-state",
+            qviPrefix,
+            multisigOobi,
+            agentEndpoints,
+            groupState,
+            groupObservations,
+            operationNames,
+            coordinationReceipts
+        }')
+    append_proof_record "${qvi_state_record}"
     append_proof_record "$(printf '%s\n' "${authorization_result}" |
         jq -c '{type:"qvi-operation",operation:"authorize-agent-endroles"} + .')"
     print_green "Collected one canonical multisig OOBI and common QVI group state"
@@ -1951,39 +1724,18 @@ admit_qvi_received_credential() {
     local credential_said=$4
     local admission_result=""
     local admission_failed=false
-    local admission_is_exact=false
 
     admission_result=$(run_signify_json \
         "${QVI_SIGNIFY_DIR}/qars/qars-admit-credential-qvi.ts" \
         --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --group-name "${QVI_NAME}" \
         --issuer-prefix "${issuer_prefix}" \
-        --credential-said "${credential_said}") ||
+        --credential-said "${credential_said}" \
+        --expected-schema "${schema}" \
+        --expected-issuee "${QVI_PRE}") ||
         admission_failed=true
     if [[ "${admission_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to admit ${story_label} credential ${credential_said}"
-    fi
-
-    printf '%s\n' "${admission_result}" |
-        jq -e \
-            --arg said "${credential_said}" \
-            --arg issuer "${issuer_prefix}" \
-            --arg schema "${schema}" \
-            --arg issuee "${QVI_PRE}" \
-            '
-              .status == "admitted" and
-              .credentialSaid == $said and
-              (.observations | length == 3) and
-              ([.observations[].said] | unique == [$said]) and
-              ([.observations[].issuer] | unique == [$issuer]) and
-              ([.observations[].schema] | unique == [$schema]) and
-              ([.observations[].issuee] | unique == [$issuee]) and
-              ([.observations[].statusSequence] | unique == ["0"]) and
-              ([.observations[].currentTelDigest] | unique | length == 1)
-            ' >/dev/null &&
-        admission_is_exact=true
-    if [[ "${admission_is_exact}" == false ]]; then
-        fail_workflow "[QVI] ${story_label} admission did not converge on all three QARs"
     fi
 
     append_proof_record "$(printf '%s\n' "${admission_result}" |
@@ -2066,8 +1818,6 @@ function present_qvi_cred_to_sally_signify() {
 function create_qvi_reg() {
     local registry_result=""
     local registry_failed=false
-    local registry_result_is_exact=false
-    local registry_operation_names_are_exact=false
 
     registry_result=$(run_signify_json \
       "${QVI_SIGNIFY_DIR}/qars/qars-registry-create.ts" \
@@ -2080,67 +1830,8 @@ function create_qvi_reg() {
         fail_workflow "[QVI] Credential registry creation failed"
     fi
 
-    QVI_REG_REGK=$(jq -er .registryRegk \
-        "${LOCAL_QVI_DATA_DIR}/qvi-registry-info.json")
-    qvi_registry_operation_names_are_exact \
-        "${registry_result}" \
-        "${QVI_REG_REGK}" &&
-        registry_operation_names_are_exact=true
-    if [[ "${registry_operation_names_are_exact}" == false ]]; then
-        fail_workflow \
-            "[QVI] Registry result did not record the same logical operation in all three agent stores"
-    fi
-
-    printf '%s\n' "${registry_result}" |
-        jq -e \
-            --arg registry "${QVI_REG_REGK}" \
-            --arg qar1 "${QAR1_PRE}" \
-            --arg qar2 "${QAR2_PRE}" \
-            --arg qar3 "${QAR3_PRE}" \
-            '
-              . as $registryResult |
-              .status == "created" and
-              .registryRegk == $registry and
-              (.operationEvidence | length == 3) and
-              ([.operationEvidence[].name] | sort) ==
-                (.operationNames | sort) and
-              all(
-                .operationEvidence[];
-                .done == true and
-                .error == null and
-                .result.kind == "registry-anchor" and
-                .result.said == $registry and
-                .result.prefix == $registry and
-                .result.sequence == "0"
-              ) and
-              (.coordinationReceipts | length == 6) and
-              all(
-                .coordinationReceipts[];
-                (.exnSaid | type == "string" and length > 0) and
-                (.innerExchangeSaid | type == "string" and length > 0)
-              ) and
-              ([.coordinationReceipts[].innerExchangeSaid] |
-                unique == [$registry]) and
-              ([.coordinationReceipts[] |
-                  "\(.sender)|\(.recipient)"] |
-                  unique | length == 6) and
-              all(
-                [$qar1, $qar2, $qar3][];
-                . as $sender |
-                ([$registryResult.coordinationReceipts[] |
-                    select(.sender == $sender) |
-                    .recipient] |
-                    sort) ==
-                    ([$qar1, $qar2, $qar3] |
-                     map(select(. != $sender)) |
-                     sort)
-              )
-            ' \
-            >/dev/null &&
-        registry_result_is_exact=true
-    if [[ "${registry_result_is_exact}" == false ]]; then
-        fail_workflow "[QVI] Registry result did not match its persisted artifact"
-    fi
+    QVI_REG_REGK=$(printf '%s\n' "${registry_result}" |
+        jq -r '.registryRegk')
 
     append_proof_record "$(printf '%s\n' "${registry_result}" |
         jq -c '. + {type:"credential",event:"registry"}')"
@@ -2164,7 +1855,7 @@ function prepare_qvi_edge() {
         > "${KLI_DATA_DIR}/temp-data/qvi-edge.json"
     kli saidify --file /acdc-info/temp-data/qvi-edge.json
     print_lcyan "Legal Entity edge Data"
-    print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/qvi-edge.json" | jq )"
+    print_lcyan "$(jq '.' "${KLI_DATA_DIR}/temp-data/qvi-edge.json")"
 }
 
 # QVI: Prepare LE credential data
@@ -2178,95 +1869,10 @@ function prepare_le_cred_data() {
 record_qvi_issuance_result() {
     local story_label=$1
     local issuance_result=$2
-    local expected_schema=$3
-    local expected_issuee=$4
-    local issuance_is_exact=false
-
-    printf '%s\n' "${issuance_result}" |
-        jq -e \
-            --arg issuer "${QVI_PRE}" \
-            --arg schema "${expected_schema}" \
-            --arg issuee "${expected_issuee}" \
-            --arg qar1 "${QAR1_PRE}" \
-            --arg qar2 "${QAR2_PRE}" \
-            --arg qar3 "${QAR3_PRE}" \
-            '
-              def exact_fanout($receipts; $expected_inner):
-                ($receipts | length == 6) and
-                all(
-                  $receipts[];
-                  (.exnSaid | type == "string" and length > 0) and
-                  (.innerExchangeSaid | type == "string" and length > 0)
-                ) and
-                ([$receipts[] |
-                    "\(.sender)|\(.recipient)"] |
-                    unique | length == 6) and
-                all(
-                  [$qar1, $qar2, $qar3][];
-                  . as $sender |
-                  ([$receipts[] |
-                      select(.sender == $sender) |
-                      .recipient] |
-                      sort) ==
-                      ([$qar1, $qar2, $qar3] |
-                       map(select(. != $sender)) |
-                       sort)
-                ) and
-                (
-                  if $expected_inner == null then
-                    ([$receipts[].innerExchangeSaid] |
-                      unique | length == 1)
-                  else
-                    all(
-                      $receipts[];
-                      .innerExchangeSaid == $expected_inner
-                    )
-                  end
-                );
-              . as $issuance |
-              $issuance.status == "converged" and
-              ($issuance.observations | length == 3) and
-              ([$issuance.observations[].observerAid] | sort) ==
-                ([$qar1, $qar2, $qar3] | sort) and
-              all(
-                $issuance.observations[];
-                (.said | type == "string" and length > 0) and
-                (.registry | type == "string" and length > 0) and
-                (.currentTelDigest | type == "string" and length > 0)
-              ) and
-              ([$issuance.observations[].said] | unique | length == 1) and
-              ([$issuance.observations[].issuer] | unique == [$issuer]) and
-              ([$issuance.observations[].schema] | unique == [$schema]) and
-              ([$issuance.observations[].issuee] | unique == [$issuee]) and
-              ([$issuance.observations[].registry] | unique | length == 1) and
-              ([$issuance.observations[].statusSequence] | unique == ["0"]) and
-              all(
-                $issuance.observations[];
-                .priorTelDigest == null
-              ) and
-              ([$issuance.observations[].currentTelDigest] | unique | length == 1) and
-              ($issuance.operationEvidence | length == 3) and
-              all(
-                $issuance.operationEvidence[];
-                .done == true and
-                .error == null and
-                .name == ("credential." + .result.said) and
-                .result.kind == "credential" and
-                .result.said == $issuance.observations[0].said and
-                .result.prefix == $issuer and
-                .result.schema == $schema
-              ) and
-              exact_fanout(
-                $issuance.issuanceReceipts;
-                $issuance.observations[0].currentTelDigest
-              ) and
-              exact_fanout($issuance.coordinationReceipts; null)
-            ' \
-            >/dev/null &&
-        issuance_is_exact=true
-    if [[ "${issuance_is_exact}" == false ]]; then
-        fail_workflow "[QVI] ${story_label} issuance did not prove exact three-QAR credential and fan-out convergence"
-    fi
+    LAST_ISSUED_CREDENTIAL_SAID=$(
+        printf '%s\n' "${issuance_result}" |
+            jq -r '.observations[0].said'
+    )
 
     append_proof_record "$(printf '%s\n' "${issuance_result}" |
         jq -c \
@@ -2282,7 +1888,7 @@ function create_and_grant_le_credential() {
     print_green "[QVI] creating LE credential"
 
     print_lcyan "[QVI] Legal Entity edge Data"
-    print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/qvi-edge.json" | jq )"
+    print_lcyan "$(jq '.' "${KLI_DATA_DIR}/temp-data/qvi-edge.json")"
 
     print_lcyan "[QVI] Legal Entity Credential Data"
     print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/legal-entity-data.json")"
@@ -2300,9 +1906,8 @@ function create_and_grant_le_credential() {
     fi
     record_qvi_issuance_result \
         "LE" \
-        "${issuance_result}" \
-        "${LE_SCHEMA}" \
-        "${LE_PRE}"
+        "${issuance_result}"
+    LE_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
 
     echo
     print_lcyan "[QVI] LE Credential created"
@@ -2359,11 +1964,6 @@ function present_le_cred_to_sally() {
   local presentation_failed=false
   local presentation_boundary
 
-  load_qvi_leaf_credential_said \
-      "${LOCAL_QVI_DATA_DIR}/le-cred-info.json" \
-      "leCredSAID" \
-      "LE"
-  LE_CRED_SAID="${LOADED_CREDENTIAL_SAID}"
   presentation_boundary=$(utc_now)
 
   print_yellow "[QVI] Presenting LE Credential ${LE_CRED_SAID} to Sally"
@@ -2597,7 +2197,7 @@ function create_and_grant_oor_credential() {
     local issuance_result=""
 
     print_lcyan "[QVI] OOR Auth edge Data"
-    print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/oor-auth-edge.json" | jq )"
+    print_lcyan "$(jq '.' "${KLI_DATA_DIR}/temp-data/oor-auth-edge.json")"
 
     print_lcyan "[QVI] OOR Credential Data"
     print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/oor-data.json")"
@@ -2618,9 +2218,8 @@ function create_and_grant_oor_credential() {
     fi
     record_qvi_issuance_result \
         "OOR" \
-        "${issuance_result}" \
-        "${OOR_SCHEMA}" \
-        "${PERSON_PRE}"
+        "${issuance_result}"
+    OOR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
 
     echo
     print_lcyan "[QVI] OOR credential created"
@@ -2633,35 +2232,17 @@ admit_person_leaf_credential() {
     local credential_said=$3
     local admission_result=""
     local admission_failed=false
-    local admission_is_exact=false
 
     admission_result=$(run_signify_json \
         "${QVI_SIGNIFY_DIR}/person/person-admit-credential.ts" \
         --config "${PARTICIPANT_CONFIG_CONTAINER}" \
         --issuer-prefix "${QVI_PRE}" \
-        --credential-said "${credential_said}") ||
+        --credential-said "${credential_said}" \
+        --expected-schema "${schema}" \
+        --expected-issuee "${PERSON_PRE}") ||
         admission_failed=true
     if [[ "${admission_failed}" == true ]]; then
         fail_workflow "[PERSON] Failed to admit ${story_label} credential ${credential_said}"
-    fi
-
-    printf '%s\n' "${admission_result}" |
-        jq -e \
-            --arg said "${credential_said}" \
-            --arg issuer "${QVI_PRE}" \
-            --arg schema "${schema}" \
-            --arg issuee "${PERSON_PRE}" \
-            '
-              .status == "admitted" and
-              .credential.said == $said and
-              .credential.issuer == $issuer and
-              .credential.schema == $schema and
-              .credential.issuee == $issuee and
-              .credential.statusSequence == "0"
-            ' >/dev/null &&
-        admission_is_exact=true
-    if [[ "${admission_is_exact}" == false ]]; then
-        fail_workflow "[PERSON] ${story_label} admission result did not match the issued leaf credential"
     fi
 
     append_proof_record "$(printf '%s\n' "${admission_result}" |
@@ -2672,20 +2253,13 @@ admit_person_leaf_credential() {
 
 # Person: Admit OOR credential from QVI
 function admit_oor_credential() {
-    local qars_oor_said=""
+    print_lcyan "OOR Credential SAID: ${OOR_CRED_SAID}"
 
-    load_qvi_leaf_credential_said \
-        "${LOCAL_QVI_DATA_DIR}/oor-cred-info.json" \
-        "oorCredSAID" \
-        "OOR"
-    qars_oor_said="${LOADED_CREDENTIAL_SAID}"
-    print_lcyan "OOR Credential SAID: ${qars_oor_said}"
-
-    print_yellow "[PERSON] Admitting OOR credential ${qars_oor_said} to ${PERSON}"
+    print_yellow "[PERSON] Admitting OOR credential ${OOR_CRED_SAID} to ${PERSON}"
     admit_person_leaf_credential \
         "OOR" \
         "${OOR_SCHEMA}" \
-        "${qars_oor_said}"
+        "${OOR_CRED_SAID}"
 
     echo
     print_green "OOR Credential admitted"
@@ -2698,11 +2272,6 @@ function person_present_oor_cred_to_sally() {
     local presentation_result=""
     local presentation_boundary
 
-    load_qvi_leaf_credential_said \
-        "${LOCAL_QVI_DATA_DIR}/oor-cred-info.json" \
-        "oorCredSAID" \
-        "OOR"
-    OOR_CRED_SAID="${LOADED_CREDENTIAL_SAID}"
     presentation_boundary=$(utc_now)
 
     print_yellow "[PERSON] Presenting active OOR Credential ${OOR_CRED_SAID} to Sally"
@@ -2731,153 +2300,12 @@ function person_present_oor_cred_to_sally() {
     print_green "[PERSON] Sally reported the exact active OOR Credential"
 }
 
-function load_qvi_leaf_credential_said() {
-    local artifact=$1
-    local key=$2
-    local label=$3
-    local artifact_is_missing=false
-    local said_load_failed=false
-
-    [[ -f "${artifact}" ]] || artifact_is_missing=true
-    if [[ "${artifact_is_missing}" == true ]]; then
-        fail_workflow "[QVI] Missing ${label} credential artifact ${artifact}"
-    fi
-
-    LOADED_CREDENTIAL_SAID=$(jq -er \
-        --arg key "${key}" \
-        '.[$key] | select(type == "string" and length > 0)' \
-        "${artifact}") || said_load_failed=true
-    if [[ "${said_load_failed}" == true ]]; then
-        fail_workflow "[QVI] ${artifact} does not contain a valid ${key}"
-    fi
-}
-
-function qvi_revocation_result_is_exact() {
-    local revocation_result=$1
-    local credential_said=$2
-    local qvi_prefix=$3
-    local qar1_prefix=$4
-    local qar2_prefix=$5
-    local qar3_prefix=$6
-    local expected_schema=$7
-    local expected_issuee=$8
-
-    printf '%s\n' "${revocation_result}" |
-        jq -e \
-            --arg said "${credential_said}" \
-            --arg prefix "${qvi_prefix}" \
-            --arg qar1 "${qar1_prefix}" \
-            --arg qar2 "${qar2_prefix}" \
-            --arg qar3 "${qar3_prefix}" \
-            --arg schema "${expected_schema}" \
-            --arg issuee "${expected_issuee}" \
-            '
-              def exact_observations($observations; $sequence):
-                ($observations | length == 3) and
-                ([$observations[].observerAid] | sort) ==
-                  ([$qar1, $qar2, $qar3] | sort) and
-                ([$observations[].said] | unique == [$said]) and
-                ([$observations[].issuer] | unique == [$prefix]) and
-                ([$observations[].schema] | unique == [$schema]) and
-                ([$observations[].issuee] | unique == [$issuee]) and
-                ([$observations[].registry] | unique | length == 1) and
-                ([$observations[].statusSequence] |
-                  unique == [$sequence]) and
-                ([$observations[].currentTelDigest] |
-                  unique | length == 1) and
-                all(
-                  $observations[];
-                  (.registry | type == "string" and length > 0) and
-                  (.currentTelDigest | type == "string" and length > 0)
-                );
-              def exact_fanout($receipts; $inner_said):
-                ($receipts | length == 6) and
-                all(
-                  $receipts[];
-                  (.exnSaid | type == "string" and length > 0) and
-                  .innerExchangeSaid == $inner_said
-                ) and
-                ([$receipts[] |
-                    "\(.sender)|\(.recipient)"] |
-                    unique | length == 6) and
-                all(
-                  [$qar1, $qar2, $qar3][];
-                  . as $sender |
-                  ([$receipts[] |
-                      select(.sender == $sender) |
-                      .recipient] |
-                      sort) ==
-                    ([$qar1, $qar2, $qar3] |
-                      map(select(. != $sender)) |
-                      sort)
-                );
-              . as $revocation |
-              .credentialSaid == $said and
-              .qviPrefix == $prefix and
-              (.revocationTimestamp |
-                type == "string" and length > 0) and
-              (.revocationTelDigest |
-                type == "string" and length > 0) and
-              if .status == "revoked" then
-                ([.before[].currentTelDigest] | unique) as $issuedDigests |
-                (
-                  exact_observations(.before; "0") and
-                  all(.before[]; .priorTelDigest == null) and
-                  exact_observations(.after; "1") and
-                  all(
-                    .after[];
-                    .priorTelDigest == $issuedDigests[0]
-                  ) and
-                  ([.after[].currentTelDigest] |
-                    unique == [$revocation.revocationTelDigest]) and
-                  (.operationNames | length == 3) and
-                  (.operationEvidence | length == 3) and
-                  ([.operationEvidence[].name] | sort) ==
-                    (.operationNames | sort) and
-                  ([.operationEvidence[].result.said] |
-                    unique | length == 1) and
-                  ([.operationEvidence[].result.sequence] |
-                    unique | length == 1) and
-                  all(
-                    .operationEvidence[];
-                    .done == true and
-                    .error == null and
-                    .result.kind == "event" and
-                    .name == ("group." + .result.said) and
-                    (.result.said |
-                      type == "string" and length > 0) and
-                    .result.prefix == $prefix and
-                    (.result.sequence |
-                      type == "string" and length > 0)
-                  ) and
-                  exact_fanout(
-                    .coordinationReceipts;
-                    $revocation.revocationTelDigest
-                  )
-                )
-              elif .status == "already-revoked" then
-                exact_observations(.before; "1") and
-                exact_observations(.after; "1") and
-                .after == .before and
-                ([.after[].currentTelDigest] |
-                  unique == [$revocation.revocationTelDigest]) and
-                (.operationNames | length == 0) and
-                (.operationEvidence | length == 0) and
-                (.coordinationReceipts | length == 0)
-              else
-                false
-              end
-            ' \
-            >/dev/null
-}
-
 function revoke_qvi_leaf_credential() {
     local label=$1
     local credential_said=$2
     local expected_schema=$3
     local revocation_failed=false
     local revocation_result=""
-    local revocation_result_is_valid=false
 
     print_yellow "[QVI] Revoking ${label} credential ${credential_said}"
     revocation_result=$(run_signify_json \
@@ -2891,22 +2319,8 @@ function revoke_qvi_leaf_credential() {
         fail_workflow "[QVI] ${label} credential revocation failed"
     fi
 
-    qvi_revocation_result_is_exact \
-        "${revocation_result}" \
-        "${credential_said}" \
-        "${QVI_PRE}" \
-        "${QAR1_PRE}" \
-        "${QAR2_PRE}" \
-        "${QAR3_PRE}" \
-        "${expected_schema}" \
-        "${PERSON_PRE}" &&
-        revocation_result_is_valid=true
-    if [[ "${revocation_result_is_valid}" == false ]]; then
-        fail_workflow "[QVI] ${label} revocation result did not prove three-QAR TEL convergence"
-    fi
-
     LAST_REVOCATION_TIMESTAMP=$(printf '%s\n' "${revocation_result}" |
-        jq -er '.revocationTimestamp')
+        jq -r '.revocationTimestamp')
     append_proof_record "$(printf '%s\n' "${revocation_result}" |
         jq -c \
             --arg story "${label}-revoked" \
@@ -2915,21 +2329,11 @@ function revoke_qvi_leaf_credential() {
 }
 
 function revoke_oor_credential() {
-    load_qvi_leaf_credential_said \
-        "${LOCAL_QVI_DATA_DIR}/oor-cred-info.json" \
-        "oorCredSAID" \
-        "OOR"
-    OOR_CRED_SAID="${LOADED_CREDENTIAL_SAID}"
     revoke_qvi_leaf_credential "OOR" "${OOR_CRED_SAID}" "${OOR_SCHEMA}"
     OOR_REVOCATION_TIMESTAMP="${LAST_REVOCATION_TIMESTAMP}"
 }
 
 function revoke_ecr_credential() {
-    load_qvi_leaf_credential_said \
-        "${LOCAL_QVI_DATA_DIR}/ecr-cred-info.json" \
-        "ecrCredSAID" \
-        "ECR"
-    ECR_CRED_SAID="${LOADED_CREDENTIAL_SAID}"
     revoke_qvi_leaf_credential "ECR" "${ECR_CRED_SAID}" "${ECR_SCHEMA}"
 }
 
@@ -3010,7 +2414,7 @@ function create_ecr_auth_credential() {
     print_green "[LE] LE creating ECR Auth credential"
 
     print_lcyan "[LE] Legal Entity edge JSON"
-    print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/legal-entity-edge.json" | jq)"
+    print_lcyan "$(jq '.' "${KLI_DATA_DIR}/temp-data/legal-entity-edge.json")"
 
     print_lcyan "[LE] ECR Auth data JSON"
     print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/ecr-auth-data.json")"
@@ -3149,7 +2553,7 @@ function create_and_grant_ecr_credential() {
     local issuance_result=""
 
     print_lcyan "[QVI] ECR Auth edge Data"
-    print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/ecr-auth-edge.json" | jq )"
+    print_lcyan "$(jq '.' "${KLI_DATA_DIR}/temp-data/ecr-auth-edge.json")"
 
     print_lcyan "[QVI] ECR Credential Data"
     print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/ecr-data.json")"
@@ -3170,9 +2574,8 @@ function create_and_grant_ecr_credential() {
     fi
     record_qvi_issuance_result \
         "ECR" \
-        "${issuance_result}" \
-        "${ECR_SCHEMA}" \
-        "${PERSON_PRE}"
+        "${issuance_result}"
+    ECR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
 
     echo
     print_lcyan "[QVI] ECR credential created and granted"
@@ -3181,18 +2584,11 @@ function create_and_grant_ecr_credential() {
 
 # Person: Admit ECR credential from QVI
 function admit_ecr_credential() {
-    local ecr_said=""
-
-    load_qvi_leaf_credential_said \
-        "${LOCAL_QVI_DATA_DIR}/ecr-cred-info.json" \
-        "ecrCredSAID" \
-        "ECR"
-    ecr_said="${LOADED_CREDENTIAL_SAID}"
-    print_yellow "[PERSON] Admitting ECR credential ${ecr_said} to ${PERSON}"
+    print_yellow "[PERSON] Admitting ECR credential ${ECR_CRED_SAID} to ${PERSON}"
     admit_person_leaf_credential \
         "ECR" \
         "${ECR_SCHEMA}" \
-        "${ecr_said}"
+        "${ECR_CRED_SAID}"
 
     echo
     print_green "ECR Credential admitted"
