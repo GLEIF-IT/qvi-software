@@ -1,13 +1,11 @@
-import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {grantMultisig} from '../credentials.ts';
 import {getCredential} from '../credential-state.ts';
 import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
-import {loadQviMembers} from './qvi-context.ts';
+import type {QviMember} from './qvi-context.ts';
 
 export interface PresentCredentialOptions {
-    config: WorkflowConfig;
-    groupName: string;
+    members: QviMember[];
     credentialSaid: string;
     recipientPrefix: string;
 }
@@ -16,10 +14,7 @@ export interface PresentCredentialOptions {
 export async function presentCredential(
     options: PresentCredentialOptions
 ) {
-    const members = await loadQviMembers(
-        options.config,
-        options.groupName
-    );
+    const members = options.members;
     const credentials = await Promise.all(
         members.map(({client}) =>
             getCredential(client, options.credentialSaid)

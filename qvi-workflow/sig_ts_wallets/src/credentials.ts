@@ -14,6 +14,13 @@ import {
     waitForMatchingNotification,
     type MatchedNotification,
 } from './notifications.ts';
+
+export const LE_SCHEMA_SAID =
+    'ENPXp1vQzRF6JwIuS-mp2U8Uf1MoADoP_GqQ62VsDZWY';
+export const OOR_SCHEMA_SAID =
+    'EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy';
+export const ECR_SCHEMA_SAID =
+    'EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw';
 import {waitOperation} from './operations.ts';
 import {retry} from './retry.ts';
 

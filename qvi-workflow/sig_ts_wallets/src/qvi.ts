@@ -2,13 +2,18 @@ import {promises as fs, readFileSync} from 'node:fs';
 import {resolve as resolvePath} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
-import type {HabState, SignifyClient} from 'signify-ts';
+import {
+    Salter,
+    type CredentialData,
+    type CredentialSubject,
+    type HabState,
+    type SignifyClient,
+} from 'signify-ts';
 
 import {
     assertSignifyVersion,
     bootClient,
     connectClient,
-    connectParticipants,
     createAid,
     getAid,
     readWorkflowConfig,
@@ -28,31 +33,30 @@ import {
     type ExpectedCredentialState,
 } from './assertions.ts';
 import {
-    completeSavedGroupEvent,
+    completeGroupEvent,
+    joinGroupRotation,
     submitGroupInception,
     submitGroupRotation,
-    submitJoiningMemberRotation,
     type GroupEventSubmission,
     type SavedGroupEvent,
 } from './multisig.ts';
 import {notificationReference} from './notifications.ts';
-import {createQviRegistry} from './qars/qars-registry-create.ts';
 import {
-    createLeCredential,
-    LE_SCHEMA_SAID,
-} from './qars/qars-le-credential-create.ts';
-import {
-    createOorCredential,
-    OOR_SCHEMA_SAID,
-} from './qars/qars-oor-credential-create.ts';
-import {
-    createEcrCredential,
     ECR_SCHEMA_SAID,
-} from './qars/qars-ecr-credential-create.ts';
+    LE_SCHEMA_SAID,
+    OOR_SCHEMA_SAID,
+} from './credentials.ts';
+import {createQviRegistry} from './qars/qars-registry-create.ts';
+import {createTimestamp} from './create-aid.ts';
+import {issueAndGrantCredential} from './qars/issue-and-grant.ts';
 import {admitCredentialQvi} from './qars/qars-admit-credential-qvi.ts';
 import {presentCredential} from './qars/qars-present-credential.ts';
 import {runRevocation} from './qars/qars-revoke-credential.ts';
 import {authorizeAgentEndRoles} from './qars/qars-authorize-endroles-get-qvi-oobi.ts';
+import {
+    loadGroupMembers,
+    type QviMember,
+} from './qars/qvi-context.ts';
 import {admitCredential as admitPersonCredential} from './person/person-admit-credential.ts';
 import {presentPersonCredential} from './person/person-grant-credential.ts';
 
@@ -84,6 +88,87 @@ interface ReadyWallet extends SetupWallet {
 
 interface PreparedWallet extends ReadyWallet {
     evidence: ParticipantEvidence;
+}
+
+/** Connect concrete participants in the requested workflow order. */
+async function connectWallets(
+    config: WorkflowConfig,
+    roles: readonly ParticipantRole[]
+): Promise<SetupWallet[]> {
+    return await Promise.all(
+        roles.map(async (role) => ({
+            role,
+            client: await connectClient(config.participants[role]),
+        }))
+    );
+}
+
+/** Connect and load concrete wallets in the requested roster order. */
+async function loadWallets(
+    config: WorkflowConfig,
+    roles: readonly ParticipantRole[]
+): Promise<ReadyWallet[]> {
+    const wallets = await connectWallets(config, roles);
+    return await Promise.all(
+        wallets.map(async ({role, client}) => {
+            return {
+                role,
+                client,
+                aid: await getAid(
+                    client,
+                    config.participants[role].name
+                ),
+            };
+        })
+    );
+}
+
+/** Select concrete wallets in an explicit roster order. */
+function selectWallets(
+    wallets: ReadyWallet[],
+    roles: readonly ParticipantRole[]
+): ReadyWallet[] {
+    return roles.map((role) => {
+        const wallet = wallets.find(
+            (candidate) => candidate.role === role
+        );
+        if (wallet === undefined) {
+            throw new Error(`Wallet ${role} was not loaded`);
+        }
+        return wallet;
+    });
+}
+
+/** Convert one prepared workflow wallet to the multisig wallet interface. */
+function multisigMember(wallet: ReadyWallet) {
+    return {client: wallet.client, aid: wallet.aid};
+}
+
+/** Convert prepared workflow wallets to the multisig wallet interface. */
+function multisigMembers(wallets: ReadyWallet[]) {
+    return wallets.map(multisigMember);
+}
+
+/** Load the concrete final QVI member and group identifiers. */
+async function loadFinalQviMembers(
+    config: WorkflowConfig
+): Promise<QviMember[]> {
+    const wallets = await loadWallets(
+        config,
+        config.qvi.finalMembers
+    );
+    return await loadGroupMembers(
+        wallets.map(({client}) => client),
+        wallets.map(({aid}) => aid.name),
+        config.qvi.name
+    );
+}
+
+/** Load the concrete person wallet used by holder actions. */
+async function loadPersonWallet(
+    config: WorkflowConfig
+): Promise<ReadyWallet> {
+    return (await loadWallets(config, ['person']))[0];
 }
 
 export interface PendingWorkflowEvent extends SavedGroupEvent {
@@ -410,21 +495,35 @@ async function completeAndAssert(
             `Expected ${eventKind} sequence ${args['expected-sequence']}; found ${event.eventKind} sequence ${event.eventSequence}`
         );
     }
-    await completeSavedGroupEvent(config, {
-        delegatorPrefix: args['delegator-prefix'],
-        expectedSigningRoles: signingRoles,
-        expectedRotationRoles: rotationRoles,
+    const wallets = await loadWallets(config, [
+        ...new Set([...signingRoles, ...rotationRoles]),
+    ]);
+    const signingWallets = selectWallets(wallets, signingRoles);
+    const rotationWallets = selectWallets(wallets, rotationRoles);
+    await completeGroupEvent({
+        signingMembers: multisigMembers(signingWallets),
+        rotationMembers: rotationWallets.map(({aid}) => aid),
         event,
     });
-    const state = await assertGroupConvergence(config, {
-        groupPrefix: event.groupPrefix,
-        delegatorPrefix: args['delegator-prefix'],
-        sequence: event.eventSequence,
-        observerRoles: [...signingRoles],
-        signingRoles: [...signingRoles],
-        rotationRoles: [...rotationRoles],
-        eventSaid: event.eventSaid,
-    });
+    const state = await assertGroupConvergence(
+        signingWallets,
+        config.qvi.name,
+        {
+            prefix: event.groupPrefix,
+            delegator: args['delegator-prefix'],
+            sequence: event.eventSequence,
+            signingThreshold: config.qvi.signingThreshold,
+            nextThreshold: config.qvi.nextThreshold,
+            members: signingWallets.map(({aid}) => aid.prefix),
+            signingMembers: signingWallets.map(
+                ({aid}) => aid.prefix
+            ),
+            rotationMembers: rotationWallets.map(
+                ({aid}) => aid.prefix
+            ),
+        },
+        event.eventSaid
+    );
     await fs.unlink(args.artifact);
     return {status: 'completed', event, state};
 }
@@ -512,11 +611,11 @@ async function resolveExternalOobis(
         'qar4',
         'person',
     ];
-    const clients = await connectParticipants(config, roles);
+    const wallets = await connectWallets(config, roles);
     await Promise.all(
-        roles.flatMap((role) =>
+        wallets.flatMap(({client}) =>
             entries.map(({alias, oobi}) =>
-                resolveOobi(clients.get(role)!, oobi, alias)
+                resolveOobi(client, oobi, alias)
             )
         )
     );
@@ -669,11 +768,11 @@ async function resolveOobiAction(
     args: Record<string, string>
 ) {
     const roles = parseRoles(args.roles, 'Resolution roles');
-    const clients = await connectParticipants(config, roles);
+    const wallets = await connectWallets(config, roles);
     await Promise.all(
-        roles.map((role) =>
+        wallets.map(({client}) =>
             resolveAidOobi(
-                clients.get(role)!,
+                client,
                 args.oobi,
                 args.alias
             )
@@ -688,10 +787,9 @@ async function refreshDelegatorAction(
     args: Record<string, string>
 ) {
     const roles = parseRoles(args.roles, 'Refresh roles');
-    const clients = await connectParticipants(config, roles);
+    const wallets = await connectWallets(config, roles);
     await Promise.all(
-        roles.map(async (role) => {
-            const client = clients.get(role)!;
+        wallets.map(async ({client}) => {
             await waitOperation(
                 client,
                 await client.keyStates().query(args['delegator-prefix'])
@@ -701,20 +799,158 @@ async function refreshDelegatorAction(
     return {status: 'refreshed', roles};
 }
 
+/** Rotate the exact member AIDs selected by the outer workflow. */
+async function rotateMembersAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const roles = parseRoles(args.roles, 'Member rotation roles');
+    const before = await loadWallets(config, roles);
+    await Promise.all(
+        before.map(async ({client, aid}) => {
+            const result = await client.identifiers().rotate(aid.name);
+            await waitOperation(client, await result.op());
+        })
+    );
+    const after = await loadWallets(config, roles);
+    after.forEach((wallet, index) => {
+        const previous = before[index].aid;
+        if (
+            wallet.aid.prefix !== previous.prefix ||
+            wallet.aid.state.s === previous.state.s
+        ) {
+            throw new Error(
+                `Member ${wallet.role} did not complete its key rotation`
+            );
+        }
+    });
+    return {
+        status: 'rotated',
+        members: after.map(({role, aid}) => ({
+            role,
+            prefix: aid.prefix,
+            sequence: aid.state.s,
+        })),
+    };
+}
+
+/** Synchronize exact subject key states to explicit observer wallets. */
+async function synchronizeMembersAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const observerRoles = parseRoles(
+        args['observer-roles'],
+        'Observer roles'
+    );
+    const subjectRoles = parseRoles(
+        args['subject-roles'],
+        'Subject roles'
+    );
+    const allRoles = [
+        ...new Set([...observerRoles, ...subjectRoles]),
+    ];
+    const wallets = await loadWallets(config, allRoles);
+    const observers = selectWallets(wallets, observerRoles);
+    const subjects = selectWallets(wallets, subjectRoles);
+    let queryCount = 0;
+    for (const observer of observers) {
+        for (const subject of subjects) {
+            if (observer.aid.prefix === subject.aid.prefix) {
+                continue;
+            }
+            await waitOperation(
+                observer.client,
+                await observer.client
+                    .keyStates()
+                    .query(subject.aid.prefix, subject.aid.state.s)
+            );
+            queryCount += 1;
+        }
+    }
+    return {status: 'synchronized', queryCount};
+}
+
+/** Resolve and refresh the group state needed by one joining wallet. */
+async function prepareJoiningMemberAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const sourceRoles = parseRoles(
+        args['source-role'],
+        'Join source role'
+    );
+    const joiningRoles = parseRoles(
+        args['joining-role'],
+        'Joining role'
+    );
+    if (sourceRoles.length !== 1 || joiningRoles.length !== 1) {
+        throw new UsageError(
+            'Join preparation requires one source and one joining role'
+        );
+    }
+    const [source, joining] = await loadWallets(config, [
+        sourceRoles[0],
+        joiningRoles[0],
+    ]);
+    const group = await source.client
+        .identifiers()
+        .get(config.qvi.name);
+    if (group.prefix !== args['group-prefix']) {
+        throw new Error(
+            `Join source resolved group ${group.prefix}; expected ${args['group-prefix']}`
+        );
+    }
+    if (group.state.s !== args['expected-sequence']) {
+        throw new Error(
+            `Join source group is at sequence ${group.state.s}; expected ${args['expected-sequence']}`
+        );
+    }
+    const groupOobi = new URL(
+        `/oobi/${group.prefix}`,
+        config.participants[source.role].oobiUrl
+    ).toString();
+    const resolved = await resolveAidOobi(
+        joining.client,
+        groupOobi,
+        config.qvi.name
+    );
+    if (
+        resolved.i !== group.prefix ||
+        resolved.s !== args['expected-sequence']
+    ) {
+        throw new Error(
+            'Joining wallet did not resolve the expected group state'
+        );
+    }
+    await waitOperation(
+        joining.client,
+        await joining.client.keyStates().query(group.prefix)
+    );
+    return {
+        status: 'prepared',
+        joiningRole: joining.role,
+        groupPrefix: group.prefix,
+        sequence: group.state.s,
+    };
+}
+
 /** Submit group inception and persist its typed cross-process handle. */
 async function submitInceptionAction(
     config: WorkflowConfig,
     args: Record<string, string>
 ) {
+    const roles = parseRoles(
+        args['member-roles'],
+        'Inception member roles'
+    );
+    const wallets = await loadWallets(config, roles);
     const event = saveGroupEvent(
         'inception',
-        await submitGroupInception(config, {
+        await submitGroupInception({
             groupName: config.qvi.name,
             delegatorPrefix: args['delegator-prefix'],
-            memberRoles: parseRoles(
-                args['member-roles'],
-                'Inception member roles'
-            ),
+            members: multisigMembers(wallets),
             signingThreshold: config.qvi.signingThreshold,
             nextThreshold: config.qvi.nextThreshold,
             witnessId: config.services.witnesses[1].id,
@@ -729,18 +965,25 @@ async function submitRotationAction(
     config: WorkflowConfig,
     args: Record<string, string>
 ) {
+    const signingRoles = parseRoles(
+        args['signing-roles'],
+        'Signing roles'
+    );
+    const rotationRoles = parseRoles(
+        args['rotation-roles'],
+        'Rotation roles'
+    );
+    const wallets = await loadWallets(config, [
+        ...new Set([...signingRoles, ...rotationRoles]),
+    ]);
+    const signingWallets = selectWallets(wallets, signingRoles);
+    const rotationWallets = selectWallets(wallets, rotationRoles);
     const event = saveGroupEvent(
         'rotation',
-        await submitGroupRotation(config, {
+        await submitGroupRotation({
             groupName: config.qvi.name,
-            signingRoles: parseRoles(
-                args['signing-roles'],
-                'Signing roles'
-            ),
-            rotationRoles: parseRoles(
-                args['rotation-roles'],
-                'Rotation roles'
-            ),
+            signingMembers: multisigMembers(signingWallets),
+            rotationMembers: rotationWallets.map(({aid}) => aid),
         })
     );
     await writePendingArtifact(args.artifact, event);
@@ -761,23 +1004,45 @@ async function submitJoiningRotationAction(
             'Joining role must contain exactly one participant'
         );
     }
+    const existingRoles = parseRoles(
+        args['existing-roles'],
+        'Existing roles'
+    );
+    const signingRoles = parseRoles(
+        args['signing-roles'],
+        'Signing roles'
+    );
+    const rotationRoles = parseRoles(
+        args['rotation-roles'],
+        'Rotation roles'
+    );
+    const expectedRoles = [...existingRoles, joiningRoles[0]];
+    if (
+        JSON.stringify(signingRoles) !==
+            JSON.stringify(expectedRoles) ||
+        JSON.stringify(rotationRoles) !==
+            JSON.stringify(expectedRoles)
+    ) {
+        throw new UsageError(
+            'Joining rotation rosters must contain the existing roles followed by the joining role'
+        );
+    }
+    const wallets = await loadWallets(config, signingRoles);
+    const existingWallets = selectWallets(wallets, existingRoles);
+    const joiningWallet = selectWallets(
+        wallets,
+        joiningRoles
+    )[0];
+    const group = await existingWallets[0].client
+        .identifiers()
+        .get(config.qvi.name);
     const event = saveGroupEvent(
         'rotation',
-        await submitJoiningMemberRotation(config, {
+        await joinGroupRotation({
             groupName: config.qvi.name,
-            existingRoles: parseRoles(
-                args['existing-roles'],
-                'Existing roles'
-            ),
-            joiningRole: joiningRoles[0],
-            signingRoles: parseRoles(
-                args['signing-roles'],
-                'Signing roles'
-            ),
-            rotationRoles: parseRoles(
-                args['rotation-roles'],
-                'Rotation roles'
-            ),
+            groupPrefix: group.prefix,
+            existingMembers: multisigMembers(existingWallets),
+            joiningMember: multisigMember(joiningWallet),
         })
     );
     await writePendingArtifact(args.artifact, event);
@@ -789,13 +1054,18 @@ async function authorizeAction(
     config: WorkflowConfig,
     args: Record<string, string>
 ) {
+    const members = await loadFinalQviMembers(config);
+    const qviOobi = await authorizeAgentEndRoles({
+        members,
+        groupName: config.qvi.name,
+    });
+    await fs.writeFile(
+        `${args['data-dir']}/qvi-oobi.json`,
+        JSON.stringify(qviOobi)
+    );
     return {
         status: 'authorized',
-        ...(await authorizeAgentEndRoles({
-            config: config,
-            groupName: config.qvi.name,
-            dataDir: args['data-dir'],
-        })),
+        ...qviOobi,
     };
 }
 
@@ -830,14 +1100,165 @@ async function registryAction(
     config: WorkflowConfig,
     args: Record<string, string>
 ) {
+    const members = await loadFinalQviMembers(config);
     return {
         status: 'created',
         ...(await createQviRegistry(
-            config,
+            members,
             config.qvi.name,
             args['registry-name']
         )),
     };
+}
+
+/** Read one workflow-owned credential fragment from disk. */
+async function readCredentialJson(path: string) {
+    return JSON.parse(await fs.readFile(path, 'utf8'));
+}
+
+/** Require the one QVI registry created by the outer workflow. */
+async function loadQviRegistry(
+    members: QviMember[],
+    groupName: string
+): Promise<string> {
+    const registryLists = await Promise.all(
+        members.map(({client}) =>
+            client.registries().list(groupName)
+        )
+    );
+    const registryId = registryLists[0]?.[0]?.regk;
+    const registryConverged =
+        registryId !== undefined &&
+        registryLists.every(
+            (registries) =>
+                registries.length === 1 &&
+                registries[0].regk === registryId
+        );
+    if (registryConverged === false) {
+        throw new Error(
+            'QVI members do not share exactly one credential registry'
+        );
+    }
+    return registryId;
+}
+
+/** Build one LE credential from explicit workflow inputs. */
+async function leCredentialData(
+    members: QviMember[],
+    registryId: string,
+    dataDir: string,
+    issueePrefix: string
+): Promise<CredentialData> {
+    const subject: CredentialSubject = {
+        i: issueePrefix,
+        dt: createTimestamp(),
+        ...(await readCredentialJson(
+            `${dataDir}/temp-data/legal-entity-data.json`
+        )),
+    };
+    return {
+        i: members[0].groupAid.prefix,
+        ri: registryId,
+        s: LE_SCHEMA_SAID,
+        a: subject,
+        e: await readCredentialJson(
+            `${dataDir}/temp-data/qvi-edge.json`
+        ),
+        r: await readCredentialJson(`${dataDir}/rules/rules.json`),
+    };
+}
+
+/** Build one OOR credential from explicit workflow inputs. */
+async function oorCredentialData(
+    members: QviMember[],
+    registryId: string,
+    dataDir: string,
+    issueePrefix: string
+): Promise<CredentialData> {
+    const subject: CredentialSubject = {
+        i: issueePrefix,
+        dt: createTimestamp(),
+        ...(await readCredentialJson(
+            `${dataDir}/temp-data/oor-data.json`
+        )),
+    };
+    return {
+        i: members[0].groupAid.prefix,
+        ri: registryId,
+        s: OOR_SCHEMA_SAID,
+        a: subject,
+        e: await readCredentialJson(
+            `${dataDir}/temp-data/oor-auth-edge.json`
+        ),
+        r: await readCredentialJson(
+            `${dataDir}/rules/oor-rules.json`
+        ),
+    };
+}
+
+/** Build one ECR credential from explicit workflow inputs. */
+async function ecrCredentialData(
+    members: QviMember[],
+    registryId: string,
+    dataDir: string,
+    issueePrefix: string
+): Promise<CredentialData> {
+    const subject: CredentialSubject = {
+        i: issueePrefix,
+        dt: createTimestamp(),
+        u: new Salter({}).qb64,
+        ...(await readCredentialJson(
+            `${dataDir}/temp-data/ecr-data.json`
+        )),
+    };
+    return {
+        u: new Salter({}).qb64,
+        i: members[0].groupAid.prefix,
+        ri: registryId,
+        s: ECR_SCHEMA_SAID,
+        a: subject,
+        e: await readCredentialJson(
+            `${dataDir}/temp-data/ecr-auth-edge.json`
+        ),
+        r: await readCredentialJson(
+            `${dataDir}/rules/ecr-rules.json`
+        ),
+    };
+}
+
+/** Build the credential kind selected explicitly by the workflow. */
+async function buildCredentialData(
+    kind: string,
+    members: QviMember[],
+    registryId: string,
+    dataDir: string,
+    issueePrefix: string
+): Promise<CredentialData> {
+    switch (kind) {
+        case 'le':
+            return await leCredentialData(
+                members,
+                registryId,
+                dataDir,
+                issueePrefix
+            );
+        case 'oor':
+            return await oorCredentialData(
+                members,
+                registryId,
+                dataDir,
+                issueePrefix
+            );
+        case 'ecr':
+            return await ecrCredentialData(
+                members,
+                registryId,
+                dataDir,
+                issueePrefix
+            );
+        default:
+            throw new UsageError(`Unknown credential kind ${kind}`);
+    }
 }
 
 /** Issue and grant one consolidated LE, OOR, or ECR credential kind. */
@@ -845,23 +1266,25 @@ async function issueAction(
     config: WorkflowConfig,
     args: Record<string, string>
 ) {
-    const options = {
-        config: config,
+    const members = await loadFinalQviMembers(config);
+    const registryId = await loadQviRegistry(
+        members,
+        config.qvi.name
+    );
+    const credentialData = await buildCredentialData(
+        args.kind,
+        members,
+        registryId,
+        args['data-dir'],
+        args['issuee-prefix']
+    );
+    const issued = await issueAndGrantCredential({
+        members,
         groupName: config.qvi.name,
-        dataDir: args['data-dir'],
         issueePrefix: args['issuee-prefix'],
-    };
-    const snapshot =
-        args.kind === 'le'
-            ? await createLeCredential(options)
-            : args.kind === 'oor'
-              ? await createOorCredential(options)
-              : args.kind === 'ecr'
-                ? await createEcrCredential(options)
-                : undefined;
-    if (snapshot === undefined) {
-        throw new UsageError(`Unknown credential kind ${args.kind}`);
-    }
+        credentialData,
+    });
+    const snapshot = issued[0].snapshot;
     return {
         status: 'issued',
         credentialSaid: snapshot.said,
@@ -877,26 +1300,37 @@ async function admitAction(
 ) {
     const expected = expectedCredential(args);
     if (args.actor === 'qvi') {
+        const members = await loadFinalQviMembers(config);
         await admitCredentialQvi(
-            config,
-            config.qvi.name,
+            members,
             expected.issuerPrefix,
             expected.credentialSaid
         );
         return {
             status: 'admitted',
-            state: await assertQviCredentialConvergence(config, expected),
+            state: await assertQviCredentialConvergence(
+                members.map(({client, memberAid}) => ({
+                    client,
+                    aid: memberAid,
+                })),
+                expected
+            ),
         };
     }
     if (args.actor === 'person') {
+        const person = await loadPersonWallet(config);
         await admitPersonCredential(
-            config,
+            person.client,
+            person.aid,
             expected.issuerPrefix,
             expected.credentialSaid
         );
         return {
             status: 'admitted',
-            state: await assertPersonCredentialState(config, expected),
+            state: await assertPersonCredentialState(
+                person,
+                expected
+            ),
         };
     }
     throw new UsageError(`Unknown admission actor ${args.actor}`);
@@ -909,15 +1343,16 @@ async function presentAction(
 ) {
     if (args.actor === 'qvi') {
         return await presentCredential({
-            config: config,
-            groupName: config.qvi.name,
+            members: await loadFinalQviMembers(config),
             credentialSaid: args['credential-said'],
             recipientPrefix: args['recipient-prefix'],
         });
     }
     if (args.actor === 'person') {
+        const person = await loadPersonWallet(config);
         return await presentPersonCredential({
-            config: config,
+            client: person.client,
+            personAid: person.aid,
             credentialSaid: args['credential-said'],
             recipientPrefix: args['recipient-prefix'],
         });
@@ -931,7 +1366,7 @@ async function revokeAction(
     args: Record<string, string>
 ) {
     return await runRevocation({
-        config: config,
+        members: await loadFinalQviMembers(config),
         groupName: config.qvi.name,
         credentialSaid: args['credential-said'],
     });
@@ -950,16 +1385,31 @@ async function assertGroupAction(
         args['rotation-roles'],
         'Rotation roles'
     );
+    const wallets = await loadWallets(config, [
+        ...new Set([...signingRoles, ...rotationRoles]),
+    ]);
+    const signingWallets = selectWallets(wallets, signingRoles);
+    const rotationWallets = selectWallets(wallets, rotationRoles);
     return {
         status: 'converged',
-        state: await assertGroupConvergence(config, {
-            groupPrefix: args['group-prefix'],
-            delegatorPrefix: args['delegator-prefix'],
-            sequence: args.sequence,
-            observerRoles: [...signingRoles],
-            signingRoles: [...signingRoles],
-            rotationRoles: [...rotationRoles],
-        }),
+        state: await assertGroupConvergence(
+            signingWallets,
+            config.qvi.name,
+            {
+                prefix: args['group-prefix'],
+                delegator: args['delegator-prefix'],
+                sequence: args.sequence,
+                signingThreshold: config.qvi.signingThreshold,
+                nextThreshold: config.qvi.nextThreshold,
+                members: signingWallets.map(({aid}) => aid.prefix),
+                signingMembers: signingWallets.map(
+                    ({aid}) => aid.prefix
+                ),
+                rotationMembers: rotationWallets.map(
+                    ({aid}) => aid.prefix
+                ),
+            }
+        ),
     };
 }
 
@@ -969,16 +1419,29 @@ async function assertCredentialAction(
     args: Record<string, string>
 ) {
     const expected = expectedCredential(args);
-    const state =
-        args.actor === 'person'
-            ? await assertPersonCredentialState(config, expected)
-            : args.actor === 'qvi'
-              ? await assertQviCredentialConvergence(config, expected)
-              : undefined;
-    if (state === undefined) {
-        throw new UsageError(`Unknown assertion actor ${args.actor}`);
+    if (args.actor === 'person') {
+        return {
+            status: 'converged',
+            state: await assertPersonCredentialState(
+                await loadPersonWallet(config),
+                expected
+            ),
+        };
     }
-    return {status: 'converged', state};
+    if (args.actor === 'qvi') {
+        const members = await loadFinalQviMembers(config);
+        return {
+            status: 'converged',
+            state: await assertQviCredentialConvergence(
+                members.map(({client, memberAid}) => ({
+                    client,
+                    aid: memberAid,
+                })),
+                expected
+            ),
+        };
+    }
+    throw new UsageError(`Unknown assertion actor ${args.actor}`);
 }
 
 /** Parse and dispatch one explicit qvi.ts action without hidden transitions. */
@@ -1029,6 +1492,39 @@ export async function run(
                 'roles'
             );
             return await refreshDelegatorAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-rotate-members': {
+            args = parseExactArguments(values, 'config', 'roles');
+            return await rotateMembersAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-sync-members': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'observer-roles',
+                'subject-roles'
+            );
+            return await synchronizeMembersAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-prepare-join': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'source-role',
+                'joining-role',
+                'group-prefix',
+                'expected-sequence'
+            );
+            return await prepareJoiningMemberAction(
                 readWorkflowConfig(args.config),
                 args
             );

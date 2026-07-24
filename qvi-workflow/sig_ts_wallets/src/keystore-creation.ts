@@ -9,51 +9,6 @@ import {
 } from 'signify-ts';
 import { resolveEnvironment, TestEnvironmentPreset } from './resolve-env';
 import { waitOperation } from './operations';
-import {workflowTimeoutMs} from './retry.ts';
-
-let boundedFetchIsInstalled = false;
-
-function installBoundedFetch(): void {
-    if (boundedFetchIsInstalled) {
-        return;
-    }
-
-    const originalFetch = globalThis.fetch.bind(globalThis);
-    globalThis.fetch = async (
-        input: RequestInfo | URL,
-        init: RequestInit = {}
-    ): Promise<Response> => {
-        const controller = new AbortController();
-        const timeout = setTimeout(
-            () => controller.abort(
-                new Error('KERIA HTTP request timed out')
-            ),
-            workflowTimeoutMs()
-        );
-        const upstreamSignal = init.signal;
-        const abortFromUpstream = () =>
-            controller.abort(upstreamSignal?.reason);
-        upstreamSignal?.addEventListener(
-            'abort',
-            abortFromUpstream,
-            {once: true}
-        );
-
-        try {
-            return await originalFetch(input, {
-                ...init,
-                signal: controller.signal,
-            });
-        } finally {
-            clearTimeout(timeout);
-            upstreamSignal?.removeEventListener(
-                'abort',
-                abortFromUpstream
-            );
-        }
-    };
-    boundedFetchIsInstalled = true;
-}
 
 /**
  * Connect or boot a SignifyClient instance
@@ -64,7 +19,6 @@ export async function getOrCreateClient(
     keriaHost?: number
 ): Promise<SignifyClient> {
     const env = resolveEnvironment(environment);
-    installBoundedFetch();
     await ready();
     bran ??= randomPasscode();
     bran = bran.padEnd(21, '_');
@@ -153,7 +107,16 @@ export async function getOrCreateAID(
 ): Promise<HabState> {
     try {
         return await client.identifiers().get(name);
-    } catch {
+    } catch (error: unknown) {
+        const encodedName = encodeURIComponent(name);
+        const identifierIsMissing =
+            error instanceof Error &&
+            error.message.startsWith(
+                `HTTP GET /identifiers/${encodedName} - 404 `
+            );
+        if (identifierIsMissing === false) {
+            throw error;
+        }
         const result: EventResult = await client
             .identifiers()
             .create(name, kargs);

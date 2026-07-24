@@ -500,17 +500,6 @@ export interface ParticipantEvidence {
     witnessOobi: string;
 }
 
-/** Connect the requested participant roles and retain their role mapping. */
-export async function connectParticipants(
-    config: WorkflowConfig,
-    roles: readonly ParticipantRole[]
-): Promise<Map<ParticipantRole, SignifyClient>> {
-    const clients = await Promise.all(
-        roles.map((role) => connectClient(config.participants[role]))
-    );
-    return new Map(roles.map((role, index) => [role, clients[index]]));
-}
-
 /** Read the public AID and OOBI evidence for one prepared participant. */
 export async function readParticipantEvidence(
     client: SignifyClient,

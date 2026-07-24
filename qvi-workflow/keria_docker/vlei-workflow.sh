@@ -1039,6 +1039,11 @@ function create_qvi_multisig() {
 
     print_yellow "Creating QVI multisig AID with GEDA as delegator"
 
+    run_qvi_json \
+        ms-sync-members \
+        --observer-roles qar1,qar2,qar3 \
+        --subject-roles qar1,qar2,qar3 >/dev/null || return 1
+
     delegator_prefix=$(kli status \
         --name "${GAR1}" \
         --alias "${GEDA_NAME}" \
@@ -1066,6 +1071,10 @@ function create_qvi_multisig() {
     approve_qvi_delegation "${QAR1_PRE}" "${QAR2_PRE}" "${QAR3_PRE}" ||
         return 1
 
+    run_qvi_json \
+        ms-refresh-delegator \
+        --delegator-prefix "${GEDA_PRE}" \
+        --roles qar1,qar2,qar3 >/dev/null || return 1
     run_qvi_json \
         ms-incept-complete \
         --delegator-prefix "${GEDA_PRE}" \
@@ -1117,8 +1126,17 @@ rotate_qvi_existing_members() {
     local expected_sequence=$1
     local signing_roles=$2
     local rotation_roles=$3
-    shift 3
+    local synchronization_roles=$4
+    shift 4
     local submit_result=""
+
+    run_qvi_json \
+        ms-rotate-members \
+        --roles "${signing_roles}" >/dev/null || return 1
+    run_qvi_json \
+        ms-sync-members \
+        --observer-roles "${signing_roles}" \
+        --subject-roles "${synchronization_roles}" >/dev/null || return 1
 
     print_yellow "[QVI] Submitting rotation sequence ${expected_sequence}"
     submit_result=$(run_qvi_json \
@@ -1131,6 +1149,10 @@ rotate_qvi_existing_members() {
         return 1
 
     approve_qvi_delegation "$@" || return 1
+    run_qvi_json \
+        ms-refresh-delegator \
+        --delegator-prefix "${GEDA_PRE}" \
+        --roles "${signing_roles}" >/dev/null || return 1
     run_qvi_json \
         ms-rotate-complete \
         --delegator-prefix "${GEDA_PRE}" \
@@ -1146,6 +1168,20 @@ rotate_qvi_with_joining_member() {
     shift
     local submit_result=""
 
+    run_qvi_json \
+        ms-prepare-join \
+        --source-role qar1 \
+        --joining-role qar4 \
+        --group-prefix "${QVI_PRE}" \
+        --expected-sequence 2 >/dev/null || return 1
+    run_qvi_json \
+        ms-rotate-members \
+        --roles qar1,qar2,qar4 >/dev/null || return 1
+    run_qvi_json \
+        ms-sync-members \
+        --observer-roles qar1,qar2,qar4 \
+        --subject-roles qar1,qar2,qar4 >/dev/null || return 1
+
     print_yellow "[QVI] Submitting joining-member rotation sequence ${expected_sequence}"
     submit_result=$(run_qvi_json \
         ms-join-rotation-submit \
@@ -1159,6 +1195,10 @@ rotate_qvi_with_joining_member() {
         return 1
 
     approve_qvi_delegation "$@" || return 1
+    run_qvi_json \
+        ms-refresh-delegator \
+        --delegator-prefix "${GEDA_PRE}" \
+        --roles qar1,qar2,qar4 >/dev/null || return 1
     run_qvi_json \
         ms-rotate-complete \
         --delegator-prefix "${GEDA_PRE}" \
@@ -1174,10 +1214,12 @@ establish_qvi() {
     rotate_qvi_existing_members 1 \
         qar1,qar2,qar3 \
         qar1,qar2,qar3 \
+        qar1,qar2,qar3 \
         "${QAR1_PRE}" "${QAR2_PRE}" "${QAR3_PRE}" || return 1
     rotate_qvi_existing_members 2 \
         qar1,qar2,qar3 \
         qar1,qar2,qar4 \
+        qar1,qar2,qar3,qar4 \
         "${QAR1_PRE}" "${QAR2_PRE}" "${QAR3_PRE}" || return 1
     rotate_qvi_with_joining_member 3 \
         "${QAR1_PRE}" "${QAR2_PRE}" "${QAR4_PRE}" || return 1

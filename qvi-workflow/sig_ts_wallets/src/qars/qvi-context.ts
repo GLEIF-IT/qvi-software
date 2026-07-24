@@ -1,28 +1,27 @@
 import type {HabState, SignifyClient} from 'signify-ts';
 
-import {
-    connectClient,
-    type Participant,
-    type WorkflowConfig,
-} from '../client.ts';
-
-export interface QviMemberContext {
+export interface QviMember {
     client: SignifyClient;
     memberAid: HabState;
     groupAid: HabState;
 }
 
 /**
- * Load the group and member identifiers for already-connected clients.
+ * Load concrete member and group identifiers from connected wallets.
  */
-async function loadMembers(
+export async function loadGroupMembers(
     clients: SignifyClient[],
-    participants: Participant[],
+    memberNames: string[],
     groupName: string
-): Promise<QviMemberContext[]> {
+): Promise<QviMember[]> {
+    if (clients.length !== memberNames.length) {
+        throw new Error(
+            'Group member clients and identifier names must have equal length'
+        );
+    }
     const memberAids = await Promise.all(
-        participants.map((participant, index) =>
-            clients[index].identifiers().get(participant.name)
+        memberNames.map((name, index) =>
+            clients[index].identifiers().get(name)
         )
     );
     const groupAids = await Promise.all(
@@ -33,18 +32,4 @@ async function loadMembers(
         memberAid: memberAids[index],
         groupAid: groupAids[index],
     }));
-}
-
-/**
- * Load the final QVI roster from the generated workflow config.
- */
-export async function loadQviMembers(
-    config: WorkflowConfig,
-    groupName: string
-): Promise<QviMemberContext[]> {
-    const participants = config.qvi.finalMembers.map(
-        (role) => config.participants[role]
-    );
-    const clients = await Promise.all(participants.map(connectClient));
-    return loadMembers(clients, participants, groupName);
 }

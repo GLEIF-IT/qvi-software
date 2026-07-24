@@ -1,10 +1,5 @@
-import {
-    connectClient,
-    connectParticipants,
-    getAid,
-    type WorkflowConfig,
-    type ParticipantRole,
-} from './client.ts';
+import type {HabState, SignifyClient} from 'signify-ts';
+
 import {
     credentialSnapshot,
     getCredential,
@@ -17,6 +12,7 @@ import {
 import {
     assertCredentialConvergence,
     assertGroupStateConvergence,
+    type ExpectedGroupState,
 } from './workflow-assertions.ts';
 
 export interface ExpectedCredentialState {
@@ -27,88 +23,49 @@ export interface ExpectedCredentialState {
     statusSequence: string;
 }
 
+export interface WalletObserver {
+    client: SignifyClient;
+    aid: HabState;
+}
+
 /** Assert exact QVI KEL, signing-roster, next-roster, and observer convergence. */
 export async function assertGroupConvergence(
-    config: WorkflowConfig,
-    options: {
-        groupPrefix: string;
-        delegatorPrefix: string;
-        sequence: string;
-        observerRoles: ParticipantRole[];
-        signingRoles: ParticipantRole[];
-        rotationRoles: ParticipantRole[];
-        eventSaid?: string;
-    }
+    observers: WalletObserver[],
+    groupName: string,
+    expected: ExpectedGroupState,
+    eventSaid?: string
 ): Promise<GroupStateSnapshot> {
-    const allRoles = [
-        ...new Set([
-            ...options.observerRoles,
-            ...options.signingRoles,
-            ...options.rotationRoles,
-        ]),
-    ];
-    const clients = await connectParticipants(config, allRoles);
-    const aids = new Map(
-        await Promise.all(
-            allRoles.map(async (role) => [
-                role,
-                await getAid(
-                    clients.get(role)!,
-                    config.participants[role].name
-                ),
-            ] as const)
-        )
-    );
     const observations = await Promise.all(
-        options.observerRoles.map((role) =>
+        observers.map(({client, aid}) =>
             readGroupObservation(
-                clients.get(role)!,
-                aids.get(role)!.prefix,
-                config.qvi.name
+                client,
+                aid.prefix,
+                groupName
             )
         )
     );
-    const snapshot = assertGroupStateConvergence(observations, {
-        prefix: options.groupPrefix,
-        delegator: options.delegatorPrefix,
-        sequence: options.sequence,
-        signingThreshold: config.qvi.signingThreshold,
-        nextThreshold: config.qvi.nextThreshold,
-        members: options.observerRoles.map(
-            (role) => aids.get(role)!.prefix
-        ),
-        signingMembers: options.signingRoles.map(
-            (role) => aids.get(role)!.prefix
-        ),
-        rotationMembers: options.rotationRoles.map(
-            (role) => aids.get(role)!.prefix
-        ),
-    });
+    const snapshot = assertGroupStateConvergence(
+        observations,
+        expected
+    );
     if (
-        options.eventSaid !== undefined &&
-        snapshot.establishmentDigest !== options.eventSaid
+        eventSaid !== undefined &&
+        snapshot.establishmentDigest !== eventSaid
     ) {
         throw new Error(
-            `Group establishment digest ${snapshot.establishmentDigest} does not match ${options.eventSaid}`
+            `Group establishment digest ${snapshot.establishmentDigest} does not match ${eventSaid}`
         );
     }
     return snapshot;
 }
 
-/** Assert credential and TEL convergence across the final QVI member roster. */
+/** Assert credential and TEL convergence across concrete wallet observers. */
 export async function assertQviCredentialConvergence(
-    config: WorkflowConfig,
+    observers: WalletObserver[],
     expected: ExpectedCredentialState
 ): Promise<CredentialSnapshot> {
-    const roles = config.qvi.finalMembers;
-    const clients = await connectParticipants(config, roles);
     const snapshots = await Promise.all(
-        roles.map(async (role) => {
-            const client = clients.get(role)!;
-            const aid = await getAid(
-                client,
-                config.participants[role].name
-            );
+        observers.map(async ({client, aid}) => {
             return credentialSnapshot(
                 await getCredential(client, expected.credentialSaid),
                 aid.prefix
@@ -130,15 +87,15 @@ export async function assertQviCredentialConvergence(
 
 /** Assert the holder observes the expected credential and TEL state. */
 export async function assertPersonCredentialState(
-    config: WorkflowConfig,
+    observer: WalletObserver,
     expected: ExpectedCredentialState
 ): Promise<CredentialSnapshot> {
-    const person = config.participants.person;
-    const client = await connectClient(person);
-    const aid = await getAid(client, person.name);
     const snapshot = credentialSnapshot(
-        await getCredential(client, expected.credentialSaid),
-        aid.prefix
+        await getCredential(
+            observer.client,
+            expected.credentialSaid
+        ),
+        observer.aid.prefix
     );
     const actual = {
         credentialSaid: snapshot.said,

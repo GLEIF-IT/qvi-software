@@ -90,30 +90,6 @@ export async function coordinateMultisigOperation(
 }
 
 /**
- * Submits each ordered member contribution without serializing workflow state.
- *
- * The first member is the initiator and coordination sender. Sequential
- * execution is required because later members wait for that sender's EXN.
- */
-export async function submitMemberContributions(
-    members: MultisigMember[],
-    submitMember: RunMemberOperation
-): Promise<MemberSubmission[]> {
-    const submissions: MemberSubmission[] = [];
-
-    for (const context of memberContexts(members)) {
-        const result = await submitMember(context);
-        submissions.push({
-            memberPrefix: context.aid.prefix,
-            operation: result.operation,
-            notifications: result.coordination,
-        });
-    }
-
-    return submissions;
-}
-
-/**
  * Completes member results restored from the workflow persistence boundary.
  */
 export async function completeSavedMemberResults(

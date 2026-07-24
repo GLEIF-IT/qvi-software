@@ -3,7 +3,6 @@ import type {
     CredentialResult,
 } from 'signify-ts';
 
-import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
     getIssuedCredential,
@@ -16,10 +15,10 @@ import {
     type CredentialSnapshot,
 } from '../credential-state.ts';
 import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
-import {loadQviMembers} from './qvi-context.ts';
+import type {QviMember} from './qvi-context.ts';
 
 export interface IssueAndGrantOptions {
-    config: WorkflowConfig;
+    members: QviMember[];
     groupName: string;
     issueePrefix: string;
     credentialData: CredentialData;
@@ -40,10 +39,7 @@ export async function issueAndGrantCredential(
             'Credential issuance requires a schema SAID'
         );
     }
-    const members = await loadQviMembers(
-        options.config,
-        options.groupName
-    );
+    const members = options.members;
     await coordinateMultisigOperation(
         members.map(({client, memberAid}) => ({
             client,

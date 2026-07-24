@@ -1,4 +1,3 @@
-import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
     admitMultisig,
@@ -6,16 +5,14 @@ import {
 } from '../credentials.ts';
 import {credentialSnapshot} from '../credential-state.ts';
 import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
-import {loadQviMembers} from './qvi-context.ts';
+import type {QviMember} from './qvi-context.ts';
 
 /** Admit one credential through the final QVI roster. */
 export async function admitCredentialQvi(
-    config: WorkflowConfig,
-    groupName: string,
+    members: QviMember[],
     issuerPrefix: string,
     credentialSaid: string
 ) {
-    const members = await loadQviMembers(config, groupName);
     const timestamp = createTimestamp();
     await coordinateMultisigOperation(
         members.map(({client, memberAid}) => ({

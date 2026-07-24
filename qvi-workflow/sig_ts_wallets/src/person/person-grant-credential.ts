@@ -1,35 +1,31 @@
-import {Serder} from 'signify-ts';
+import {Serder, type HabState, type SignifyClient} from 'signify-ts';
 
 import {createTimestamp} from '../create-aid.ts';
 import {getCredential} from '../credential-state.ts';
-import {
-    connectClient,
-    type WorkflowConfig,
-} from '../client.ts';
 import {
     requireOperationResponse,
     waitOperation,
 } from '../operations.ts';
 
 export interface PersonPresentationOptions {
-    config: WorkflowConfig;
+    client: SignifyClient;
+    personAid: HabState;
     credentialSaid: string;
     recipientPrefix: string;
 }
 
-/** Present one credential directly from the configured person wallet. */
+/** Present one credential directly from a concrete person wallet. */
 export async function presentPersonCredential(
     options: PersonPresentationOptions
 ) {
-    const person = options.config.participants.person;
-    const client = await connectClient(person);
+    const client = options.client;
     const credential = await getCredential(
         client,
         options.credentialSaid
     );
     const [grant, signatures, attachment] =
         await client.ipex().grant({
-            senderName: person.name,
+            senderName: options.personAid.name,
             acdc: new Serder(credential.sad),
             anc: new Serder(credential.anc),
             iss: new Serder(credential.iss),
@@ -38,7 +34,7 @@ export async function presentPersonCredential(
             datetime: createTimestamp(),
         });
     const operation = await client.ipex().submitGrant(
-        person.name,
+        options.personAid.name,
         grant,
         signatures,
         attachment,

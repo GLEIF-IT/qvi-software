@@ -1,18 +1,16 @@
 import {randomNonce} from 'signify-ts';
 
-import type {WorkflowConfig} from '../client.ts';
 import {createRegistryMultisig} from '../credentials.ts';
 import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
 import {retry} from '../retry.ts';
-import {loadQviMembers} from './qvi-context.ts';
+import type {QviMember} from './qvi-context.ts';
 
 /** Create the QVI registry and require it to converge across all members. */
 export async function createQviRegistry(
-    config: WorkflowConfig,
+    members: QviMember[],
     groupName: string,
     registryName: string
 ) {
-    const members = await loadQviMembers(config, groupName);
     const nonce = randomNonce();
     await coordinateMultisigOperation(
         members.map(({client, memberAid}) => ({

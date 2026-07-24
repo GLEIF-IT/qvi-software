@@ -1,24 +1,18 @@
+import type {HabState, SignifyClient} from 'signify-ts';
+
 import {admitSinglesig} from '../credentials.ts';
 import {credentialSnapshot} from '../credential-state.ts';
-import {
-    connectClient,
-    type WorkflowConfig,
-} from '../client.ts';
 
-/** Admit one credential into the configured person wallet. */
+/** Admit one credential into a concrete person wallet. */
 export async function admitCredential(
-    config: WorkflowConfig,
+    client: SignifyClient,
+    personAid: HabState,
     issuerPrefix: string,
     credentialSaid: string
 ) {
-    const person = config.participants.person;
-    const client = await connectClient(person);
-    const personAid = await client
-        .identifiers()
-        .get(person.name);
     const credential = await admitSinglesig(
         client,
-        person.name,
+        personAid.name,
         issuerPrefix,
         credentialSaid
     );

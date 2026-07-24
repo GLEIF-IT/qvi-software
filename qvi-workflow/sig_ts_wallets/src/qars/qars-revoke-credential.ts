@@ -1,4 +1,3 @@
-import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
     credentialSnapshot,
@@ -7,10 +6,10 @@ import {
 } from '../credential-state.ts';
 import {revokeCredentialMultisig} from '../credentials.ts';
 import {coordinateMultisigOperation} from '../multisig-coordinator.ts';
-import {loadQviMembers} from './qvi-context.ts';
+import type {QviMember} from './qvi-context.ts';
 
 export interface RevokeCredentialOptions {
-    config: WorkflowConfig;
+    members: QviMember[];
     groupName: string;
     credentialSaid: string;
 }
@@ -54,10 +53,7 @@ function commonCredentialStatus(
 export async function runRevocation(
     options: RevokeCredentialOptions
 ): Promise<RevocationResult> {
-    const members = await loadQviMembers(
-        options.config,
-        options.groupName
-    );
+    const members = options.members;
     const qviPrefix = commonValue(
         members.map(({groupAid}) => groupAid.prefix),
         'QVI prefix'

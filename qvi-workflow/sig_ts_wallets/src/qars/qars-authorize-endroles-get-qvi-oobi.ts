@@ -1,5 +1,3 @@
-import {promises as fs} from 'node:fs';
-
 import type {SignifyClient} from 'signify-ts';
 
 import {
@@ -7,7 +5,6 @@ import {
     sortAids,
     sortOobis,
 } from '../canonical-order.ts';
-import type {WorkflowConfig} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
     addEndRoleMultisig,
@@ -18,7 +15,7 @@ import {
 } from '../coordinated-operation.ts';
 import {retry} from '../retry.ts';
 import {memberContexts} from '../multisig-coordinator.ts';
-import {loadQviMembers} from './qvi-context.ts';
+import type {QviMember} from './qvi-context.ts';
 
 export interface AgentEndpoint {
     eid: string;
@@ -32,9 +29,8 @@ export interface QviMultisigOobi {
 }
 
 export interface AuthorizeEndRoleOptions {
-    config: WorkflowConfig;
+    members: QviMember[];
     groupName: string;
-    dataDir: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -300,10 +296,7 @@ export async function collectQviMultisigOobi(
 export async function authorizeAgentEndRoles(
     options: AuthorizeEndRoleOptions
 ): Promise<QviMultisigOobi> {
-    const members = await loadQviMembers(
-        options.config,
-        options.groupName
-    );
+    const members = options.members;
     const clients = members.map(({client}) => client);
     const memberAids = members.map(({memberAid}) => memberAid);
     const groupAids = members.map(({groupAid}) => groupAid);
@@ -353,7 +346,7 @@ export async function authorizeAgentEndRoles(
             }))
         )
     );
-    const qviOobi = await retry(
+    return await retry(
         () =>
             collectQviMultisigOobi(
                 clients,
@@ -361,10 +354,4 @@ export async function authorizeAgentEndRoles(
                 qviPrefix
             )
     );
-
-    await fs.writeFile(
-        `${options.dataDir}/qvi-oobi.json`,
-        JSON.stringify(qviOobi)
-    );
-    return qviOobi;
 }

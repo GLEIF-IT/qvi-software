@@ -5,13 +5,14 @@ import type {
     CredentialSubject,
 } from 'signify-ts';
 
-import type {WorkflowConfig} from '../client.ts';
+import {
+    connectClient,
+    type WorkflowConfig,
+} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
+import {OOR_SCHEMA_SAID} from '../credentials.ts';
 import {issueAndGrantCredential} from './issue-and-grant.ts';
-import {loadQviMembers} from './qvi-context.ts';
-
-export const OOR_SCHEMA_SAID =
-    'EBNaNu-M9P5cgrnfl2Fvymy4E_jvxxyjb70PRtiANlJy';
+import {loadGroupMembers} from './qvi-context.ts';
 
 /** Read one workflow credential fragment from disk. */
 async function jsonFile(path: string) {
@@ -25,8 +26,15 @@ export async function createOorCredential(options: {
     dataDir: string;
     issueePrefix: string;
 }) {
-    const members = await loadQviMembers(
-        options.config,
+    const participants = options.config.qvi.finalMembers.map(
+        (role) => options.config.participants[role]
+    );
+    const clients = await Promise.all(
+        participants.map(connectClient)
+    );
+    const members = await loadGroupMembers(
+        clients,
+        participants.map(({name}) => name),
         options.groupName
     );
     const registries = await members[0].client
@@ -57,7 +65,7 @@ export async function createOorCredential(options: {
         ),
     };
     const issued = await issueAndGrantCredential({
-        config: options.config,
+        members,
         groupName: options.groupName,
         issueePrefix: options.issueePrefix,
         credentialData: data,

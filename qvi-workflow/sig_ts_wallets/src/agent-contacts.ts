@@ -22,9 +22,11 @@ export async function getOrCreateContact(
     if (list.length > 0) {
         const contact = list[0];
         if (contact.oobi === oobi) {
-            // console.log("contacts.id", contact.id);
             return contact.id;
         }
+        throw new Error(
+            `Contact ${name} already exists with a different OOBI`
+        );
     }
     const operation = await client.oobis().resolve(oobi, name);
     const state = await waitKeyStateOperation(client, operation);
