@@ -13,15 +13,69 @@
 
 set -u # undefined variable detection
 
+function usage() {
+    echo "Usage: $0 [KEYSTORE_DIR] [NO_CHALLENGE]"
+    echo
+    echo "Positional arguments:"
+    echo "  KEYSTORE_DIR   Keystore directory (default: ./docker-keystores)"
+    echo "  NO_CHALLENGE   true to skip challenge-response, false to run it (default: true)"
+    echo
+    echo "Options:"
+    echo "  -h, --help     Display this help message"
+}
+
+requested_help=false
+argument_error=""
+first_argument=${1:-}
+argument_count_is_valid=false
+if [[ $# -le 2 ]]; then
+    argument_count_is_valid=true
+fi
+
+if [[ "${first_argument}" == "-h" || "${first_argument}" == "--help" ]]; then
+    requested_help=true
+elif [[ "${first_argument}" == -* ]]; then
+    argument_error="Unknown option: ${first_argument}"
+elif [[ "${argument_count_is_valid}" == false ]]; then
+    argument_error="Expected at most two positional arguments"
+fi
+
+if [[ "${requested_help}" == true ]]; then
+    usage
+    exit 0
+fi
+
+arguments_are_invalid=false
+if [[ -n "${argument_error}" ]]; then
+    arguments_are_invalid=true
+fi
+if [[ "${arguments_are_invalid}" == true ]]; then
+    echo "${argument_error}" >&2
+    usage >&2
+    exit 2
+fi
+
 KEYSTORE_DIR=${1:-./docker-keystores}
 NO_CHALLENGE=${2:-true}
+challenge_option_is_valid=false
+if [[ "${NO_CHALLENGE}" == true || "${NO_CHALLENGE}" == false ]]; then
+    challenge_option_is_valid=true
+fi
+if [[ "${challenge_option_is_valid}" == false ]]; then
+    echo "NO_CHALLENGE must be true or false" >&2
+    usage >&2
+    exit 2
+fi
 
-if $NO_CHALLENGE; then
+# Load utility functions before using the color-printing helpers.
+source ./color-printing.sh
+
+if [[ "${NO_CHALLENGE}" == true ]]; then
     print_dark_gray "skipping challenge and response"
 fi
 
 # Check system dependencies
-required_sys_commands=(docker jq tsx)
+required_sys_commands=(docker jq)
 for cmd in "${required_sys_commands[@]}"; do
     if ! command -v $cmd &>/dev/null; then
         print_red "$cmd is not installed. Please install it."
@@ -29,8 +83,6 @@ for cmd in "${required_sys_commands[@]}"; do
     fi
 done
 
-# Load utility functions
-source ./color-printing.sh
 echo
 print_bg_blue "------------------------------vLEI QVI Workflow Script (KLI - Docker)------------------------------"
 echo
@@ -146,12 +198,6 @@ PERSON_PASSCODE=c4479ae785625c8e50a7e
 PERSON_ECR="Consultant"
 PERSON_OOR="Advisor"
 
-# Sally - vLEI Reporting API
-SALLY=sally-indirect
-SALLY_PASSCODE=VVmRdBTe5YCyLMmYRqTAi
-SALLY_SALT=0AD45YWdzWSwNREuAoitH_CC
-SALLY_PRE=EHLWiN8Q617zXqb4Se4KfEGteHbn_way2VG5mcHYh5bm
-
 # Registries
 GEDA_REGISTRY=vLEI-external
 LE_REGISTRY=vLEI-internal
@@ -226,7 +272,6 @@ function create_aids() {
     create_keystore_and_aid "${QAR1}"   "${QAR1_SALT}"   "${QAR1_PASSCODE}"   "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}" "kli2"
     create_keystore_and_aid "${QAR2}"   "${QAR2_SALT}"   "${QAR2_PASSCODE}"   "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}" "kli2"
     create_keystore_and_aid "${PERSON}" "${PERSON_SALT}" "${PERSON_PASSCODE}" "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}" "kli2"
-    create_keystore_and_aid "${SALLY}"  "${SALLY_SALT}"  "${SALLY_PASSCODE}"  "${CONT_CONFIG_DIR}" "${CONT_INIT_CFG}" "${CONT_ICP_CFG}"
 }
 create_aids
 
@@ -279,7 +324,6 @@ function resolve_oobis() {
     kli2 oobi resolve --name "${QAR1}" --oobi-alias "${LAR1}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     kli2 oobi resolve --name "${QAR1}" --oobi-alias "${LAR2}"   --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
     kli2 oobi resolve --name "${QAR1}" --oobi-alias "${PERSON}" --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
-    kli2 oobi resolve --name "${QAR1}" --oobi-alias "$SALLY"    --passcode "${QAR1_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
 
     print_yellow "Resolving OOBIs for QAR 2"
     kli2 oobi resolve --name "${QAR2}" --oobi-alias "${QAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
@@ -288,7 +332,6 @@ function resolve_oobis() {
     kli2 oobi resolve --name "${QAR2}" --oobi-alias "${LAR1}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR1_PRE}/witness/${WAN_PRE}"
     kli2 oobi resolve --name "${QAR2}" --oobi-alias "${LAR2}"   --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${LAR2_PRE}/witness/${WAN_PRE}"
     kli2 oobi resolve --name "${QAR2}" --oobi-alias "${PERSON}" --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${PERSON_PRE}/witness/${WAN_PRE}"
-    kli2 oobi resolve --name "${QAR2}" --oobi-alias "$SALLY"    --passcode "${QAR2_PASSCODE}"  --oobi "${WIT_HOST}/oobi/${SALLY_PRE}/witness/${WAN_PRE}"
 
     # print_yellow "Resolving OOBIs for Person"
     kli2 oobi resolve --name "${PERSON}"  --oobi-alias "${QAR1}" --passcode "${PERSON_PASSCODE}"   --oobi "${WIT_HOST}/oobi/${QAR1_PRE}/witness/${WAN_PRE}"
@@ -394,7 +437,7 @@ function challenge_response() {
 
     print_green "-----Finished challenge and response-----"
 }
-if [[ $NO_CHALLENGE ]]; then
+if [[ "${NO_CHALLENGE}" == true ]]; then
     print_yellow "Skipping challenge and response"
 else
     challenge_response
@@ -2227,44 +2270,8 @@ function admit_oor_credential() {
 }
 admit_oor_credential
 
-# QVI: Present issued ECR Auth and OOR Auth to Sally (vLEI Reporting API)
-function present_le_cred_to_sally() {
-    print_yellow "[QVI] Presenting LE Credential to Sally"
-    LE_SAID=$(kli vc list --name ${LAR1} \
-        --alias ${LE_NAME} \
-        --passcode "${LAR1_PASSCODE}" \
-        --said --schema ${LE_SCHEMA})
-
-    PID_LIST=""
-    klid qar1 ipex grant \
-        --name "${QAR1}" \
-        --alias "${QVI_NAME}" \
-        --passcode "${QAR1_PASSCODE}" \
-        --said "${LE_SAID}" \
-        --recipient "${SALLY}"
-
-    kli ipex join \
-        --name "${QAR2}" \
-        --passcode "${QAR2_PASSCODE}" \
-        --auto
-
-    echo
-    print_yellow "[QVI] Presenting LE Credential - wait for signatures"
-    echo
-    print_dark_gray "waiting on Docker containers qar1 and qar2"
-    docker wait qar1 qar2
-    docker logs qar1
-    docker logs qar2
-    docker rm qar1 qar2
-
-    sleep 30
-    print_green "[QVI] LE Credential presented to Sally"
-}
-present_le_cred_to_sally
-
 cleanup
 print_lcyan "Full chain workflow completed"
 
 # TODO:
 # QVI: Revoke ECR Auth and OOR Auth credentials
-# QVI: Present revoked credentials to Sally
