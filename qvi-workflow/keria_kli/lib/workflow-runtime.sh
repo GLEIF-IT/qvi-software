@@ -132,7 +132,7 @@ create_workflow_runtime() {
     SALLY_BASE=sally
     SALLY_CALLBACK_FILE="${WORKFLOW_RUN_DIR}/sally-callbacks.jsonl"
     WORKFLOW_TIMING_FILE="${WORKFLOW_RUN_DIR}/workflow-timings.jsonl"
-    SALLY_LOG_FILE="${WORKFLOW_LOG_DIR}/direct-sally.log"
+    SALLY_LOG_FILE="${WORKFLOW_LOG_DIR}/sally.log"
 
     export WORKFLOW_RUN_DIR WORKFLOW_CONFIG_DIR KLI_DATA_DIR
     export LOCAL_QVI_DATA_DIR KEYSTORE_DIR WORKFLOW_LOG_DIR WORKFLOW_RESULT_DIR
@@ -167,13 +167,13 @@ create_workflow_runtime() {
         "${WORKFLOW_CONFIG_DIR}/witnesses/keri/cf/"
 
     mkdir -p \
-        "${WORKFLOW_CONFIG_DIR}/direct-sally/keri/cf/${SALLY_BASE}"
+        "${WORKFLOW_CONFIG_DIR}/sally/keri/cf/${SALLY_BASE}"
     cp \
-        "${SCRIPT_DIR}/direct-sally/keri/cf/direct-sally.json" \
-        "${WORKFLOW_CONFIG_DIR}/direct-sally/keri/cf/${SALLY_BASE}/direct-sally.json"
+        "${SCRIPT_DIR}/sally/keri/cf/sally.json" \
+        "${WORKFLOW_CONFIG_DIR}/sally/keri/cf/${SALLY_BASE}/sally.json"
     cp \
-        "${SCRIPT_DIR}/direct-sally/sally-incept-no-wits.json" \
-        "${WORKFLOW_CONFIG_DIR}/direct-sally/sally-incept-no-wits.json"
+        "${SCRIPT_DIR}/sally/sally-incept-no-wits.json" \
+        "${WORKFLOW_CONFIG_DIR}/sally/sally-incept-no-wits.json"
 
     jq -n \
         --arg qar1Name "${QAR1}" \
@@ -490,7 +490,7 @@ start_local_sally() {
     local geda_prefix=$1
 
     start_managed_process \
-        direct-sally \
+        sally \
         env \
         PYTHONUNBUFFERED=1 \
         PYTHONWARNINGS=ignore::SyntaxWarning \
@@ -498,18 +498,18 @@ start_local_sally() {
         "${SALLY_PYTHON}" "${SALLY_LAUNCHER}" server start \
         --direct \
         --http 9823 \
-        --name "${DIRECT_SALLY_KS_NAME}" \
+        --name "${SALLY_KS_NAME}" \
         --base "${SALLY_BASE}" \
-        --alias "${DIRECT_SALLY_ALIAS}" \
-        --salt "${DIRECT_SALLY_SALT}" \
-        --passcode "${DIRECT_SALLY_PASSCODE}" \
-        --config-dir "${WORKFLOW_CONFIG_DIR}/direct-sally" \
-        --config-file direct-sally.json \
+        --alias "${SALLY_ALIAS}" \
+        --salt "${SALLY_SALT}" \
+        --passcode "${SALLY_PASSCODE}" \
+        --config-dir "${WORKFLOW_CONFIG_DIR}/sally" \
+        --config-file sally.json \
         --incept-file sally-incept-no-wits.json \
         --web-hook "${WEBHOOK_HOST}" \
         --auth "${geda_prefix}" \
         --loglevel INFO
-    wait_for_managed_process direct-sally http://127.0.0.1:9823/health
+    wait_for_managed_process sally http://127.0.0.1:9823/health
 }
 
 # Append one phase, command, or job measurement to the JSONL timing stream.

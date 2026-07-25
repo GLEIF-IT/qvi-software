@@ -2,8 +2,8 @@
 
 set -Eeuo pipefail
 
-SALLY_NAME="${SALLY_KS_NAME:-direct-sally}"
-SALLY_ALIAS="${SALLY_ALIAS:-direct-sally}"
+SALLY_NAME="${SALLY_KS_NAME:-sally}"
+SALLY_ALIAS="${SALLY_ALIAS:-sally}"
 SALLY_SALT="${SALLY_SALT:-0ABVqAtad0CBkhDhCEPd514T}"
 SALLY_PASSCODE="${SALLY_PASSCODE:-4TBjjhmKu9oeDp49J7Xdy}"
 SALLY_WEBHOOK="${WEBHOOK_HOST:-http://hook:9923}"
@@ -26,7 +26,7 @@ exec sally server start \
   --salt "${SALLY_SALT}" \
   --passcode "${SALLY_PASSCODE}" \
   --config-dir /sally/conf \
-  --config-file direct-sally.json \
+  --config-file sally.json \
   --incept-file /sally/conf/sally-incept-no-wits.json \
   --web-hook "${SALLY_WEBHOOK}" \
   --auth "${SALLY_AUTHORITY}" \

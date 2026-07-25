@@ -61,13 +61,13 @@ create_workflow_runtime() {
         "${WORKFLOW_CONFIG_DIR}/single-sig-incept-config.json"
     cp -R "${SCRIPT_DIR}/acdc-info/rules/." "${KLI_DATA_DIR}/rules/"
 
-    mkdir -p "${WORKFLOW_CONFIG_DIR}/direct-sally/keri/cf"
+    mkdir -p "${WORKFLOW_CONFIG_DIR}/sally/keri/cf"
     cp \
-        "${SCRIPT_DIR}/direct-sally/keri/cf/direct-sally.json" \
-        "${WORKFLOW_CONFIG_DIR}/direct-sally/keri/cf/direct-sally.json"
+        "${SCRIPT_DIR}/sally/keri/cf/sally.json" \
+        "${WORKFLOW_CONFIG_DIR}/sally/keri/cf/sally.json"
     cp \
-        "${SCRIPT_DIR}/direct-sally/sally-incept-no-wits.json" \
-        "${WORKFLOW_CONFIG_DIR}/direct-sally/sally-incept-no-wits.json"
+        "${SCRIPT_DIR}/sally/sally-incept-no-wits.json" \
+        "${WORKFLOW_CONFIG_DIR}/sally/sally-incept-no-wits.json"
 
     jq -n \
         --arg qar1Name "${QAR1}" \
@@ -259,7 +259,7 @@ print_failure_diagnostics() {
     workflow_compose logs \
         --no-color \
         --tail 200 \
-        vlei-server callback-recorder direct-sally \
+        vlei-server callback-recorder sally \
         keria1 keria2 keria3 keria4 >&2 || true
 
     local job_log

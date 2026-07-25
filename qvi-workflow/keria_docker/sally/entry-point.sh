@@ -20,7 +20,7 @@ exec sally server start \
     --salt "${SALLY_SALT}" \
     --passcode "${SALLY_PASSCODE}" \
     --config-dir /sally/conf \
-    --config-file direct-sally.json \
+    --config-file sally.json \
     --incept-file sally-incept-no-wits.json \
     --web-hook "${WEBHOOK_HOST}" \
     --auth "${GEDA_PRE}" \

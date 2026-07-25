@@ -237,7 +237,7 @@ revoked_oor_was_rejected_and_reported() {
         --no-color \
         --timestamps \
         --since "${submitted_after}" \
-        direct-sally 2>&1) || return 1
+        sally 2>&1) || return 1
     [[ "${sally_logs}" == *"${rejection_message}"* ]] &&
         rejection_found=true
 
@@ -329,9 +329,9 @@ PERSON_OOR="Advisor"
 
 # Sally values and public demo salts/passcodes come from the workflow env file.
 export WEBHOOK_HOST
-export DIRECT_SALLY_HOST DIRECT_SALLY_KS_NAME DIRECT_SALLY_ALIAS
-export DIRECT_SALLY_PASSCODE DIRECT_SALLY_SALT
-export DIRECT_SALLY_PRE=""
+export SALLY_HOST SALLY_KS_NAME SALLY_ALIAS
+export SALLY_PASSCODE SALLY_SALT
+export SALLY_PRE=""
 
 function start_foundation_services() {
   local foundation_start_failed=false
@@ -429,7 +429,7 @@ function start_sally() {
       --detach \
       --wait \
       --wait-timeout "${WORKFLOW_TIMEOUT_SECONDS}" \
-      direct-sally ||
+      sally ||
       sally_start_failed=true
   if [[ "${sally_start_failed}" == true ]]; then
       fail_workflow "Sally services failed to start properly"
@@ -517,15 +517,15 @@ observe_sally_prefix() {
 load_sally_prefixes() {
   local direct_observation_failed=false
 
-  DIRECT_SALLY_PRE=$(observe_sally_prefix \
-      direct-sally \
+  SALLY_PRE=$(observe_sally_prefix \
+      sally \
       http://127.0.0.1:9823/oobi) ||
       direct_observation_failed=true
   if [[ "${direct_observation_failed}" == true ]]; then
       fail_workflow "Unable to observe direct Sally's self-bootstrapped AID"
   fi
 
-  export DIRECT_SALLY_PRE
+  export SALLY_PRE
 }
 
 create_keria_identifier_artifact() {
@@ -750,15 +750,15 @@ resolve_keria_external_oobis() {
 
 # Resolve each observer's independent contact graph concurrently.
 function resolve_oobis() {
-    DIRECT_SALLY_OOBI="${DIRECT_SALLY_HOST}/oobi"
+    SALLY_OOBI="${SALLY_HOST}/oobi"
     GAR1_OOBI="${WIT_HOST_GAR}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
     LAR1_OOBI="${WIT_HOST_QAR}/oobi/${LAR1_PRE}/witness/${WIL_PRE}"
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
-    OOBIS_FOR_KERIA="gar1|${GAR1_OOBI},gar2|${GAR2_OOBI},lar1|${LAR1_OOBI},lar2|${LAR2_OOBI},direct-sally|${DIRECT_SALLY_OOBI}"
+    OOBIS_FOR_KERIA="gar1|${GAR1_OOBI},gar2|${GAR2_OOBI},lar1|${LAR1_OOBI},lar2|${LAR2_OOBI},sally|${SALLY_OOBI}"
     export OOBIS_FOR_KERIA
 
-    print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
+    print_green "SALLY OOBI: ${SALLY_OOBI}"
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
 
     start_workflow_job \
@@ -771,7 +771,7 @@ function resolve_oobis() {
         "${LAR2}|${LAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
         "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
         "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
-        "${DIRECT_SALLY_ALIAS}|${DIRECT_SALLY_OOBI}" || return 1
+        "${SALLY_ALIAS}|${SALLY_OOBI}" || return 1
     start_workflow_job \
         resolve-gar2-oobis gar2 resolve_kli_observer_oobis \
         "${GAR2}" "${GAR2_PASSCODE}" \
@@ -779,7 +779,7 @@ function resolve_oobis() {
         "${LAR2}|${LAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
         "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
         "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
-        "${DIRECT_SALLY_ALIAS}|${DIRECT_SALLY_OOBI}" || return 1
+        "${SALLY_ALIAS}|${SALLY_OOBI}" || return 1
     start_workflow_job \
         resolve-lar1-oobis lar1 resolve_kli_observer_oobis \
         "${LAR1}" "${LAR1_PASSCODE}" \
@@ -787,7 +787,7 @@ function resolve_oobis() {
         "${GAR2}|${GAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
         "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
         "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
-        "${DIRECT_SALLY_ALIAS}|${DIRECT_SALLY_OOBI}" || return 1
+        "${SALLY_ALIAS}|${SALLY_OOBI}" || return 1
     start_workflow_job \
         resolve-lar2-oobis lar2 resolve_kli_observer_oobis \
         "${LAR2}" "${LAR2_PASSCODE}" \
@@ -795,7 +795,7 @@ function resolve_oobis() {
         "${GAR2}|${GAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
         "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
         "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
-        "${DIRECT_SALLY_ALIAS}|${DIRECT_SALLY_OOBI}" || return 1
+        "${SALLY_ALIAS}|${SALLY_OOBI}" || return 1
 
     wait_for_background_jobs \
         resolve-keria-oobis \
@@ -1688,7 +1688,7 @@ function present_qvi_cred_to_sally_signify() {
     ms-present \
     --actor qvi \
     --credential-said "${QVI_CRED_SAID}" \
-    --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
+    --recipient-prefix "${SALLY_PRE}" >/dev/null ||
     presentation_failed=true
   if [[ "${presentation_failed}" == true ]]; then
       fail_workflow "[QVI] Failed to transmit the active QVI credential to Sally"
@@ -1909,7 +1909,7 @@ function present_le_cred_to_sally() {
       --alias "${LE_NAME}" \
       --passcode "${LAR1_PASSCODE}" \
       --said "${LE_CRED_SAID}" \
-      --recipient "${DIRECT_SALLY_PRE}" \
+      --recipient "${SALLY_PRE}" \
       --time "${grant_time}" || return 1
   klid lar2 ipex join \
       --name "${LAR2}" \
@@ -2225,7 +2225,7 @@ function person_present_oor_cred_to_sally() {
       ms-present \
       --actor person \
       --credential-said "${OOR_CRED_SAID}" \
-      --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
+      --recipient-prefix "${SALLY_PRE}" >/dev/null ||
         credential_transmission_failed=true
     if [[ "${credential_transmission_failed}" == true ]]; then
         fail_workflow "[PERSON] Failed to transmit the active OOR credential to Sally"
@@ -2334,7 +2334,7 @@ transmit_revoked_oor_to_sally() {
         ms-present \
         --actor person \
         --credential-said "${OOR_CRED_SAID}" \
-        --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
+        --recipient-prefix "${SALLY_PRE}" >/dev/null ||
         credential_transmission_failed=true
     if [[ "${credential_transmission_failed}" == true ]]; then
         fail_workflow "[PERSON] Failed to transmit revoked OOR credential ${OOR_CRED_SAID}"
@@ -2704,14 +2704,14 @@ create_foundational_state_parallel() {
   start_workflow_job \
       create-le-registry lar1,lar2 create_le_reg || return 1
   start_workflow_job \
-      start-direct-sally direct-sally start_sally || return 1
+      start-sally sally start_sally || return 1
   start_workflow_job \
       resolve-foundation-qars qar1,qar2,qar3,qar4,person \
       qars_resolve_foundational_oobis || return 1
   wait_for_background_jobs \
       create-geda-registry \
       create-le-registry \
-      start-direct-sally \
+      start-sally \
       resolve-foundation-qars || return 1
   load_sally_prefixes
 }
@@ -2836,7 +2836,7 @@ optimized_leaf_credential_pipeline() {
 
   pause "Press [ENTER] to present OOR to Sally" || return 1
   start_workflow_job \
-      present-active-oor person,direct-sally \
+      present-active-oor person,sally \
       person_present_oor_cred_to_sally || return 1
   start_workflow_job \
       issue-ecr qvi create_ecr_credential || return 1
@@ -2854,7 +2854,7 @@ optimized_leaf_credential_pipeline() {
   # so it must finish before ECR revocation starts on the same group.
   refresh_person_revoked_oor_state || return 1
   start_workflow_job \
-      present-revoked-oor person,direct-sally \
+      present-revoked-oor person,sally \
       transmit_revoked_oor_to_sally || return 1
   start_workflow_job \
       revoke-ecr qvi revoke_ecr_credential || return 1

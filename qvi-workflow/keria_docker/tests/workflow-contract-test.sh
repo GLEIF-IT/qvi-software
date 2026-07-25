@@ -163,7 +163,7 @@ test_final_revocation_wave_is_actor_disjoint() {
         tail -n 1 |
         cut -d: -f1)
     presentation_line=$(printf '%s\n' "${optimized_source}" |
-        grep -n 'present-revoked-oor person,direct-sally' |
+        grep -n 'present-revoked-oor person,sally' |
         tail -n 1 |
         cut -d: -f1)
 
@@ -272,7 +272,7 @@ test_sally_startup_contract() {
         foundation_arguments+=" $*"
     }
     start_foundation_services
-    [[ "${foundation_arguments}" != *"direct-sally"* ]] ||
+    [[ "${foundation_arguments}" != *"sally"* ]] ||
         fail_test 'foundation startup included Sally'
 
     (
