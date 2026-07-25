@@ -80,28 +80,36 @@ The next invocation clears the retained stack and runtime automatically.
     --timeout SECONDS Timeout for each bounded operation (default: 120)
     --keep-runtime    Preserve runtime/ and the Compose stack
     --pause           Pause at story checkpoints
+    --stop-after NAME Stop after a named canonical phase
 -h, --help            Display help
 ```
 
 ## Story sequence
 
-1. Sally starts its own Habery and identifier through `sally server start`.
-2. GAR, LAR, QAR, and Person identifiers are created and exchange OOBIs.
+1. GAR, LAR, QAR, and Person identifiers are created. Independent wallet
+   setup and KLI inception jobs overlap.
+2. GEDA and LE inception run concurrently after each member pair has resolved
+   the other member's OOBI. Their registries, QAR resolution, and direct Sally
+   bootstrap then overlap where their actor sets are disjoint.
 3. The driver performs both directions of eight useful challenge
    relationships: GAR1-GAR2, LAR1-LAR2, the three QAR pairs, GAR1-QAR1,
    QAR1-LAR1, and QAR1-Person. All 16 response-and-verification commands must
    succeed.
-4. The GARs create the GEDA. The three QARs create the delegated QVI and
-   authorize its three KERIA agent endpoints.
+4. The three QARs create the delegated QVI. Its rotations remain deliberately
+   serial: sequences 1 and 2 prepare the replacement roster, then QAR4 joins
+   QAR1 and QAR2 at sequence 3. GEDA approval, refresh, and convergence are
+   required at each step.
 5. The workflow issues and admits the QVI and LE credentials, then presents
    both to Sally.
-6. The LE issues OOR-Auth; the QVI issues OOR to the Person. The Person admits
-   and presents the active OOR.
-7. The QVI revokes the OOR. All three QARs must observe status sequence `1`
-   and the same TEL digest. Sally must log the rejected revoked credential and
-   send the matching `rev` callback.
-8. The LE issues ECR-Auth; the QVI issues ECR to the Person. The Person admits
-   it, then all three QARs converge on the ECR revocation.
+6. The LE and QVI credential lanes overlap only when they mutate disjoint
+   AIDs, groups, registries, holders, and Sally state. Issuance and IPEX grant
+   are explicit separate operations.
+7. The Person admits and presents the active OOR while the QVI issues, but
+   does not yet grant, ECR.
+8. The QVI revokes OOR while the Person admits ECR. The Person then proves
+   Sally's revoked-OOR rejection and matching `rev` callback while the QVI
+   revokes ECR. All QARs must observe status sequence `1` and the same TEL
+   digest for both leaves.
 
 Sally 1.0.2 does not support the ECR reporting story, so this workflow does not
 present ECR. It simply ends that branch after admission and converged
@@ -138,16 +146,26 @@ With `--keep-runtime`, the generated files are deliberately easy to find:
 runtime/
 ├── acdc-info/
 ├── config/
-├── jobs/
 ├── keystores/
 ├── logs/
 ├── qvi_data/
-└── sally-callbacks.jsonl
+├── results/
+├── sally-callbacks.jsonl
+└── workflow-timings.jsonl
 ```
 
 The callback recorder accepts a JSON object at `POST /`, adds a receipt
 timestamp, and appends it to `sally-callbacks.jsonl`. See
 [`callback_recorder/README.md`](callback_recorder/README.md).
+Every named phase and background job also appends a JSON timing result to
+`workflow-timings.jsonl`; the driver prints the longest work first on exit.
+Each background job has dedicated stdout/stderr logs and an explicit JSON
+result under `runtime/results/`. Signify and KLI commands are timed as well,
+which makes the remaining protocol and transport waits visible without
+changing their deadlines.
+
+See [`BENCHMARK.md`](BENCHMARK.md) for the clean serial baseline, optimized
+measurements, machine allocation, and acceptance evidence.
 
 ## Developer checks
 
@@ -159,9 +177,11 @@ npm run typecheck
 npm test
 
 cd ../keria_docker
+./tests/workflow-contract-test.sh
 python3 -m unittest discover -s callback_recorder/tests -v
 docker compose \
   --env-file keria-signify-docker.env \
   -f docker-compose-keria_signify_qvi.yaml \
   config --quiet
+./vlei-workflow.sh --timeout 300 --keep-runtime
 ```
