@@ -248,11 +248,14 @@ services:
       vlei-server:
         condition: service_healthy
 
-  # Compose-scoped one-shot services used by the workflow driver.
+  # Persistent command runners used through `docker compose exec`.
   kli:
     <<: *keri_1_1-image
-    profiles: [ "jobs" ]
-    entrypoint: kli
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - >-
+        trap 'exit 0' TERM INT;
+        while :; do sleep 3600 & wait $$!; done
     environment:
       PYTHONWARNINGS: ignore::SyntaxWarning
     volumes:
@@ -265,8 +268,11 @@ services:
     build:
       context: ../sig_ts_wallets
       dockerfile: signify-ts.Dockerfile
-    profiles: [ "jobs" ]
-    entrypoint: tsx
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - >-
+        trap 'exit 0' TERM INT;
+        while :; do sleep 3600 & wait $$!; done
     environment:
       QVI_OPERATION_TIMEOUT_SECONDS: ${WORKFLOW_TIMEOUT_SECONDS:-120}
     volumes:

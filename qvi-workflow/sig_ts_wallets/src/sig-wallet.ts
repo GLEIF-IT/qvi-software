@@ -955,21 +955,31 @@ async function synchronizeMembersAction(
     const wallets = await loadWallets(config, allRoles);
     const observers = selectWallets(wallets, observerRoles);
     const subjects = selectWallets(wallets, subjectRoles);
-    let queryCount = 0;
-    for (const observer of observers) {
-        for (const subject of subjects) {
-            if (observer.aid.prefix === subject.aid.prefix) {
-                continue;
+    const queryCounts = await Promise.all(
+        observers.map(async (observer) => {
+            let observerQueryCount = 0;
+            // One observer wallet remains a serial mutation lane. Distinct
+            // observers can safely refresh their independent local stores at
+            // the same time.
+            for (const subject of subjects) {
+                if (observer.aid.prefix === subject.aid.prefix) {
+                    continue;
+                }
+                await waitOperation(
+                    observer.client,
+                    await observer.client
+                        .keyStates()
+                        .query(subject.aid.prefix, subject.aid.state.s)
+                );
+                observerQueryCount += 1;
             }
-            await waitOperation(
-                observer.client,
-                await observer.client
-                    .keyStates()
-                    .query(subject.aid.prefix, subject.aid.state.s)
-            );
-            queryCount += 1;
-        }
-    }
+            return observerQueryCount;
+        })
+    );
+    const queryCount = queryCounts.reduce(
+        (total, count) => total + count,
+        0
+    );
     return {status: 'synchronized', queryCount};
 }
 
@@ -1483,7 +1493,7 @@ async function assertKnownQviCredential(
     );
 }
 
-/** Issue, assert, and then grant one workflow-selected credential. */
+/** Issue and assert one workflow-selected credential without granting it. */
 async function issueAction(
     config: WorkflowConfig,
     args: Record<string, string>
@@ -1524,18 +1534,37 @@ async function issueAction(
         credentialSaid,
         '0'
     );
-    await grantCredential({
-        members,
-        initiatorPrefix: initiator.memberAid.prefix,
-        recipientPrefix: args['issuee-prefix'],
-        credentials,
-        timestamp: createTimestamp(),
-    });
     return {
         status: 'issued',
         credentialSaid: snapshot.said,
         registryId: snapshot.registry,
         telDigest: snapshot.currentTelDigest,
+    };
+}
+
+/** Grant one already-issued credential to its explicit recipient. */
+async function grantAction(
+    config: WorkflowConfig,
+    args: Record<string, string>
+) {
+    const members = await loadFinalQviMembers(config);
+    const initiator = firstGroupMember(members);
+    const credentials = await Promise.all(
+        members.map(({client}) =>
+            getCredential(client, args['credential-said'])
+        )
+    );
+    await grantCredential({
+        members,
+        initiatorPrefix: initiator.memberAid.prefix,
+        recipientPrefix: args['recipient-prefix'],
+        credentials,
+        timestamp: createTimestamp(),
+    });
+    return {
+        status: 'granted',
+        credentialSaid: args['credential-said'],
+        recipientPrefix: args['recipient-prefix'],
     };
 }
 
@@ -1914,6 +1943,18 @@ export async function run(
                 'issuee-prefix'
             );
             return await issueAction(
+                readWorkflowConfig(args.config),
+                args
+            );
+        }
+        case 'ms-grant': {
+            args = parseExactArguments(
+                values,
+                'config',
+                'credential-said',
+                'recipient-prefix'
+            );
+            return await grantAction(
                 readWorkflowConfig(args.config),
                 args
             );

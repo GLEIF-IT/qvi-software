@@ -12,6 +12,11 @@ WORKFLOW_JOB_NAMES=("")
 WORKFLOW_JOB_PIDS=("")
 WORKFLOW_JOB_STDOUTS=("")
 WORKFLOW_JOB_STDERRS=("")
+WORKFLOW_JOB_RESOURCES=("")
+WORKFLOW_JOB_STARTS=("")
+WORKFLOW_JOB_RESULTS=("")
+WORKFLOW_COMPLETED_JOB_NAMES=("")
+WORKFLOW_COMPLETED_JOB_RESULTS=("")
 
 workflow_compose() {
     docker compose \
@@ -28,11 +33,13 @@ create_workflow_runtime() {
     LOCAL_QVI_DATA_DIR="${WORKFLOW_RUN_DIR}/qvi_data"
     KEYSTORE_DIR="${WORKFLOW_RUN_DIR}/keystores"
     WORKFLOW_LOG_DIR="${WORKFLOW_RUN_DIR}/logs"
+    WORKFLOW_RESULT_DIR="${WORKFLOW_RUN_DIR}/results"
     SALLY_CALLBACK_FILE="${WORKFLOW_RUN_DIR}/sally-callbacks.jsonl"
+    WORKFLOW_TIMING_FILE="${WORKFLOW_RUN_DIR}/workflow-timings.jsonl"
 
     export WORKFLOW_RUN_DIR WORKFLOW_CONFIG_DIR KLI_DATA_DIR
-    export LOCAL_QVI_DATA_DIR KEYSTORE_DIR WORKFLOW_LOG_DIR
-    export SALLY_CALLBACK_FILE
+    export LOCAL_QVI_DATA_DIR KEYSTORE_DIR WORKFLOW_LOG_DIR WORKFLOW_RESULT_DIR
+    export SALLY_CALLBACK_FILE WORKFLOW_TIMING_FILE
 
     # A retained --keep-runtime run is intentionally replaced by the next run.
     workflow_compose down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -44,7 +51,8 @@ create_workflow_runtime() {
         "${KLI_DATA_DIR}/temp-data" \
         "${LOCAL_QVI_DATA_DIR}" \
         "${KEYSTORE_DIR}" \
-        "${WORKFLOW_LOG_DIR}"
+        "${WORKFLOW_LOG_DIR}" \
+        "${WORKFLOW_RESULT_DIR}"
 
     cp -R "${SCRIPT_DIR}/config/." "${WORKFLOW_CONFIG_DIR}/"
     rm -f \
@@ -138,6 +146,104 @@ create_workflow_runtime() {
         }' > "${WORKFLOW_CONFIG_DIR}/participants.json"
 
     : > "${SALLY_CALLBACK_FILE}"
+    : > "${WORKFLOW_TIMING_FILE}"
+}
+
+record_workflow_timing() {
+    local kind=$1
+    local name=$2
+    local started_at=$3
+    local finished_at=$4
+    local status=$5
+    local resources=${6:-}
+
+    [[ -n "${WORKFLOW_TIMING_FILE:-}" ]] || return 0
+    jq -nc \
+        --arg kind "${kind}" \
+        --arg name "${name}" \
+        --arg resources "${resources}" \
+        --argjson startedAt "${started_at}" \
+        --argjson finishedAt "${finished_at}" \
+        --argjson duration "$((finished_at - started_at))" \
+        --argjson status "${status}" \
+        '{
+            kind: $kind,
+            name: $name,
+            resources: ($resources | split(",") | map(select(length > 0))),
+            startedAt: $startedAt,
+            finishedAt: $finishedAt,
+            durationSeconds: $duration,
+            status: $status
+        }' >> "${WORKFLOW_TIMING_FILE}"
+}
+
+run_workflow_phase() {
+    local phase_name=$1
+    shift
+    local started_at
+    local finished_at
+    local phase_status=0
+
+    started_at=$(date +%s)
+    "$@" || phase_status=$?
+    finished_at=$(date +%s)
+    record_workflow_timing \
+        phase "${phase_name}" "${started_at}" "${finished_at}" "${phase_status}"
+    return "${phase_status}"
+}
+
+run_workflow_command() {
+    local kind=$1
+    local command_name=$2
+    local resources=$3
+    shift 3
+    local started_at
+    local finished_at
+    local command_status=0
+
+    started_at=$(date +%s)
+    "$@" || command_status=$?
+    finished_at=$(date +%s)
+    record_workflow_timing \
+        "${kind}" "${command_name}" "${started_at}" "${finished_at}" \
+        "${command_status}" "${resources}"
+    return "${command_status}"
+}
+
+print_workflow_timing_summary() {
+    [[ -s "${WORKFLOW_TIMING_FILE:-}" ]] || return 0
+
+    print_lcyan "Workflow critical-path timing summary:"
+    jq -sr '
+        (map(.startedAt) | min) as $started |
+        (map(.finishedAt) | max) as $finished |
+        "total\tworkflow\t\($finished - $started)s",
+        (
+            map(select(.kind == "phase")) |
+            sort_by(.startedAt) |
+            .[] |
+            "phase\t\(.name)\t\(.durationSeconds)s\tstatus=\(.status)"
+        ),
+        (
+            map(select(.kind == "job")) |
+            sort_by(.durationSeconds) |
+            reverse |
+            .[0:10] |
+            .[] |
+            "slow-job\t\(.name)\t\(.durationSeconds)s\tstatus=\(.status)"
+        ),
+        (
+            map(select(.kind == "command")) |
+            sort_by(.durationSeconds) |
+            reverse |
+            .[0:15] |
+            .[] |
+            "slow-command\t\(.name)\t\(.durationSeconds)s\tstatus=\(.status)"
+        )
+    ' "${WORKFLOW_TIMING_FILE}" |
+        while IFS= read -r timing_line; do
+            print_lcyan "  ${timing_line}"
+        done
 }
 
 print_failure_diagnostics() {
@@ -182,6 +288,8 @@ workflow_cleanup() {
     if [[ "${workflow_failed}" == true ]]; then
         print_failure_diagnostics
     fi
+
+    cancel_all_workflow_jobs
 
     workflow_compose down --volumes --remove-orphans || cleanup_status=$?
     rm -rf "${WORKFLOW_RUN_DIR}"
@@ -280,95 +388,274 @@ background_job_has_stopped() {
     fi
 }
 
-run_background_compose_job() {
-    local service_name=$1
-    local logical_name=$2
-    shift 2
+workflow_resources_overlap() {
+    local left=$1
+    local right=$2
+    local left_resource
+    local right_resource
+    local old_ifs=${IFS}
+
+    IFS=,
+    for left_resource in ${left}; do
+        for right_resource in ${right}; do
+            if [[ -n "${left_resource}" &&
+                  "${left_resource}" == "${right_resource}" ]]; then
+                IFS=${old_ifs}
+                return 0
+            fi
+        done
+    done
+    IFS=${old_ifs}
+    return 1
+}
+
+register_background_job() {
+    local logical_name=$1
+    local resources=$2
+    local stdout_log=$3
+    local stderr_log=$4
+    local result_file=$5
+    local pid=$6
 
     local existing_name
-    local stdout_log="${WORKFLOW_LOG_DIR}/${logical_name}.out.log"
-    local stderr_log="${WORKFLOW_LOG_DIR}/${logical_name}.err.log"
+    local existing_resources
+    local index
     local job_index=${#WORKFLOW_JOB_NAMES[@]}
 
-    for existing_name in "${WORKFLOW_JOB_NAMES[@]}"; do
+    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
+        existing_name=${WORKFLOW_JOB_NAMES[${index}]}
         if [[ "${existing_name}" == "${logical_name}" ]]; then
             printf 'Background job %s is already active\n' "${logical_name}" >&2
             return 1
         fi
-    done
-
-    workflow_compose run --rm --no-deps -T \
-        "${service_name}" "$@" >"${stdout_log}" 2>"${stderr_log}" &
-    WORKFLOW_JOB_NAMES[${job_index}]="${logical_name}"
-    WORKFLOW_JOB_PIDS[${job_index}]=$!
-    WORKFLOW_JOB_STDOUTS[${job_index}]="${stdout_log}"
-    WORKFLOW_JOB_STDERRS[${job_index}]="${stderr_log}"
-}
-
-wait_for_background_job() {
-    local logical_name=$1
-    local job_index=-1
-    local index
-    local pid=""
-    local stdout_log=""
-    local stderr_log=""
-    local exit_status=125
-    local wait_completed=false
-
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        if [[ "${WORKFLOW_JOB_NAMES[${index}]}" == "${logical_name}" ]]; then
-            job_index=${index}
-            break
+        existing_resources=${WORKFLOW_JOB_RESOURCES[${index}]:-}
+        if workflow_resources_overlap "${resources}" "${existing_resources}"; then
+            printf 'Background job %s conflicts with active job %s on resources %s / %s\n' \
+                "${logical_name}" "${existing_name}" \
+                "${resources}" "${existing_resources}" >&2
+            return 1
         fi
     done
-    if [[ "${job_index}" -lt 0 ]]; then
-        printf 'No background job is registered as %s\n' "${logical_name}" >&2
-        return 1
-    fi
 
-    pid=${WORKFLOW_JOB_PIDS[${job_index}]}
-    stdout_log=${WORKFLOW_JOB_STDOUTS[${job_index}]}
-    stderr_log=${WORKFLOW_JOB_STDERRS[${job_index}]}
-    poll_until \
-        "background Compose job ${logical_name}" \
-        "${WORKFLOW_TIMEOUT_SECONDS}" \
-        background_job_has_stopped \
-        "${pid}" >/dev/null &&
-        wait_completed=true
+    WORKFLOW_JOB_NAMES[${job_index}]="${logical_name}"
+    WORKFLOW_JOB_PIDS[${job_index}]="${pid}"
+    WORKFLOW_JOB_STDOUTS[${job_index}]="${stdout_log}"
+    WORKFLOW_JOB_STDERRS[${job_index}]="${stderr_log}"
+    WORKFLOW_JOB_RESOURCES[${job_index}]="${resources}"
+    WORKFLOW_JOB_STARTS[${job_index}]="$(date +%s)"
+    WORKFLOW_JOB_RESULTS[${job_index}]="${result_file}"
+}
 
-    if [[ "${wait_completed}" == false ]]; then
-        kill "${pid}" 2>/dev/null || true
-        sleep 1
-        kill -9 "${pid}" 2>/dev/null || true
-        exit_status=124
-        wait "${pid}" 2>/dev/null || true
-    elif wait "${pid}"; then
-        exit_status=0
-    else
-        exit_status=$?
-    fi
+start_workflow_job() {
+    local logical_name=$1
+    local resources=$2
+    shift 2
 
+    local artifact_stem
+    local stdout_log
+    local stderr_log
+    local result_file
+    local pid
+
+    artifact_stem="${logical_name}-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
+    stdout_log="${WORKFLOW_LOG_DIR}/${artifact_stem}.out.log"
+    stderr_log="${WORKFLOW_LOG_DIR}/${artifact_stem}.err.log"
+    result_file="${WORKFLOW_RESULT_DIR}/${artifact_stem}.json"
+
+    # Validate conflicts before launching so a rejected job cannot escape the
+    # workflow registry.
+    local existing_resources
+    local index
+    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
+        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
+        existing_resources=${WORKFLOW_JOB_RESOURCES[${index}]:-}
+        if [[ "${WORKFLOW_JOB_NAMES[${index}]}" == "${logical_name}" ]] ||
+           workflow_resources_overlap "${resources}" "${existing_resources}"; then
+            printf 'Cannot start background job %s with resources %s\n' \
+                "${logical_name}" "${resources}" >&2
+            return 1
+        fi
+    done
+
+    "$@" >"${stdout_log}" 2>"${stderr_log}" &
+    pid=$!
+    register_background_job \
+        "${logical_name}" "${resources}" \
+        "${stdout_log}" "${stderr_log}" "${result_file}" "${pid}"
+}
+
+run_background_compose_job() {
+    local service_name=$1
+    local logical_name=$2
+    local resources=$3
+    shift 3
+
+    start_workflow_job \
+        "${logical_name}" "${resources}" \
+        workflow_compose exec -T "${service_name}" "$@"
+}
+
+find_workflow_job_index() {
+    local logical_name=$1
+    local index
+
+    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
+        if [[ "${WORKFLOW_JOB_NAMES[${index}]:-}" == "${logical_name}" ]]; then
+            printf '%s\n' "${index}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+finish_workflow_job() {
+    local job_index=$1
+    local exit_status=$2
+    local logical_name=${WORKFLOW_JOB_NAMES[${job_index}]}
+    local stdout_log=${WORKFLOW_JOB_STDOUTS[${job_index}]}
+    local stderr_log=${WORKFLOW_JOB_STDERRS[${job_index}]}
+    local resources=${WORKFLOW_JOB_RESOURCES[${job_index}]:-}
+    local started_at=${WORKFLOW_JOB_STARTS[${job_index}]}
+    local result_file=${WORKFLOW_JOB_RESULTS[${job_index}]}
+    local finished_at
+
+    finished_at=$(date +%s)
     [[ -f "${stdout_log}" ]] && cat "${stdout_log}"
     [[ -f "${stderr_log}" ]] && cat "${stderr_log}" >&2
+    record_workflow_timing \
+        job "${logical_name}" "${started_at}" "${finished_at}" \
+        "${exit_status}" "${resources}"
+    jq -n \
+        --arg name "${logical_name}" \
+        --arg resources "${resources}" \
+        --arg stdoutLog "${stdout_log}" \
+        --arg stderrLog "${stderr_log}" \
+        --argjson startedAt "${started_at}" \
+        --argjson finishedAt "${finished_at}" \
+        --argjson durationSeconds "$((finished_at - started_at))" \
+        --argjson status "${exit_status}" \
+        '{
+            name: $name,
+            resources: ($resources | split(",") | map(select(length > 0))),
+            startedAt: $startedAt,
+            finishedAt: $finishedAt,
+            durationSeconds: $durationSeconds,
+            status: $status,
+            stdoutLog: $stdoutLog,
+            stderrLog: $stderrLog
+        }' > "${result_file}"
+
+    local completed_index=${#WORKFLOW_COMPLETED_JOB_NAMES[@]}
+    WORKFLOW_COMPLETED_JOB_NAMES[${completed_index}]="${logical_name}"
+    WORKFLOW_COMPLETED_JOB_RESULTS[${completed_index}]="${result_file}"
+
     unset "WORKFLOW_JOB_NAMES[${job_index}]"
     unset "WORKFLOW_JOB_PIDS[${job_index}]"
     unset "WORKFLOW_JOB_STDOUTS[${job_index}]"
     unset "WORKFLOW_JOB_STDERRS[${job_index}]"
+    unset "WORKFLOW_JOB_RESOURCES[${job_index}]"
+    unset "WORKFLOW_JOB_STARTS[${job_index}]"
+    unset "WORKFLOW_JOB_RESULTS[${job_index}]"
+}
 
-    if [[ "${exit_status}" -ne 0 ]]; then
-        printf 'Background Compose job %s failed with status %s\n' \
-            "${logical_name}" "${exit_status}" >&2
-        return "${exit_status}"
-    fi
+workflow_job_result_file() {
+    local logical_name=$1
+    local index
+
+    # Return the most recent result when a logical name is reused in a later
+    # conflict-free wave.
+    for ((index=${#WORKFLOW_COMPLETED_JOB_NAMES[@]} - 1; index >= 1; index--)); do
+        if [[ "${WORKFLOW_COMPLETED_JOB_NAMES[${index}]:-}" == "${logical_name}" ]]; then
+            printf '%s\n' "${WORKFLOW_COMPLETED_JOB_RESULTS[${index}]}"
+            return 0
+        fi
+    done
+    printf 'No completed background job result is registered as %s\n' \
+        "${logical_name}" >&2
+    return 1
+}
+
+load_workflow_job_result() {
+    local logical_name=$1
+    local result_file
+
+    result_file=$(workflow_job_result_file "${logical_name}") || return 1
+    jq -e '.' "${result_file}"
+}
+
+cancel_all_workflow_jobs() {
+    local index
+    local pid
+    local active_jobs_found=false
+
+    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
+        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
+        active_jobs_found=true
+        pid=${WORKFLOW_JOB_PIDS[${index}]}
+        kill "${pid}" 2>/dev/null || true
+    done
+    [[ "${active_jobs_found}" == true ]] || return 0
+    sleep 1
+    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
+        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
+        pid=${WORKFLOW_JOB_PIDS[${index}]}
+        kill -9 "${pid}" 2>/dev/null || true
+        wait "${pid}" 2>/dev/null || true
+        finish_workflow_job "${index}" 143
+    done
+}
+
+wait_for_background_job() {
+    local logical_name=$1
+    wait_for_background_jobs "${logical_name}"
 }
 
 wait_for_background_jobs() {
+    local requested_names=("$@")
+    local deadline=$((SECONDS + WORKFLOW_TIMEOUT_SECONDS))
+    local remaining=${#requested_names[@]}
     local logical_name
-    local all_jobs_succeeded=true
+    local job_index
+    local pid
+    local exit_status
+    local made_progress
 
-    for logical_name in "$@"; do
-        wait_for_background_job "${logical_name}" ||
-            all_jobs_succeeded=false
+    for logical_name in "${requested_names[@]}"; do
+        find_workflow_job_index "${logical_name}" >/dev/null || {
+            printf 'No background job is registered as %s\n' "${logical_name}" >&2
+            return 1
+        }
     done
-    [[ "${all_jobs_succeeded}" == true ]]
+
+    while [[ "${remaining}" -gt 0 ]]; do
+        made_progress=false
+        for logical_name in "${requested_names[@]}"; do
+            job_index=$(find_workflow_job_index "${logical_name}") || continue
+            pid=${WORKFLOW_JOB_PIDS[${job_index}]}
+            if kill -0 "${pid}" 2>/dev/null; then
+                continue
+            fi
+
+            exit_status=0
+            wait "${pid}" || exit_status=$?
+            finish_workflow_job "${job_index}" "${exit_status}"
+            remaining=$((remaining - 1))
+            made_progress=true
+            if [[ "${exit_status}" -ne 0 ]]; then
+                printf 'Background job %s failed with status %s\n' \
+                    "${logical_name}" "${exit_status}" >&2
+                cancel_all_workflow_jobs
+                return "${exit_status}"
+            fi
+        done
+
+        [[ "${remaining}" -eq 0 ]] && break
+        if [[ "${SECONDS}" -ge "${deadline}" ]]; then
+            printf 'Timed out after %ss waiting for background job group: %s\n' \
+                "${WORKFLOW_TIMEOUT_SECONDS}" "${requested_names[*]}" >&2
+            cancel_all_workflow_jobs
+            return 124
+        fi
+        [[ "${made_progress}" == true ]] || sleep 1
+    done
 }
