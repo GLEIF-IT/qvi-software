@@ -30,10 +30,12 @@ SALLY_PYTHON="${VENV_DIR}/sally/bin/python"
 SALLY_LAUNCHER="${SCRIPT_DIR}/local-sally.py"
 VLEI_BIN="${VENV_DIR}/vlei/bin/vLEI-server"
 TSX_BIN="${SCRIPT_DIR}/../sig_ts_wallets/node_modules/.bin/tsx"
+WALLET_SERVER="${SCRIPT_DIR}/../sig_ts_wallets/src/wallet-server.ts"
 SIGNAL_RESET_LAUNCHER="${SCRIPT_DIR}/run-with-signals.py"
 
 export KLI_PYTHON KLI_LAUNCHER KERIA_PYTHON KERIA_LAUNCHER WITNESS_PYTHON
-export SALLY_PYTHON SALLY_LAUNCHER VLEI_BIN TSX_BIN SIGNAL_RESET_LAUNCHER
+export SALLY_PYTHON SALLY_LAUNCHER VLEI_BIN TSX_BIN WALLET_SERVER
+export SIGNAL_RESET_LAUNCHER
 
 # Report whether a PID still represents a running, non-zombie process.
 workflow_process_is_running() {
@@ -76,6 +78,21 @@ run_interruptible_process() {
     "${KERIA_PYTHON}" "${SIGNAL_RESET_LAUNCHER}" "$@"
 }
 
+# Return success only for commands launched from workflow-owned source or venvs.
+workflow_command_is_owned() {
+    local command_line=$1
+
+    case "${command_line}" in
+        *"${SCRIPT_DIR}/.venvs/"*|\
+        *"${SCRIPT_DIR}/local-witnesses.py"*|\
+        *"${SCRIPT_DIR}/../callback_recorder/recorder.py"*|\
+        *"${SCRIPT_DIR}/../sig_ts_wallets/"*)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 # Stop a previously retained process only when its command belongs to this workflow.
 stop_process_from_pid_file() {
     local pid_file=$1
@@ -88,18 +105,12 @@ stop_process_from_pid_file() {
     workflow_process_is_running "${pid}" || return 0
 
     command_line=$(ps -p "${pid}" -o command= 2>/dev/null || true)
-    case "${command_line}" in
-        *"${SCRIPT_DIR}/.venvs/"*|\
-        *"${SCRIPT_DIR}/local-witnesses.py"*|\
-        *"${SCRIPT_DIR}/../callback_recorder/recorder.py"*)
-            kill -TERM "${pid}" 2>/dev/null || true
-            ;;
-        *)
-            printf 'Refusing to stop PID %s from %s; command is %s\n' \
-                "${pid}" "${pid_file}" "${command_line}" >&2
-            return 1
-            ;;
-    esac
+    if ! workflow_command_is_owned "${command_line}"; then
+        printf 'Refusing to stop PID %s from %s; command is %s\n' \
+            "${pid}" "${pid_file}" "${command_line}" >&2
+        return 1
+    fi
+    kill -TERM "${pid}" 2>/dev/null || true
 }
 
 # Stop services left behind by an earlier --keep-runtime run.
@@ -414,7 +425,7 @@ assert_local_ports_available() {
         6901 6902 6903 \
         7901 7902 7903 \
         5642 5643 5644 \
-        7723 9823 9923; do
+        7723 8923 9823 9923; do
         listener=$(lsof -nP -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
         if [[ -n "${listener}" ]]; then
             printf 'Local workflow port %s is already used by PID %s\n' \
@@ -452,6 +463,12 @@ start_local_foundation_services() {
         --head-dir "${WORKFLOW_RUN_DIR}/state" \
         --base witnesses \
         --config-dir "${WORKFLOW_CONFIG_DIR}/witnesses"
+    start_managed_process \
+        signify-wallet \
+        env \
+        QVI_OPERATION_TIMEOUT_SECONDS="${WORKFLOW_TIMEOUT_SECONDS}" \
+        QVI_WALLET_PORT=8923 \
+        "${TSX_BIN}" "${WALLET_SERVER}"
 
     wait_for_managed_process \
         vlei-server \
@@ -465,6 +482,9 @@ start_local_foundation_services() {
     wait_for_managed_process witnesses http://127.0.0.1:5643/oobi ||
         return 1
     wait_for_managed_process witnesses http://127.0.0.1:5644/oobi ||
+        return 1
+    wait_for_managed_process \
+        signify-wallet http://127.0.0.1:8923/health ||
         return 1
 
     start_local_keria qar1 keria-qar1 3901 3902 3903 || return 1

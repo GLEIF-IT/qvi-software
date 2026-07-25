@@ -62,6 +62,7 @@ const PARTICIPANT_ROLES: readonly ParticipantRole[] = [
 ];
 const EXPECTED_SIGNIFY_VERSION = '0.4.0';
 let readyPromise: Promise<void> | undefined;
+const connectedClients = new Map<string, SignifyClient>();
 
 /** Return whether a value is a non-null object with string keys. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -294,6 +295,15 @@ function createClient(participant: Participant): SignifyClient {
     );
 }
 
+/** Identify one participant cache entry by its concrete local endpoints. */
+function clientCacheKey(participant: Participant): string {
+    return [
+        participant.name,
+        participant.adminUrl,
+        participant.bootUrl,
+    ].join('|');
+}
+
 /** Require a connected client to expose its controller and agent identities. */
 function requireConnectedAgent(client: SignifyClient): void {
     if (
@@ -319,6 +329,7 @@ export async function bootClient(
     }
     await client.connect();
     requireConnectedAgent(client);
+    connectedClients.set(clientCacheKey(participant), client);
     return client;
 }
 
@@ -326,10 +337,17 @@ export async function bootClient(
 export async function connectClient(
     participant: Participant
 ): Promise<SignifyClient> {
+    const cacheKey = clientCacheKey(participant);
+    const cached = connectedClients.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
     await initializeSignify();
     const client = createClient(participant);
     await client.connect();
     requireConnectedAgent(client);
+    connectedClients.set(cacheKey, client);
     return client;
 }
 

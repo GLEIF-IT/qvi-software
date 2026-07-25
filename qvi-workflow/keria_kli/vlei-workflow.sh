@@ -70,9 +70,12 @@ run_signify_json() {
     local command_failed=false
     local normalization_failed=false
 
-    result_json=$(sig_tsx "$@") || command_status=$?
+    result_json=$(sig_wallet_request "$@") || command_status=$?
     [[ "${command_status}" -ne 0 ]] && command_failed=true
     if [[ "${command_failed}" == true ]]; then
+        # curl --fail-with-body preserves the daemon's structured error; show
+        # it here so a failed workflow does not discard the root cause.
+        [[ -z "${result_json}" ]] || printf '%s\n' "${result_json}" >&2
         return "${command_status}"
     fi
 
@@ -92,7 +95,6 @@ run_qvi_json() {
     run_workflow_command \
         command "signify:${phase}" "" \
         run_signify_json \
-        "${QVI_SIGNIFY_DIR}/sig-wallet.ts" \
         "${phase}" \
         --config "${QVI_PARTICIPANT_CONFIG}" \
         "$@"

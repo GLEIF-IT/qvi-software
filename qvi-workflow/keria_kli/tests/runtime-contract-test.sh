@@ -17,6 +17,13 @@ fail_test() {
     exit 1
 }
 
+# Retained cleanup accepts the TypeScript daemon but rejects unrelated commands.
+workflow_command_is_owned \
+    "node ${WORKFLOW_DIR}/../sig_ts_wallets/node_modules/.bin/tsx ${WORKFLOW_DIR}/../sig_ts_wallets/src/wallet-server.ts"
+if workflow_command_is_owned "/usr/bin/python /tmp/unrelated.py"; then
+    fail_test "Unrelated process was accepted as workflow-owned"
+fi
+
 # Return the background-job registries to their Bash 3.2-safe sentinel state.
 reset_job_registry() {
     WORKFLOW_JOB_NAMES=("")

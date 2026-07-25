@@ -52,12 +52,21 @@ klid() {
         "${logical_name}" "${logical_name}" kli "$@"
 }
 
-# Run one Signify TypeScript command with the shared operation timeout.
-sig_tsx() {
-    run_interruptible_process \
-        env \
-        QVI_OPERATION_TIMEOUT_SECONDS="${WORKFLOW_TIMEOUT_SECONDS}" \
-        "${TSX_BIN}" "$@"
+# Send one argument vector to the stateful local Signify wallet.
+sig_wallet_request() {
+    local request_json
+    local request_timeout=$((WORKFLOW_TIMEOUT_SECONDS + 2))
+
+    request_json=$(jq -nc --args '$ARGS.positional' -- "$@") || return 1
+    curl \
+        --fail-with-body \
+        --silent \
+        --show-error \
+        --connect-timeout 1 \
+        --max-time "${request_timeout}" \
+        --header 'content-type: application/json' \
+        --data "$(jq -nc --argjson argv "${request_json}" '{argv: $argv}')" \
+        http://127.0.0.1:8923/run
 }
 
 # Wait for a group of KLI jobs under one shared deadline.
