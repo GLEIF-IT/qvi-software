@@ -97,7 +97,9 @@ run_signify_json() {
 run_qvi_json() {
     local phase=$1
     shift
-    run_signify_json \
+    run_workflow_command \
+        command "signify:${phase}" "" \
+        run_signify_json \
         "${QVI_SIGNIFY_DIR}/sig-wallet.ts" \
         "${phase}" \
         --config "${QVI_PARTICIPANT_CONFIG}" \
@@ -346,7 +348,9 @@ function start_foundation_services() {
       keria1 \
       keria2 \
       keria3 \
-      keria4 ||
+      keria4 \
+      kli \
+      signify ||
       foundation_start_failed=true
   if [[ "${foundation_start_failed}" == true ]]; then
       fail_workflow "Docker foundation services failed to start properly"
@@ -357,24 +361,61 @@ function start_foundation_services() {
 # Verify the package versions exposed by every participating runtime before
 # any KERI state is created.
 function preflight_versions() {
-  local python_check='from importlib.metadata import version; import sys; actual=version(sys.argv[1]); expected=sys.argv[2]; print(f"{sys.argv[1]}={actual}"); raise SystemExit(0 if actual == expected else 1)'
-  local kli_version=""
+  start_workflow_job \
+      preflight-signify preflight-signify preflight_signify_versions ||
+      return 1
+  start_workflow_job \
+      preflight-keria preflight-keria preflight_keria_versions ||
+      return 1
+  start_workflow_job \
+      preflight-gar-witness preflight-gar-witness \
+      preflight_python_package gar-witnesses keri 1.3.1 ||
+      return 1
+  start_workflow_job \
+      preflight-qar-witness preflight-qar-witness \
+      preflight_python_package qar-witnesses keri 1.3.1 ||
+      return 1
+  start_workflow_job \
+      preflight-person-witness preflight-person-witness \
+      preflight_python_package person-witnesses keri 1.3.1 ||
+      return 1
+  start_workflow_job \
+      preflight-kli preflight-kli preflight_kli_version ||
+      return 1
+  wait_for_background_jobs \
+      preflight-signify \
+      preflight-keria \
+      preflight-gar-witness \
+      preflight-qar-witness \
+      preflight-person-witness \
+      preflight-kli
+}
 
-  run_qvi_json preflight >/dev/null || return 1
+preflight_signify_versions() {
+  run_qvi_json preflight >/dev/null
+}
+
+preflight_python_package() {
+  local service_name=$1
+  local package_name=$2
+  local expected_version=$3
+  local python_check='from importlib.metadata import version; import sys; actual=version(sys.argv[1]); expected=sys.argv[2]; print(f"{sys.argv[1]}={actual}"); raise SystemExit(0 if actual == expected else 1)'
+
+  workflow_compose exec -T "${service_name}" \
+      python -c "${python_check}" \
+      "${package_name}" "${expected_version}"
+}
+
+preflight_keria_versions() {
   workflow_compose exec -T keria1 \
-      python -c "${python_check}" keria 0.4.0 || return 1
-  workflow_compose exec -T keria1 \
-      python -c "${python_check}" keri 1.2.12 || return 1
-  # gleif/keri:1.2.9 is the image release; its installed KERIpy package is
-  # 1.3.1. Keep both expectations visible instead of conflating the versions.
-  workflow_compose exec -T gar-witnesses \
-      python -c "${python_check}" keri 1.3.1 || return 1
-  workflow_compose exec -T qar-witnesses \
-      python -c "${python_check}" keri 1.3.1 || return 1
-  workflow_compose exec -T person-witnesses \
-      python -c "${python_check}" keri 1.3.1 || return 1
+      python -c \
+      'from importlib.metadata import version; import sys; expected={"keria":"0.4.0","keri":"1.2.12"}; actual={name:version(name) for name in expected}; print(actual); raise SystemExit(0 if actual == expected else 1)'
+}
+
+preflight_kli_version() {
+  local kli_version
   kli_version=$(kli version) || return 1
-  [[ "${kli_version}" == *"1.1.32"* ]] || return 1
+  [[ "${kli_version}" == *"1.1.32"* ]]
 }
 
 function start_sally() {
@@ -487,15 +528,19 @@ load_sally_prefixes() {
   export DIRECT_SALLY_PRE
 }
 
-function setup_keria_identifiers() {
+create_keria_identifier_artifact() {
+  run_qvi_json ms-setup > "${WORKFLOW_RUN_DIR}/keria-setup.json"
+}
+
+load_keria_identifier_artifact() {
   local setup_failed=false
   local qvi_setup_data=""
   local setup_fields=""
 
-  print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
-  qvi_setup_data=$(run_qvi_json ms-setup) || setup_failed=true
+  qvi_setup_data=$(jq -c . "${WORKFLOW_RUN_DIR}/keria-setup.json") ||
+      setup_failed=true
   if [[ "${setup_failed}" == true ]]; then
-      fail_workflow "Unable to create the QAR and Person identifiers"
+      fail_workflow "Unable to load the QAR and Person identifier evidence"
   fi
 
   print_green "QVI and Person Identifiers from SignifyTS + KERIA are "
@@ -542,20 +587,44 @@ function setup_keria_identifiers() {
   print_dark_gray "Person   OOBI: $PERSON_OOBI"
 }
 
+function setup_keria_identifiers() {
+  print_yellow "Creating QVI and Person Identifiers from SignifyTS + KERIA"
+  create_keria_identifier_artifact || return 1
+  load_keria_identifier_artifact
+}
+
 function resolve_gar_oobis() {
     GAR1_OOBI="${WIT_HOST_GAR}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
 
-    kli oobi resolve \
-        --name "${GAR1}" \
-        --oobi-alias "${GAR2}" \
-        --passcode "${GAR1_PASSCODE}" \
-        --oobi "${GAR2_OOBI}" || return 1
-    kli oobi resolve \
-        --name "${GAR2}" \
-        --oobi-alias "${GAR1}" \
-        --passcode "${GAR2_PASSCODE}" \
-        --oobi "${GAR1_OOBI}" || return 1
+    start_workflow_job \
+        resolve-gar1-member gar1 resolve_kli_observer_oobis \
+        "${GAR1}" "${GAR1_PASSCODE}" "${GAR2}|${GAR2_OOBI}" || return 1
+    start_workflow_job \
+        resolve-gar2-member gar2 resolve_kli_observer_oobis \
+        "${GAR2}" "${GAR2_PASSCODE}" "${GAR1}|${GAR1_OOBI}" || return 1
+    wait_for_background_jobs resolve-gar1-member resolve-gar2-member
+}
+
+function resolve_lar_oobis() {
+    LAR1_OOBI="${WIT_HOST_QAR}/oobi/${LAR1_PRE}/witness/${WIL_PRE}"
+    LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
+
+    start_workflow_job \
+        resolve-lar1-member lar1 resolve_kli_observer_oobis \
+        "${LAR1}" "${LAR1_PASSCODE}" "${LAR2}|${LAR2_OOBI}" || return 1
+    start_workflow_job \
+        resolve-lar2-member lar2 resolve_kli_observer_oobis \
+        "${LAR2}" "${LAR2_PASSCODE}" "${LAR1}|${LAR1_OOBI}" || return 1
+    wait_for_background_jobs resolve-lar1-member resolve-lar2-member
+}
+
+resolve_foundational_member_oobis() {
+    start_workflow_job \
+        resolve-gar-members gar1,gar2 resolve_gar_oobis || return 1
+    start_workflow_job \
+        resolve-lar-members lar1,lar2 resolve_lar_oobis || return 1
+    wait_for_background_jobs resolve-gar-members resolve-lar-members
 }
 
 # initializes a keystore and creates a single sig AID
@@ -597,6 +666,38 @@ function create_aids() {
     create_aid "${LAR2}" "${LAR2_SALT}" "${LAR2_PASSCODE}" "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" "/config/incept-cfg-qars.json"
 }
 
+setup_participant_identifiers_parallel() {
+    print_green "------------------------------Creating identifiers (AIDs)------------------------------"
+    start_workflow_job \
+        setup-keria qar1,qar2,qar3,qar4,person \
+        create_keria_identifier_artifact || return 1
+    start_workflow_job \
+        setup-gar1 gar1 \
+        create_aid "${GAR1}" "${GAR1_SALT}" "${GAR1_PASSCODE}" \
+        "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" \
+        "/config/incept-cfg-gars.json" || return 1
+    start_workflow_job \
+        setup-gar2 gar2 \
+        create_aid "${GAR2}" "${GAR2_SALT}" "${GAR2_PASSCODE}" \
+        "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" \
+        "/config/incept-cfg-gars.json" || return 1
+    start_workflow_job \
+        setup-lar1 lar1 \
+        create_aid "${LAR1}" "${LAR1_SALT}" "${LAR1_PASSCODE}" \
+        "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" \
+        "/config/incept-cfg-qars.json" || return 1
+    start_workflow_job \
+        setup-lar2 lar2 \
+        create_aid "${LAR2}" "${LAR2_SALT}" "${LAR2_PASSCODE}" \
+        "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" \
+        "/config/incept-cfg-qars.json" || return 1
+    wait_for_background_jobs \
+        setup-keria setup-gar1 setup-gar2 setup-lar1 setup-lar2 ||
+        return 1
+    load_keria_identifier_artifact || return 1
+    read_prefixes
+}
+
 function read_prefixes() {
   GAR1_PRE=$(kli status --name "${GAR1}" --alias "${GAR1}" \
       --passcode "${GAR1_PASSCODE}" |
@@ -623,74 +724,85 @@ function read_prefixes() {
   print_lcyan "LAR2 Prefix: ${LAR2_PRE}"
 }
 
-# OOBI resolutions between single sig AIDs
+resolve_kli_observer_oobis() {
+    local observer_name=$1
+    local observer_passcode=$2
+    shift 2
+    local oobi_record
+    local alias
+    local oobi
+
+    for oobi_record in "$@"; do
+        IFS='|' read -r alias oobi <<< "${oobi_record}"
+        kli oobi resolve \
+            --name "${observer_name}" \
+            --oobi-alias "${alias}" \
+            --passcode "${observer_passcode}" \
+            --oobi "${oobi}" || return 1
+    done
+}
+
+resolve_keria_external_oobis() {
+    run_qvi_json \
+        ms-resolve-external \
+        --oobis "${OOBIS_FOR_KERIA}" >/dev/null
+}
+
+# Resolve each observer's independent contact graph concurrently.
 function resolve_oobis() {
-    local resolution_failed=false
-
     DIRECT_SALLY_OOBI="${DIRECT_SALLY_HOST}/oobi"
-    print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
-
     GAR1_OOBI="${WIT_HOST_GAR}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
     LAR1_OOBI="${WIT_HOST_QAR}/oobi/${LAR1_PRE}/witness/${WIL_PRE}"
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
-    OOBIS_FOR_KERIA="gar1|$GAR1_OOBI,gar2|$GAR2_OOBI,lar1|$LAR1_OOBI,lar2|$LAR2_OOBI,direct-sally|$DIRECT_SALLY_OOBI"
+    OOBIS_FOR_KERIA="gar1|${GAR1_OOBI},gar2|${GAR2_OOBI},lar1|${LAR1_OOBI},lar2|${LAR2_OOBI},direct-sally|${DIRECT_SALLY_OOBI}"
+    export OOBIS_FOR_KERIA
 
-    run_qvi_json \
-        ms-resolve-external \
-        --oobis "${OOBIS_FOR_KERIA}" >/dev/null ||
-        resolution_failed=true
-    if [[ "${resolution_failed}" == true ]]; then
-        fail_workflow "KERIA participants could not resolve the workflow OOBIs"
-    fi
-
-    echo
+    print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
-    print_yellow "Resolving OOBIs for GAR 1"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${GAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${GAR2_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${LAR1_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${LAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${LAR2_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR1}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR1_OOBI}" 
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR2}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR2_OOBI}" 
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR3}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR3_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QAR4}"   --passcode "${GAR1_PASSCODE}" --oobi "${QAR4_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${PERSON}" --passcode "${GAR1_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${DIRECT_SALLY_ALIAS}"   --passcode "${GAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
 
-    print_yellow "Resolving OOBIs for GAR 2"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${GAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${GAR1_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${LAR1_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${LAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${LAR2_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR1}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR1_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR2}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR3}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR3_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QAR4}"   --passcode "${GAR2_PASSCODE}" --oobi "${QAR4_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${PERSON}" --passcode "${GAR2_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${DIRECT_SALLY_ALIAS}"   --passcode "${GAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    start_workflow_job \
+        resolve-keria-oobis qar1,qar2,qar3,qar4,person \
+        resolve_keria_external_oobis || return 1
+    start_workflow_job \
+        resolve-gar1-oobis gar1 resolve_kli_observer_oobis \
+        "${GAR1}" "${GAR1_PASSCODE}" \
+        "${GAR2}|${GAR2_OOBI}" "${LAR1}|${LAR1_OOBI}" \
+        "${LAR2}|${LAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
+        "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
+        "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
+        "${DIRECT_SALLY_ALIAS}|${DIRECT_SALLY_OOBI}" || return 1
+    start_workflow_job \
+        resolve-gar2-oobis gar2 resolve_kli_observer_oobis \
+        "${GAR2}" "${GAR2_PASSCODE}" \
+        "${GAR1}|${GAR1_OOBI}" "${LAR1}|${LAR1_OOBI}" \
+        "${LAR2}|${LAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
+        "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
+        "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
+        "${DIRECT_SALLY_ALIAS}|${DIRECT_SALLY_OOBI}" || return 1
+    start_workflow_job \
+        resolve-lar1-oobis lar1 resolve_kli_observer_oobis \
+        "${LAR1}" "${LAR1_PASSCODE}" \
+        "${LAR2}|${LAR2_OOBI}" "${GAR1}|${GAR1_OOBI}" \
+        "${GAR2}|${GAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
+        "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
+        "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
+        "${DIRECT_SALLY_ALIAS}|${DIRECT_SALLY_OOBI}" || return 1
+    start_workflow_job \
+        resolve-lar2-oobis lar2 resolve_kli_observer_oobis \
+        "${LAR2}" "${LAR2_PASSCODE}" \
+        "${LAR1}|${LAR1_OOBI}" "${GAR1}|${GAR1_OOBI}" \
+        "${GAR2}|${GAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
+        "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
+        "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
+        "${DIRECT_SALLY_ALIAS}|${DIRECT_SALLY_OOBI}" || return 1
 
-    print_yellow "Resolving OOBIs for LAR 1"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${LAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${LAR2_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${GAR1_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${GAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${GAR2_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR1}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR1_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR2}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR2_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR3}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR3_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QAR4}"   --passcode "${LAR1_PASSCODE}" --oobi "${QAR4_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${PERSON}" --passcode "${LAR1_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${DIRECT_SALLY_ALIAS}"   --passcode "${LAR1_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
-
-    print_yellow "Resolving OOBIs for LAR 2"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${LAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${LAR1_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${GAR1_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${GAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${GAR2_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR1}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR1_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR2}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR2_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR3}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR3_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QAR4}"   --passcode "${LAR2_PASSCODE}" --oobi "${QAR4_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${PERSON}" --passcode "${LAR2_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${DIRECT_SALLY_ALIAS}"   --passcode "${LAR2_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
-    
-    echo
+    wait_for_background_jobs \
+        resolve-keria-oobis \
+        resolve-gar1-oobis \
+        resolve-gar2-oobis \
+        resolve-lar1-oobis \
+        resolve-lar2-oobis
 }
 
 CHALLENGE_WORDS=""
@@ -896,12 +1008,8 @@ load_challenge_participant() {
     esac
 }
 
-function challenge_response() {
-  local relationships=(
-      "QAR1-QAR2|qar1|qar2"
-      "GAR1-QAR1|gar1|qar1"
-  )
-  local relationship_record
+challenge_relationship_record() {
+  local relationship_record=$1
   local relationship
   local left_id
   local right_id
@@ -914,29 +1022,64 @@ function challenge_response() {
   local right_passcode
   local right_prefix
 
+  IFS='|' read -r relationship left_id right_id <<< "${relationship_record}"
+
+  load_challenge_participant "${left_id}"
+  left_type="${CHALLENGE_PARTICIPANT_TYPE}"
+  left_name="${CHALLENGE_PARTICIPANT_NAME}"
+  left_passcode="${CHALLENGE_PARTICIPANT_PASSCODE}"
+  left_prefix="${CHALLENGE_PARTICIPANT_PREFIX}"
+
+  load_challenge_participant "${right_id}"
+  right_type="${CHALLENGE_PARTICIPANT_TYPE}"
+  right_name="${CHALLENGE_PARTICIPANT_NAME}"
+  right_passcode="${CHALLENGE_PARTICIPANT_PASSCODE}"
+  right_prefix="${CHALLENGE_PARTICIPANT_PREFIX}"
+
+  challenge_relationship "${relationship}" \
+      "${left_type}" "${left_id}" "${left_name}" "${left_passcode}" "${left_prefix}" \
+      "${right_type}" "${right_id}" "${right_name}" "${right_passcode}" "${right_prefix}"
+}
+
+run_challenge_wave() {
+  local relationship_record
+  local relationship
+  local left_id
+  local right_id
+  local job_names=""
+
+  for relationship_record in "$@"; do
+      IFS='|' read -r relationship left_id right_id <<< "${relationship_record}"
+      job_names="${job_names} challenge-${relationship}"
+      start_workflow_job \
+          "challenge-${relationship}" "${left_id},${right_id}" \
+          challenge_relationship_record "${relationship_record}" ||
+          return 1
+  done
+  # Job names are generated from fixed relationship labels and contain no
+  # whitespace, so intentional word splitting supplies the group members.
+  # shellcheck disable=SC2086
+  wait_for_background_jobs ${job_names}
+}
+
+function challenge_response() {
   print_green "------------------------------Authenticating Keystore control with Challenge Responses------------------------------"
 
-  for relationship_record in "${relationships[@]}"; do
-      IFS='|' read -r relationship left_id right_id <<< "${relationship_record}"
+  run_challenge_wave \
+      "GAR1-GAR2|gar1|gar2" \
+      "LAR1-LAR2|lar1|lar2" \
+      "QAR1-QAR2|qar1|qar2" || return 1
+  run_challenge_wave \
+      "QAR1-QAR3|qar1|qar3" || return 1
+  run_challenge_wave \
+      "QAR2-QAR3|qar2|qar3" \
+      "GAR1-QAR1|gar1|qar1" || return 1
+  run_challenge_wave \
+      "QAR1-LAR1|qar1|lar1" || return 1
+  run_challenge_wave \
+      "QAR1-Person|qar1|person" || return 1
 
-      load_challenge_participant "${left_id}"
-      left_type="${CHALLENGE_PARTICIPANT_TYPE}"
-      left_name="${CHALLENGE_PARTICIPANT_NAME}"
-      left_passcode="${CHALLENGE_PARTICIPANT_PASSCODE}"
-      left_prefix="${CHALLENGE_PARTICIPANT_PREFIX}"
-
-      load_challenge_participant "${right_id}"
-      right_type="${CHALLENGE_PARTICIPANT_TYPE}"
-      right_name="${CHALLENGE_PARTICIPANT_NAME}"
-      right_passcode="${CHALLENGE_PARTICIPANT_PASSCODE}"
-      right_prefix="${CHALLENGE_PARTICIPANT_PREFIX}"
-
-      challenge_relationship "${relationship}" \
-          "${left_type}" "${left_id}" "${left_name}" "${left_passcode}" "${left_prefix}" \
-          "${right_type}" "${right_id}" "${right_name}" "${right_passcode}" "${right_prefix}"
-  done
-
-  print_green "[challenge] Completed 4 directed responses across 2 trust relationships"
+  print_green "[challenge] Completed 16 directed responses across 8 trust relationships"
 }
 
 ################# Create Multisigs and perform delegation ################
@@ -945,6 +1088,7 @@ function create_multisig_icp_config() {
     PRE1=$1
     PRE2=$2
     local wit_pre=$3
+    local output_file=$4
     jq \
         --arg first_aid "${PRE1}" \
         --arg second_aid "${PRE2}" \
@@ -952,24 +1096,26 @@ function create_multisig_icp_config() {
         '.aids = [$first_aid, $second_aid] |
          .wits = [$witness]' \
         "${WORKFLOW_CONFIG_DIR}/template-multi-sig-incept-config.jq" \
-        > "${WORKFLOW_CONFIG_DIR}/multi-sig-incept-config.json"
+        > "${WORKFLOW_CONFIG_DIR}/${output_file}"
 
     print_lcyan "Multisig inception config JSON:"
-    print_lcyan "$(cat "${WORKFLOW_CONFIG_DIR}/multi-sig-incept-config.json")"
+    print_lcyan "$(cat "${WORKFLOW_CONFIG_DIR}/${output_file}")"
 }
 
 function create_geda_multisig() {
     echo
     print_yellow "[External] Multisig Inception for GEDA"
 
-    create_multisig_icp_config "${GAR1_PRE}" "${GAR2_PRE}" "${WAN_PRE}"
+    create_multisig_icp_config \
+        "${GAR1_PRE}" "${GAR2_PRE}" "${WAN_PRE}" \
+        "geda-multisig-incept-config.json"
 
     # The following multisig commands run in parallel in Docker
     print_yellow "[External] Multisig Inception from ${GAR1}: ${GAR1_PRE}"
     klid gar1 multisig incept --name "${GAR1}" --alias "${GAR1}" \
         --passcode "${GAR1_PASSCODE}" \
         --group "${GEDA_NAME}" \
-        --file /config/multi-sig-incept-config.json
+        --file /config/geda-multisig-incept-config.json
 
     echo
 
@@ -1003,7 +1149,13 @@ function qars_resolve_geda_oobi() {
     local geda_resolution_failed=false
     local refresh_failed=false
 
-    GEDA_OOBI=$(kli oobi generate --name "${GAR1}" --passcode "${GAR1_PASSCODE}" --alias "${GEDA_NAME}" --role witness)
+    if [[ -z "${GEDA_OOBI:-}" ]]; then
+        GEDA_OOBI=$(kli oobi generate \
+            --name "${GAR1}" \
+            --passcode "${GAR1_PASSCODE}" \
+            --alias "${GEDA_NAME}" \
+            --role witness)
+    fi
     [[ -z "${GEDA_OOBI}" ]] && geda_oobi_is_missing=true
     if [[ "${geda_oobi_is_missing}" == true ]]; then
         print_red "Failed to generate GEDA OOBI"
@@ -1091,21 +1243,32 @@ function create_qvi_multisig() {
     print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 }
 
-approve_qvi_delegation() {
+query_qvi_participants_for_geda_member() {
+    local member_name=$1
+    local member_passcode=$2
+    shift 2
     local participant_prefix
 
     for participant_prefix in "$@"; do
         kli query \
-            --name "${GAR1}" \
+            --name "${member_name}" \
             --alias "${GEDA_NAME}" \
-            --passcode "${GAR1_PASSCODE}" \
-            --prefix "${participant_prefix}" >/dev/null || return 1
-        kli query \
-            --name "${GAR2}" \
-            --alias "${GEDA_NAME}" \
-            --passcode "${GAR2_PASSCODE}" \
+            --passcode "${member_passcode}" \
             --prefix "${participant_prefix}" >/dev/null || return 1
     done
+}
+
+approve_qvi_delegation() {
+    start_workflow_job \
+        query-qvi-for-gar1 gar1 \
+        query_qvi_participants_for_geda_member \
+        "${GAR1}" "${GAR1_PASSCODE}" "$@" || return 1
+    start_workflow_job \
+        query-qvi-for-gar2 gar2 \
+        query_qvi_participants_for_geda_member \
+        "${GAR2}" "${GAR2_PASSCODE}" "$@" || return 1
+    wait_for_background_jobs query-qvi-for-gar1 query-qvi-for-gar2 ||
+        return 1
 
     klid gar1 delegate confirm \
         --name "${GAR1}" \
@@ -1252,14 +1415,16 @@ function create_le_multisig() {
     echo
     print_yellow "[LE] Multisig Inception for LE"
 
-    create_multisig_icp_config "${LAR1_PRE}" "${LAR2_PRE}" "${WIL_PRE}"
+    create_multisig_icp_config \
+        "${LAR1_PRE}" "${LAR2_PRE}" "${WIL_PRE}" \
+        "le-multisig-incept-config.json"
 
     # Follow commands run in parallel
     print_yellow "[LE] Multisig Inception from ${LAR1}: ${LAR1_PRE}"
     klid lar1 multisig incept --name "${LAR1}" --alias "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" \
         --group "${LE_NAME}" \
-        --file /config/multi-sig-incept-config.json
+        --file /config/le-multisig-incept-config.json
 
     echo
 
@@ -1293,7 +1458,13 @@ function qars_resolve_le_oobi() {
     local le_oobi_is_missing=false
     local le_resolution_failed=false
 
-    LE_OOBI=$(kli oobi generate --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --alias "${LE_NAME}" --role witness)
+    if [[ -z "${LE_OOBI:-}" ]]; then
+        LE_OOBI=$(kli oobi generate \
+            --name "${LAR1}" \
+            --passcode "${LAR1_PASSCODE}" \
+            --alias "${LE_NAME}" \
+            --role witness)
+    fi
     [[ -z "${LE_OOBI}" ]] && le_oobi_is_missing=true
     if [[ "${le_oobi_is_missing}" == true ]]; then
         print_red "Failed to generate LE OOBI"
@@ -1583,7 +1754,32 @@ record_qvi_issuance_result() {
     )
 }
 
-function create_and_grant_le_credential() {
+store_qvi_issuance_result() {
+    local credential_kind=$1
+    local issuance_result=$2
+    printf '%s\n' "${issuance_result}" \
+        > "${WORKFLOW_RUN_DIR}/${credential_kind}-issuance.json"
+}
+
+load_qvi_issuance_result() {
+    local credential_kind=$1
+    local credential_said
+
+    credential_said=$(jq -r \
+        '.credentialSaid' \
+        "${WORKFLOW_RUN_DIR}/${credential_kind}-issuance.json") ||
+        return 1
+    [[ -n "${credential_said}" && "${credential_said}" != null ]] ||
+        return 1
+    case "${credential_kind}" in
+        le) LE_CRED_SAID=${credential_said} ;;
+        oor) OOR_CRED_SAID=${credential_said} ;;
+        ecr) ECR_CRED_SAID=${credential_said} ;;
+        *) return 1 ;;
+    esac
+}
+
+function create_le_credential() {
     local issuance_result=""
     local issuance_failed=false
 
@@ -1603,8 +1799,9 @@ function create_and_grant_le_credential() {
       --issuee-prefix "${LE_PRE}") ||
       issuance_failed=true
     if [[ "${issuance_failed}" == true ]]; then
-        fail_workflow "[QVI] Failed to create and grant the LE credential"
+        fail_workflow "[QVI] Failed to create the LE credential"
     fi
+    store_qvi_issuance_result le "${issuance_result}"
     record_qvi_issuance_result "${issuance_result}"
     LE_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
     assert_qvi_credential_state \
@@ -1613,22 +1810,60 @@ function create_and_grant_le_credential() {
         "${LE_SCHEMA}" \
         "${LE_PRE}" \
         0
+}
+
+function grant_le_credential() {
+    run_qvi_json \
+        ms-grant \
+        --credential-said "${LE_CRED_SAID}" \
+        --recipient-prefix "${LE_PRE}" >/dev/null ||
+        fail_workflow "[QVI] Failed to grant the LE credential"
 
     echo
-    print_lcyan "[QVI] LE Credential created"
+    print_lcyan "[QVI] LE Credential created and granted"
     echo
 }
 
+function create_and_grant_le_credential() {
+    create_le_credential || return 1
+    grant_le_credential || return 1
+    load_qvi_issuance_result le
+}
+
 # LE: Admit LE credential from QVI
+wait_for_kli_ipex_grant_said() {
+    local name=$1
+    local alias=$2
+    local passcode=$3
+    local deadline=$((SECONDS + WORKFLOW_TIMEOUT_SECONDS))
+    local grant_said=""
+
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+        grant_said=$(kli ipex list \
+            --name "${name}" \
+            --alias "${alias}" \
+            --passcode "${passcode}" \
+            --type grant \
+            --poll \
+            --said |
+            sort -u |
+            tail -n 1 |
+            tr -d '[:space:]') || return 1
+        if [[ -n "${grant_said}" ]]; then
+            printf '%s\n' "${grant_said}"
+            return 0
+        fi
+        sleep 1
+    done
+
+    print_red "Timed out waiting for an IPEX grant for ${name}/${alias}"
+    return 124
+}
+
 function admit_le_credential() {
     print_dark_gray "Listing IPEX Grants for LAR 1"
-    SAID=$(kli ipex list \
-        --name "${LAR1}" \
-        --alias "${LE_NAME}" \
-        --passcode "${LAR1_PASSCODE}" \
-        --type "grant" \
-        --poll \
-        --said | uniq | tr -d '[:space:]') # there are three grant messages, one from each QAR, yet all share the same SAID, so uniq condenses them to one
+    SAID=$(wait_for_kli_ipex_grant_said \
+        "${LAR1}" "${LE_NAME}" "${LAR1_PASSCODE}") || return 1
 
     print_dark_gray "Listing IPEX Grants for LAR 2"
     # prime the mailbox to properly receive the messages.
@@ -1638,7 +1873,7 @@ function admit_le_credential() {
         --passcode "${LAR2_PASSCODE}" \
         --type "grant" \
         --poll \
-        --said | uniq
+        --said >/dev/null || return 1
 
     echo
     print_yellow "[LE] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR1}"
@@ -1657,7 +1892,7 @@ function admit_le_credential() {
         --passcode "${LAR2_PASSCODE}" \
         --auto
 
-    wait_kli_jobs lar1 lar2
+    wait_kli_jobs lar1 lar2 || return 1
 
     echo
     print_green "[LE] Admitted LE credential"
@@ -1829,13 +2064,9 @@ function grant_oor_auth_credential() {
 
 # QVI: Admit OOR Auth credential
 function admit_oor_auth_credential() {
-    OOR_AUTH_SAID=$(kli vc list \
-        --name "${LAR2}" \
-        --alias "${LE_NAME}" \
-        --passcode "${LAR2_PASSCODE}" \
-        --issued \
-        --said \
-        --schema ${OOR_AUTH_SCHEMA} | tr -d '[:space:]')
+    if [[ -z "${OOR_AUTH_SAID:-}" ]]; then
+        load_oor_auth_credential_said || return 1
+    fi
     echo
     print_yellow "[QVI] Admitting OOR Auth Credential ${OOR_AUTH_SAID} from LE"
     admit_qvi_received_credential \
@@ -1849,17 +2080,27 @@ function admit_oor_auth_credential() {
     echo
 }
 
+load_oor_auth_credential_said() {
+    OOR_AUTH_SAID=$(kli vc list \
+        --name "${LAR2}" \
+        --alias "${LE_NAME}" \
+        --passcode "${LAR2_PASSCODE}" \
+        --issued \
+        --said \
+        --schema "${OOR_AUTH_SCHEMA}" |
+        tail -1 |
+        tr -d '[:space:]')
+    [[ -n "${OOR_AUTH_SAID}" ]]
+    export OOR_AUTH_SAID
+}
+
 ########################### OOR Credential ##############################
 # 24. QVI: Issue, grant OOR to Person and Person admits OOR
 # Prepare OOR Auth edge data
 function prepare_oor_auth_edge() {
-    OOR_AUTH_SAID=$(kli vc list \
-        --name ${LAR1} \
-        --alias ${LE_NAME} \
-        --passcode "${LAR1_PASSCODE}" \
-        --issued \
-        --said \
-        --schema ${OOR_AUTH_SCHEMA} | tr -d '[:space:]')
+    if [[ -z "${OOR_AUTH_SAID:-}" ]]; then
+        load_oor_auth_credential_said || return 1
+    fi
     print_bg_blue "[QVI] Preparing [OOR Auth] edge with [OOR Auth] Credential SAID: ${OOR_AUTH_SAID}"
     jq -n \
         --arg credentialSaid "${OOR_AUTH_SAID}" \
@@ -1884,7 +2125,7 @@ function prepare_oor_cred_data() {
 }
 
 # Create OOR credential in QVI, issued to the Person
-function create_and_grant_oor_credential() {
+function create_oor_credential() {
     local credential_creation_failed=false
     local issuance_result=""
 
@@ -1895,7 +2136,7 @@ function create_and_grant_oor_credential() {
     print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/oor-data.json")"
 
     echo
-    print_green "[QVI] creating and granting OOR credential"
+    print_green "[QVI] creating OOR credential"
 
     issuance_result=$(run_qvi_json \
       ms-issue \
@@ -1904,8 +2145,9 @@ function create_and_grant_oor_credential() {
       --issuee-prefix "${PERSON_PRE}") ||
       credential_creation_failed=true
     if [[ "${credential_creation_failed}" == true ]]; then
-        fail_workflow "[QVI] Failed to create and grant the OOR credential"
+        fail_workflow "[QVI] Failed to create the OOR credential"
     fi
+    store_qvi_issuance_result oor "${issuance_result}"
     record_qvi_issuance_result "${issuance_result}"
     OOR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
     assert_qvi_credential_state \
@@ -1914,10 +2156,23 @@ function create_and_grant_oor_credential() {
         "${OOR_SCHEMA}" \
         "${PERSON_PRE}" \
         0
+}
+
+function grant_oor_credential() {
+    run_qvi_json \
+        ms-grant \
+        --credential-said "${OOR_CRED_SAID}" \
+        --recipient-prefix "${PERSON_PRE}" >/dev/null ||
+        fail_workflow "[QVI] Failed to grant the OOR credential"
 
     echo
-    print_lcyan "[QVI] OOR credential created"
+    print_lcyan "[QVI] OOR credential created and granted"
     echo
+}
+
+function create_and_grant_oor_credential() {
+    create_oor_credential || return 1
+    grant_oor_credential
 }
 
 admit_person_leaf_credential() {
@@ -2018,7 +2273,49 @@ function revoke_ecr_credential() {
     revoke_qvi_leaf_credential "ECR" "${ECR_CRED_SAID}" "${ECR_SCHEMA}"
 }
 
-function present_revoked_oor_to_sally() {
+person_observes_revoked_oor() {
+    assert_person_credential_state \
+        "${OOR_CRED_SAID}" \
+        "${QVI_PRE}" \
+        "${OOR_SCHEMA}" \
+        "${PERSON_PRE}" \
+        1 >/dev/null 2>&1
+}
+
+refresh_person_revoked_oor_state() {
+    local refresh_failed=false
+
+    # The issuer has the authoritative revocation TEL. Re-present the
+    # credential to its holder, then require the Person wallet to observe
+    # status 1 before it reports to Sally.
+    run_qvi_json \
+        ms-present \
+        --actor qvi \
+        --credential-said "${OOR_CRED_SAID}" \
+        --recipient-prefix "${PERSON_PRE}" >/dev/null ||
+        refresh_failed=true
+    if [[ "${refresh_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to receive the revoked OOR state from QVI"
+    fi
+
+    poll_until \
+        "Person observation of revoked OOR ${OOR_CRED_SAID}" \
+        "${WORKFLOW_TIMEOUT_SECONDS}" \
+        person_observes_revoked_oor >/dev/null ||
+        refresh_failed=true
+    if [[ "${refresh_failed}" == true ]]; then
+        fail_workflow "[PERSON] Failed to observe the revoked OOR state"
+    fi
+
+    assert_person_credential_state \
+        "${OOR_CRED_SAID}" \
+        "${QVI_PRE}" \
+        "${OOR_SCHEMA}" \
+        "${PERSON_PRE}" \
+        1
+}
+
+transmit_revoked_oor_to_sally() {
     local credential_said_is_missing=false
     [[ -z "${OOR_CRED_SAID}" ]] && credential_said_is_missing=true
     if [[ "${credential_said_is_missing}" == true ]]; then
@@ -2029,16 +2326,18 @@ function present_revoked_oor_to_sally() {
     local presentation_boundary
     local evidence_wait_failed=false
 
+    person_observes_revoked_oor ||
+        fail_workflow "[PERSON] Cannot present OOR before observing its revoked state"
     presentation_boundary=$(utc_now)
-    print_yellow "[QVI] Presenting revoked OOR credential ${OOR_CRED_SAID} to Sally"
+    print_yellow "[PERSON] Presenting revoked OOR credential ${OOR_CRED_SAID} to Sally"
     run_qvi_json \
         ms-present \
-        --actor qvi \
+        --actor person \
         --credential-said "${OOR_CRED_SAID}" \
         --recipient-prefix "${DIRECT_SALLY_PRE}" >/dev/null ||
         credential_transmission_failed=true
     if [[ "${credential_transmission_failed}" == true ]]; then
-        fail_workflow "[QVI] Failed to transmit revoked OOR credential ${OOR_CRED_SAID}"
+        fail_workflow "[PERSON] Failed to transmit revoked OOR credential ${OOR_CRED_SAID}"
     fi
 
     # revoked_oor_was_rejected_and_reported checks the callback file and one
@@ -2051,9 +2350,14 @@ function present_revoked_oor_to_sally() {
         "${presentation_boundary}" \
         "${OOR_CRED_SAID}" >/dev/null || evidence_wait_failed=true
     if [[ "${evidence_wait_failed}" == true ]]; then
-        fail_workflow "[QVI] Sally did not prove revoked-OOR rejection and reporting for ${OOR_CRED_SAID}"
+        fail_workflow "[PERSON] Sally did not prove revoked-OOR rejection and reporting for ${OOR_CRED_SAID}"
     fi
-    print_green "[QVI] Sally rejected revoked OOR ${OOR_CRED_SAID} and emitted the exact revocation callback"
+    print_green "[PERSON] Sally rejected revoked OOR ${OOR_CRED_SAID} and emitted the exact revocation callback"
+}
+
+function present_revoked_oor_to_sally() {
+    refresh_person_revoked_oor_state || return 1
+    transmit_revoked_oor_to_sally
 }
 
 ############################ ECR Auth ##################################
@@ -2158,13 +2462,9 @@ function grant_ecr_auth_credential() {
 
 # Admit ECR Auth credential from LE
 function admit_ecr_auth_credential() {
-    ECR_AUTH_SAID=$(kli vc list \
-        --name "${LAR2}" \
-        --alias "${LE_NAME}" \
-        --passcode "${LAR2_PASSCODE}" \
-        --issued \
-        --said \
-        --schema ${ECR_AUTH_SCHEMA} | tr -d '[:space:]')
+    if [[ -z "${ECR_AUTH_SAID:-}" ]]; then
+        load_ecr_auth_credential_said || return 1
+    fi
     echo
     print_yellow "[QVI] Admitting ECR Auth Credential ${ECR_AUTH_SAID} from LE"
     admit_qvi_received_credential \
@@ -2178,17 +2478,27 @@ function admit_ecr_auth_credential() {
     echo
 }
 
+load_ecr_auth_credential_said() {
+    ECR_AUTH_SAID=$(kli vc list \
+        --name "${LAR2}" \
+        --alias "${LE_NAME}" \
+        --passcode "${LAR2_PASSCODE}" \
+        --issued \
+        --said \
+        --schema "${ECR_AUTH_SCHEMA}" |
+        tail -1 |
+        tr -d '[:space:]')
+    [[ -n "${ECR_AUTH_SAID}" ]]
+    export ECR_AUTH_SAID
+}
+
 ############################ ECR ##################################
 # 23 Create and Issue ECR credential to Person
 # Prepare ECR Auth edge data
 function prepare_ecr_auth_edge() {
-    ECR_AUTH_SAID=$(kli vc list \
-        --name ${LAR1} \
-        --alias ${LE_NAME} \
-        --passcode "${LAR1_PASSCODE}" \
-        --issued \
-        --said \
-        --schema ${ECR_AUTH_SCHEMA} | tr -d '[:space:]')
+    if [[ -z "${ECR_AUTH_SAID:-}" ]]; then
+        load_ecr_auth_credential_said || return 1
+    fi
     print_bg_blue "[QVI] Preparing [ECR Auth] edge with [ECR Auth] Credential SAID: ${ECR_AUTH_SAID}"
     jq -n \
         --arg credentialSaid "${ECR_AUTH_SAID}" \
@@ -2213,7 +2523,7 @@ function prepare_ecr_cred_data() {
 }
 
 # QVI Grant ECR credential to PERSON
-function create_and_grant_ecr_credential() {
+function create_ecr_credential() {
     local credential_creation_failed=false
     local issuance_result=""
 
@@ -2223,8 +2533,7 @@ function create_and_grant_ecr_credential() {
     print_lcyan "[QVI] ECR Credential Data"
     print_lcyan "$(cat "${KLI_DATA_DIR}/temp-data/ecr-data.json")"
 
-    pause "Press [enter] to create and grant the ECR credential"
-    print_green "[QVI] creating and granting ECR credential"
+    print_green "[QVI] creating ECR credential"
 
     issuance_result=$(run_qvi_json \
       ms-issue \
@@ -2233,8 +2542,9 @@ function create_and_grant_ecr_credential() {
       --issuee-prefix "${PERSON_PRE}") ||
       credential_creation_failed=true
     if [[ "${credential_creation_failed}" == true ]]; then
-        fail_workflow "[QVI] Failed to create and grant the ECR credential"
+        fail_workflow "[QVI] Failed to create the ECR credential"
     fi
+    store_qvi_issuance_result ecr "${issuance_result}"
     record_qvi_issuance_result "${issuance_result}"
     ECR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
     assert_qvi_credential_state \
@@ -2243,10 +2553,23 @@ function create_and_grant_ecr_credential() {
         "${ECR_SCHEMA}" \
         "${PERSON_PRE}" \
         0
+}
+
+function grant_ecr_credential() {
+    run_qvi_json \
+        ms-grant \
+        --credential-said "${ECR_CRED_SAID}" \
+        --recipient-prefix "${PERSON_PRE}" >/dev/null ||
+        fail_workflow "[QVI] Failed to grant the ECR credential"
 
     echo
     print_lcyan "[QVI] ECR credential created and granted"
     echo
+}
+
+function create_and_grant_ecr_credential() {
+    create_ecr_credential || return 1
+    grant_ecr_credential
 }
 
 # Person: Admit ECR credential from QVI
@@ -2326,21 +2649,82 @@ function setup() {
   create_docker_containers || return 1
   start_foundation_services || return 1
   preflight_versions || return 1
-  setup_keria_identifiers || return 1
-  create_aids || return 1
-  read_prefixes || return 1
-  resolve_gar_oobis || return 1
+  setup_participant_identifiers_parallel || return 1
+  resolve_foundational_member_oobis || return 1
+}
+
+load_foundational_group_prefixes() {
+  GEDA_PRE=$(kli status \
+      --name "${GAR1}" \
+      --alias "${GEDA_NAME}" \
+      --passcode "${GAR1_PASSCODE}" |
+      awk '/Identifier:/ {print $2}' |
+      tr -d '[:space:]')
+  LE_PRE=$(kli status \
+      --name "${LAR1}" \
+      --alias "${LE_NAME}" \
+      --passcode "${LAR1_PASSCODE}" |
+      awk '/Identifier:/ {print $2}' |
+      tr -d '[:space:]')
+  [[ -n "${GEDA_PRE}" && -n "${LE_PRE}" ]] || return 1
+  export GEDA_PRE LE_PRE
+}
+
+create_foundational_multisigs_parallel() {
+  start_workflow_job \
+      create-geda gar1,gar2 create_geda_multisig || return 1
+  start_workflow_job \
+      create-le lar1,lar2 create_le_multisig || return 1
+  wait_for_background_jobs create-geda create-le || return 1
+  load_foundational_group_prefixes
+}
+
+capture_foundational_group_oobis() {
+  GEDA_OOBI=$(kli oobi generate \
+      --name "${GAR1}" \
+      --passcode "${GAR1_PASSCODE}" \
+      --alias "${GEDA_NAME}" \
+      --role witness) || return 1
+  LE_OOBI=$(kli oobi generate \
+      --name "${LAR1}" \
+      --passcode "${LAR1_PASSCODE}" \
+      --alias "${LE_NAME}" \
+      --role witness) || return 1
+  [[ -n "${GEDA_OOBI}" && -n "${LE_OOBI}" ]]
+}
+
+qars_resolve_foundational_oobis() {
+  qars_resolve_geda_oobi || return 1
+  qars_resolve_le_oobi
+}
+
+create_foundational_state_parallel() {
+  start_workflow_job \
+      create-geda-registry gar1,gar2 create_geda_reg || return 1
+  start_workflow_job \
+      create-le-registry lar1,lar2 create_le_reg || return 1
+  start_workflow_job \
+      start-direct-sally direct-sally start_sally || return 1
+  start_workflow_job \
+      resolve-foundation-qars qar1,qar2,qar3,qar4,person \
+      qars_resolve_foundational_oobis || return 1
+  wait_for_background_jobs \
+      create-geda-registry \
+      create-le-registry \
+      start-direct-sally \
+      resolve-foundation-qars || return 1
+  load_sally_prefixes
 }
 
 # Sets up GEDA, GEDA registry, delegation to the QVI, and QVI OOBI resolution for GARs and LARs
 function geda_delegation_to_qvi() {
-  create_geda_multisig || return 1
-  create_geda_reg || return 1
-  start_sally || return 1
+  create_foundational_multisigs_parallel || return 1
+  capture_foundational_group_oobis || return 1
+  create_foundational_state_parallel || return 1
   resolve_oobis || return 1
   challenge_response || return 1
-  qars_resolve_geda_oobi || return 1
   establish_qvi || return 1
+  create_qvi_reg || return 1
 }
 
 # Creates the QVI credential, grants it from the GEDA to the QVI, and presents it to sally
@@ -2355,14 +2739,10 @@ function qvi_credential() {
 
 # Creates the LE multisig, resolves the LE OOBI, creates the QVI registry, and prepares and grants the LE credential
 function le_creation_and_granting() {
-  create_le_multisig || return 1
-  qars_resolve_le_oobi || return 1
-  create_qvi_reg || return 1
   prepare_qvi_edge || return 1
   prepare_le_cred_data || return 1
   create_and_grant_le_credential || return 1
   admit_le_credential || return 1
-  create_le_reg || return 1
   prepare_le_edge || return 1
 }
 
@@ -2376,6 +2756,7 @@ function oor_auth_cred() {
   prepare_oor_auth_data || return 1
   create_oor_auth_credential || return 1
   grant_oor_auth_credential || return 1
+  load_oor_auth_credential_said || return 1
   admit_oor_auth_credential || return 1
   prepare_oor_auth_edge || return 1
 }
@@ -2398,6 +2779,7 @@ function ecr_auth_cred() {
   prepare_ecr_auth_data || return 1
   create_ecr_auth_credential || return 1
   grant_ecr_auth_credential || return 1
+  load_ecr_auth_credential_said || return 1
   admit_ecr_auth_credential || return 1
   prepare_ecr_auth_edge || return 1
 }
@@ -2415,6 +2797,70 @@ function ecr_auth_and_ecr_cred() {
   ecr_cred || return 1
 }
 
+issue_and_grant_oor_auth_credential() {
+  create_oor_auth_credential || return 1
+  grant_oor_auth_credential
+}
+
+issue_and_grant_ecr_auth_credential() {
+  create_ecr_auth_credential || return 1
+  grant_ecr_auth_credential
+}
+
+optimized_leaf_credential_pipeline() {
+  prepare_oor_auth_data || return 1
+  prepare_ecr_auth_data || return 1
+
+  issue_and_grant_oor_auth_credential || return 1
+  load_oor_auth_credential_said || return 1
+
+  start_workflow_job \
+      admit-oor-auth qvi admit_oor_auth_credential || return 1
+  start_workflow_job \
+      issue-ecr-auth lar1,lar2 \
+      issue_and_grant_ecr_auth_credential || return 1
+  wait_for_background_jobs admit-oor-auth issue-ecr-auth || return 1
+  load_ecr_auth_credential_said || return 1
+
+  prepare_oor_auth_edge || return 1
+  prepare_ecr_auth_edge || return 1
+  prepare_oor_cred_data || return 1
+  prepare_ecr_cred_data || return 1
+
+  create_and_grant_oor_credential || return 1
+  start_workflow_job \
+      admit-oor person admit_oor_credential || return 1
+  start_workflow_job \
+      admit-ecr-auth qvi admit_ecr_auth_credential || return 1
+  wait_for_background_jobs admit-oor admit-ecr-auth || return 1
+
+  pause "Press [ENTER] to present OOR to Sally" || return 1
+  start_workflow_job \
+      present-active-oor person,direct-sally \
+      person_present_oor_cred_to_sally || return 1
+  start_workflow_job \
+      issue-ecr qvi create_ecr_credential || return 1
+  wait_for_background_jobs present-active-oor issue-ecr || return 1
+  load_qvi_issuance_result ecr || return 1
+
+  grant_ecr_credential || return 1
+  start_workflow_job \
+      admit-ecr person admit_ecr_credential || return 1
+  start_workflow_job \
+      revoke-oor qvi revoke_oor_credential || return 1
+  wait_for_background_jobs admit-ecr revoke-oor || return 1
+
+  # Refresh the holder before the final wave. The refresh is a QVI mutation,
+  # so it must finish before ECR revocation starts on the same group.
+  refresh_person_revoked_oor_state || return 1
+  start_workflow_job \
+      present-revoked-oor person,direct-sally \
+      transmit_revoked_oor_to_sally || return 1
+  start_workflow_job \
+      revoke-ecr qvi revoke_ecr_credential || return 1
+  wait_for_background_jobs present-revoked-oor revoke-ecr
+}
+
 # Exit successfully after the requested top-level workflow phase. The EXIT
 # trap owns cleanup and honors --keep-runtime.
 stop_after() {
@@ -2425,6 +2871,7 @@ stop_after() {
   fi
 
   print_lcyan "Stopped after ${completed_phase} as requested"
+  print_workflow_timing_summary
   exit 0
 }
 
@@ -2433,37 +2880,58 @@ function main_flow() {
   print_lcyan "--------------------------------------------------------------------------------"
   print_lcyan "                       Running canonical QVI workflow"
   print_lcyan "--------------------------------------------------------------------------------"
-  setup || return 1
+  run_workflow_phase setup setup || return 1
   stop_after setup
-  geda_delegation_to_qvi || return 1
+  run_workflow_phase \
+      geda_delegation_to_qvi geda_delegation_to_qvi || return 1
   stop_after geda_delegation_to_qvi
-  qvi_credential || return 1
+  run_workflow_phase qvi_credential qvi_credential || return 1
   stop_after qvi_credential
 
-  le_creation_and_granting || return 1
+  run_workflow_phase \
+      le_creation_and_granting le_creation_and_granting || return 1
   stop_after le_creation_and_granting
   pause "Press [ENTER] to present LE credential to Sally" || return 1
-  le_sally_presentation || return 1
+  run_workflow_phase \
+      le_sally_presentation le_sally_presentation || return 1
   stop_after le_sally_presentation
 
-  oor_auth_and_oor_cred || return 1
+  if [[ -z "${WORKFLOW_STOP_AFTER}" ]]; then
+    run_workflow_phase \
+        leaf_credential_pipeline \
+        optimized_leaf_credential_pipeline || return 1
+    pause "Press [enter] to end workflow" || return 1
+    run_workflow_phase end_workflow end_workflow || return 1
+    return 0
+  fi
+
+  # Keep the fine-grained --stop-after checkpoints serial and observable.
+  run_workflow_phase \
+      oor_auth_and_oor_cred oor_auth_and_oor_cred || return 1
   stop_after oor_auth_and_oor_cred
   pause "Press [ENTER] to present OOR to Sally" || return 1
-  person_present_oor_cred_to_sally || return 1
+  run_workflow_phase \
+      person_present_oor_cred_to_sally \
+      person_present_oor_cred_to_sally || return 1
   stop_after person_present_oor_cred_to_sally
 
-  revoke_oor_credential || return 1
+  run_workflow_phase \
+      revoke_oor_credential revoke_oor_credential || return 1
   stop_after revoke_oor_credential
-  present_revoked_oor_to_sally || return 1
+  run_workflow_phase \
+      present_revoked_oor_to_sally \
+      present_revoked_oor_to_sally || return 1
   stop_after present_revoked_oor_to_sally
 
-  ecr_auth_and_ecr_cred || return 1
+  run_workflow_phase \
+      ecr_auth_and_ecr_cred ecr_auth_and_ecr_cred || return 1
   stop_after ecr_auth_and_ecr_cred
-  revoke_ecr_credential || return 1
+  run_workflow_phase \
+      revoke_ecr_credential revoke_ecr_credential || return 1
   stop_after revoke_ecr_credential
 
   pause "Press [enter] to end workflow" || return 1
-  end_workflow || return 1
+  run_workflow_phase end_workflow end_workflow || return 1
   stop_after end_workflow
 }
 
@@ -2712,6 +3180,7 @@ main() {
 
     workflow_duration=$(( $(date +%s) - START_TIME ))
     print_lcyan "Full chain workflow completed in ${workflow_duration} seconds"
+    print_workflow_timing_summary
 }
 
 script_is_being_executed=false

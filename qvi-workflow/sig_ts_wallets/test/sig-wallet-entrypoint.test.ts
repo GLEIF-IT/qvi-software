@@ -52,6 +52,34 @@ describe('Signify wallet entrypoint boundary', () => {
         );
     });
 
+    it('keeps credential issuance and grant as separate CLI actions', async () => {
+        await assert.rejects(
+            run([
+                'ms-grant',
+                '--config',
+                '/missing/workflow.json',
+                '--credential-said',
+                'E-credential',
+                '--recipient-prefix',
+                'E-recipient',
+            ]),
+            (error: unknown) =>
+                error instanceof Error &&
+                !(error instanceof UsageError) &&
+                error.message.includes('/missing/workflow.json')
+        );
+        await assert.rejects(
+            run([
+                'ms-grant',
+                '--config',
+                'workflow.json',
+                '--credential-said',
+                'E-credential',
+            ]),
+            UsageError
+        );
+    });
+
     it('accepts only credential-free HTTP(S) URLs', () => {
         assert.equal(
             requireHttpUrl('http://keria1:3901/', 'admin'),

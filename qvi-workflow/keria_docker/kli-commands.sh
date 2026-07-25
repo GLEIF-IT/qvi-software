@@ -3,19 +3,29 @@
 # Compose-backed command adapters used by vlei-workflow.sh.
 
 kli() {
-    workflow_compose run --rm --no-deps -T kli "$@"
+    local command_name="kli:${1:-unknown}"
+
+    # Include a nested subcommand such as "challenge:verify", but do not turn
+    # the first option of a flat command into part of its timing label.
+    case "${2:-}" in
+        ""|-*) ;;
+        *) command_name="${command_name}:${2}" ;;
+    esac
+
+    run_workflow_command \
+        command "${command_name}" "" \
+        workflow_compose exec -T kli kli "$@"
 }
 
 klid() {
     local logical_name=$1
     shift
-    run_background_compose_job kli "${logical_name}" "$@"
+    start_workflow_job \
+        "${logical_name}" "${logical_name}" kli "$@"
 }
 
 sig_tsx() {
-    run_background_compose_job signify signify-run "$@" ||
-        return 1
-    wait_for_background_job signify-run
+    workflow_compose exec -T signify tsx "$@"
 }
 
 wait_kli_jobs() {
