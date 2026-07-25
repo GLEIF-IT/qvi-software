@@ -2,6 +2,7 @@
 
 # Host command adapters used by vlei-workflow.sh.
 
+# Return success when a KLI command needs the workflow's isolated LMDB base.
 kli_uses_state() {
     case "${1:-}:${2:-}" in
         version:*|nonce:*|saidify:*|time:*|challenge:generate)
@@ -13,11 +14,15 @@ kli_uses_state() {
     esac
 }
 
+# Run KLI with signal handling restored and workflow-owned state selected later.
 run_local_kli() {
-    QVI_KERI_HEAD_DIR="${KLI_HEAD_DIR}" \
+    run_interruptible_process \
+        env \
+        QVI_KERI_HEAD_DIR="${KLI_HEAD_DIR}" \
         "${KLI_PYTHON}" "${KLI_LAUNCHER}" "$@"
 }
 
+# Run one KLI command with a readable timing label and the correct state policy.
 kli() {
     local command_name="kli:${1:-unknown}"
 
@@ -39,6 +44,7 @@ kli() {
     fi
 }
 
+# Start a named KLI background job whose logical name is also its resource lane.
 klid() {
     local logical_name=$1
     shift
@@ -46,11 +52,15 @@ klid() {
         "${logical_name}" "${logical_name}" kli "$@"
 }
 
+# Run one Signify TypeScript command with the shared operation timeout.
 sig_tsx() {
-    QVI_OPERATION_TIMEOUT_SECONDS="${WORKFLOW_TIMEOUT_SECONDS}" \
+    run_interruptible_process \
+        env \
+        QVI_OPERATION_TIMEOUT_SECONDS="${WORKFLOW_TIMEOUT_SECONDS}" \
         "${TSX_BIN}" "$@"
 }
 
+# Wait for a group of KLI jobs under one shared deadline.
 wait_kli_jobs() {
     wait_for_background_jobs "$@"
 }

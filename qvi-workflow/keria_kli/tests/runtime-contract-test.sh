@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Contract tests for the local workflow runtime's jobs, deadlines, and signals.
+
 set -Eeuo pipefail
 
 TEST_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
@@ -9,11 +11,13 @@ SCRIPT_DIR="${WORKFLOW_DIR}"
 # shellcheck source=../lib/workflow-runtime.sh
 source "${WORKFLOW_DIR}/lib/workflow-runtime.sh"
 
+# Fail immediately with one readable assertion message.
 fail_test() {
     printf 'FAIL: %s\n' "$*" >&2
     exit 1
 }
 
+# Return the background-job registries to their Bash 3.2-safe sentinel state.
 reset_job_registry() {
     WORKFLOW_JOB_NAMES=("")
     WORKFLOW_JOB_PIDS=("")
@@ -26,6 +30,26 @@ reset_job_registry() {
     WORKFLOW_COMPLETED_JOB_RESULTS=("")
 }
 
+# Return the managed-process registries to their Bash 3.2-safe sentinel state.
+reset_process_registry() {
+    WORKFLOW_PROCESS_NAMES=("")
+    WORKFLOW_PROCESS_PIDS=("")
+    WORKFLOW_PROCESS_LOGS=("")
+}
+
+# Wait briefly for an interruptible fixture to announce it has started.
+wait_for_fixture_ready() {
+    local ready_file=$1
+    local deadline=$((SECONDS + 3))
+
+    while [[ ! -f "${ready_file}" ]]; do
+        [[ "${SECONDS}" -ge "${deadline}" ]] &&
+            fail_test 'interruptible fixture did not become ready'
+        sleep 0.1
+    done
+}
+
+# Prove concurrency, conflicts, result loading, fail-fast, and common deadlines.
 test_background_job_contract() {
     local test_runtime
     local elapsed
@@ -112,6 +136,7 @@ test_background_job_contract() {
     rm -rf "${test_runtime}"
 }
 
+# Prove the top-level signal trap records SIGINT before running cleanup once.
 test_signal_cleanup_contract() {
     local marker
     local signal_status=0
@@ -119,20 +144,77 @@ test_signal_cleanup_contract() {
     marker=$(mktemp)
     (
         workflow_cleanup() {
-            printf 'cleanup:%s\n' "$1" > "${marker}"
+            printf 'cleanup:%s:%s\n' \
+                "$1" "${WORKFLOW_CLEANUP_SIGNAL}" > "${marker}"
             return "$1"
         }
         install_workflow_traps
-        handle_workflow_signal TERM
+        handle_workflow_signal INT
     ) || signal_status=$?
 
-    [[ "${signal_status}" -eq 143 ]] ||
-        fail_test 'TERM did not retain its signal exit status'
-    [[ "$(cat "${marker}")" == 'cleanup:143' ]] ||
-        fail_test 'TERM did not run workflow cleanup exactly once'
+    [[ "${signal_status}" -eq 130 ]] ||
+        fail_test 'SIGINT did not retain its signal exit status'
+    [[ "$(cat "${marker}")" == 'cleanup:130:INT' ]] ||
+        fail_test 'SIGINT did not run workflow cleanup exactly once'
     rm -f "${marker}"
+}
+
+# Prove SIGINT reaches both direct services and Python nested under a shell job.
+test_keyboard_interrupt_propagation() {
+    local test_runtime
+    local managed_ready
+    local managed_cleanup
+    local job_ready
+    local job_cleanup
+    local result_file
+
+    test_runtime=$(mktemp -d)
+    trap 'rm -rf "${test_runtime}"' RETURN
+    WORKFLOW_LOG_DIR="${test_runtime}/logs"
+    WORKFLOW_RESULT_DIR="${test_runtime}/results"
+    WORKFLOW_PID_DIR="${test_runtime}/pids"
+    WORKFLOW_TIMING_FILE="${test_runtime}/timings.jsonl"
+    mkdir -p \
+        "${WORKFLOW_LOG_DIR}" \
+        "${WORKFLOW_RESULT_DIR}" \
+        "${WORKFLOW_PID_DIR}"
+    # The no-op redirection creates an empty timing stream for the fixture run.
+    : > "${WORKFLOW_TIMING_FILE}"
+
+    managed_ready="${test_runtime}/managed.ready"
+    managed_cleanup="${test_runtime}/managed.cleanup"
+    reset_process_registry
+    start_managed_process \
+        interruptible-managed \
+        python3 "${TEST_DIR}/interruptible-process.py" \
+        "${managed_ready}" "${managed_cleanup}"
+    wait_for_fixture_ready "${managed_ready}"
+    stop_all_managed_processes INT
+    [[ "$(cat "${managed_cleanup}")" == 'keyboard-interrupt' ]] ||
+        fail_test 'managed Python process did not receive KeyboardInterrupt'
+
+    job_ready="${test_runtime}/job.ready"
+    job_cleanup="${test_runtime}/job.cleanup"
+    reset_job_registry
+    interruptible_job() {
+        run_interruptible_process \
+            python3 "${TEST_DIR}/interruptible-process.py" \
+            "${job_ready}" "${job_cleanup}"
+    }
+    start_workflow_job interruptible-job actor-a interruptible_job
+    wait_for_fixture_ready "${job_ready}"
+    cancel_all_workflow_jobs INT
+    [[ "$(cat "${job_cleanup}")" == 'keyboard-interrupt' ]] ||
+        fail_test 'nested job process did not receive KeyboardInterrupt'
+    result_file=$(workflow_job_result_file interruptible-job)
+    [[ "$(jq -r '.status' "${result_file}")" -eq 130 ]] ||
+        fail_test 'SIGINT-cancelled job did not record status 130'
+
+    trap - RETURN
+    rm -rf "${test_runtime}"
 }
 
 test_background_job_contract
 test_signal_cleanup_contract
+test_keyboard_interrupt_propagation
 printf 'local workflow runtime contract passed\n'
