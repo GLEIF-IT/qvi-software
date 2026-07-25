@@ -208,7 +208,7 @@ services:
     stop_grace_period: 1s
     image: qvi-workflow-callback-recorder:local
     build:
-      context: ./callback_recorder
+      context: ../callback_recorder
     environment:
       PYTHONUNBUFFERED: "1"
       QVI_CALLBACKS_PATH: /runtime/sally-callbacks.jsonl

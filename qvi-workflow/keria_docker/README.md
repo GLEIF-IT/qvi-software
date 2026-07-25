@@ -156,7 +156,7 @@ runtime/
 
 The callback recorder accepts a JSON object at `POST /`, adds a receipt
 timestamp, and appends it to `sally-callbacks.jsonl`. See
-[`callback_recorder/README.md`](callback_recorder/README.md).
+[`../callback_recorder/README.md`](../callback_recorder/README.md).
 Every named phase and background job also appends a JSON timing result to
 `workflow-timings.jsonl`; the driver prints the longest work first on exit.
 Each background job has dedicated stdout/stderr logs and an explicit JSON
@@ -178,7 +178,7 @@ npm test
 
 cd ../keria_docker
 ./tests/workflow-contract-test.sh
-python3 -m unittest discover -s callback_recorder/tests -v
+python3 -m unittest discover -s ../callback_recorder/tests -v
 docker compose \
   --env-file keria-signify-docker.env \
   -f docker-compose-keria_signify_qvi.yaml \

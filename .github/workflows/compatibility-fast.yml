@@ -27,7 +27,7 @@ jobs:
         run: npm test
       - name: Callback recorder tests
         working-directory: qvi-workflow/keria_docker
-        run: python -m unittest discover callback_recorder/tests
+        run: python -m unittest discover ../callback_recorder/tests
       - name: Shell workflow contract
         run: qvi-workflow/keria_docker/tests/workflow-contract-test.sh
       - name: Shell syntax
