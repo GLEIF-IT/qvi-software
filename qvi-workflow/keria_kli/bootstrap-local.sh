@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Create the isolated Python and TypeScript environments used by this workflow.
+
 set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
@@ -7,14 +9,22 @@ VENV_DIR="${SCRIPT_DIR}/.venvs"
 DEPENDENCY_DIR="${SCRIPT_DIR}/.deps"
 
 PYTHON_VERSION=${PYTHON_VERSION:-3.12.6}
-KLI_VERSION=1.1.32
-KERIA_VERSION=0.4.0
-WITNESS_KERI_VERSION=1.2.12
+# GEDA remains on the GLEIF 1.1.x compatibility line in a maintained worktree.
+GEDA_KERIPY_VERSION=1.1.42
+GEDA_KERIPY_BRANCH=perf/configurable-command-tocks-1.1.42
+GEDA_KERIPY_DIR=${GEDA_KERIPY_DIR:-/Users/kbull/enc/keri/worktrees/keripy/configurable-command-tocks-1.1.42}
+# Every other local Python process uses the actively tuned 1.2.x source tree.
+LOCAL_KERIPY_BRANCH=v1.2.14
+LOCAL_KERIPY_DIR=${LOCAL_KERIPY_DIR:-/Users/kbull/enc/keri/core/python/keripy}
+LOCAL_KERIA_COMMIT=86e21cbdf98dcc75817e16708879c3c5a9b41cb8
+LOCAL_KERIA_DIR=${LOCAL_KERIA_DIR:-/Users/kbull/enc/keri/core/python/keria}
+LOCAL_SALLY_DIR=${LOCAL_SALLY_DIR:-/Users/kbull/enc/keri/verifier/apps/sally}
+KERIA_VERSION=0.4.1
 HIO_VERSION=0.6.14
 LMDB_VERSION=1.6.2
-SALLY_COMMIT=33fe75ab5fa2fa06e12a289f858cca02ae683df7
 VLEI_COMMIT=c12e208f566478e6a256b6af6ddb1990e66a6d91
 
+# Require one host command before making any environment changes.
 required_command() {
     command -v "$1" >/dev/null 2>&1 || {
         printf '%s is required to bootstrap the local workflow\n' "$1" >&2
@@ -22,6 +32,7 @@ required_command() {
     }
 }
 
+# Locate the exact pyenv interpreter selected for this workflow.
 python_for_version() {
     local pyenv_root
 
@@ -29,6 +40,7 @@ python_for_version() {
     printf '%s/versions/%s/bin/python\n' "${pyenv_root}" "${PYTHON_VERSION}"
 }
 
+# Keep immutable external dependencies at their pinned commits under .deps.
 ensure_checkout() {
     local name=$1
     local url=$2
@@ -45,6 +57,7 @@ ensure_checkout() {
     git -C "${checkout_dir}" checkout --detach "${commit}"
 }
 
+# Create or refresh one workflow-owned virtual environment.
 ensure_venv() {
     local name=$1
     local python_path=$2
@@ -57,6 +70,23 @@ ensure_venv() {
     uv pip install --python "${venv_path}/bin/python" "$@"
 }
 
+# Replace a released KERIpy dependency with the local performance branch.
+install_local_keripy() {
+    local venv_name=$1
+    local venv_python="${VENV_DIR}/${venv_name}/bin/python"
+
+    uv pip install \
+        --python "${venv_python}" \
+        --no-deps \
+        --editable "${LOCAL_KERIPY_DIR}"
+    # Install HIO last so every local runtime uses the requested scheduler.
+    uv pip install \
+        --python "${venv_python}" \
+        "hio==${HIO_VERSION}" \
+        "lmdb==${LMDB_VERSION}"
+}
+
+# Validate local sources and install every workflow dependency.
 main() {
     required_command git
     required_command npm
@@ -72,27 +102,73 @@ main() {
     fi
 
     mkdir -p "${VENV_DIR}" "${DEPENDENCY_DIR}"
-    ensure_checkout \
-        sally git@github.com:GLEIF-IT/sally.git "${SALLY_COMMIT}"
+    if [[ ! -f "${LOCAL_KERIPY_DIR}/pyproject.toml" &&
+          ! -f "${LOCAL_KERIPY_DIR}/setup.py" ]]; then
+        printf 'Local KERIpy checkout not found at %s\n' \
+            "${LOCAL_KERIPY_DIR}" >&2
+        return 1
+    fi
+    if [[ ! -f "${GEDA_KERIPY_DIR}/setup.py" ]]; then
+        printf 'GEDA KERIpy checkout not found at %s\n' \
+            "${GEDA_KERIPY_DIR}" >&2
+        return 1
+    fi
+    if [[ "$(git -C "${GEDA_KERIPY_DIR}" branch --show-current)" != \
+          "${GEDA_KERIPY_BRANCH}" ]]; then
+        printf 'GEDA KERIpy must be on branch %s: %s\n' \
+            "${GEDA_KERIPY_BRANCH}" "${GEDA_KERIPY_DIR}" >&2
+        return 1
+    fi
+    if [[ "$(git -C "${LOCAL_KERIPY_DIR}" branch --show-current)" != \
+          "${LOCAL_KERIPY_BRANCH}" ]]; then
+        printf 'Local KERIpy must be on branch %s: %s\n' \
+            "${LOCAL_KERIPY_BRANCH}" "${LOCAL_KERIPY_DIR}" >&2
+        return 1
+    fi
+    if [[ ! -f "${LOCAL_KERIA_DIR}/pyproject.toml" ]]; then
+        printf 'Local KERIA checkout not found at %s\n' \
+            "${LOCAL_KERIA_DIR}" >&2
+        return 1
+    fi
+    if [[ "$(git -C "${LOCAL_KERIA_DIR}" rev-parse HEAD)" != \
+          "${LOCAL_KERIA_COMMIT}" ]]; then
+        printf 'Local KERIA must be based on commit %s: %s\n' \
+            "${LOCAL_KERIA_COMMIT}" "${LOCAL_KERIA_DIR}" >&2
+        return 1
+    fi
+    if [[ ! -f "${LOCAL_SALLY_DIR}/pyproject.toml" &&
+          ! -f "${LOCAL_SALLY_DIR}/setup.py" ]]; then
+        printf 'Local Sally checkout not found at %s\n' \
+            "${LOCAL_SALLY_DIR}" >&2
+        return 1
+    fi
+
     ensure_checkout \
         vlei git@github.com:WebOfTrust/vLEI.git "${VLEI_COMMIT}"
 
+    ensure_venv geda-kli "${python_path}" \
+        --editable "${GEDA_KERIPY_DIR}"
+    uv pip install \
+        --python "${VENV_DIR}/geda-kli/bin/python" \
+        "hio==${HIO_VERSION}" \
+        "lmdb==${LMDB_VERSION}"
+
     ensure_venv kli "${python_path}" \
-        "keri==${KLI_VERSION}" \
-        "hio==${HIO_VERSION}" \
-        "lmdb==${LMDB_VERSION}"
+        --editable "${LOCAL_KERIPY_DIR}"
+    install_local_keripy kli
+
     ensure_venv keria "${python_path}" \
-        "keria==${KERIA_VERSION}" \
-        "hio==${HIO_VERSION}" \
-        "lmdb==${LMDB_VERSION}"
+        --editable "${LOCAL_KERIA_DIR}"
+    install_local_keripy keria
+
     ensure_venv witnesses "${python_path}" \
-        "keri==${WITNESS_KERI_VERSION}" \
-        "hio==${HIO_VERSION}" \
-        "lmdb==${LMDB_VERSION}"
+        --editable "${LOCAL_KERIPY_DIR}"
+    install_local_keripy witnesses
+
     ensure_venv sally "${python_path}" \
-        --editable "${DEPENDENCY_DIR}/sally" \
-        "hio==${HIO_VERSION}" \
-        "lmdb==${LMDB_VERSION}"
+        --editable "${LOCAL_SALLY_DIR}"
+    install_local_keripy sally
+
     ensure_venv vlei "${python_path}" \
         --editable "${DEPENDENCY_DIR}/vlei" \
         "keri==1.2.6" \
@@ -102,10 +178,16 @@ main() {
     npm --prefix "${SCRIPT_DIR}/../sig_ts_wallets" ci
 
     printf 'Local workflow dependencies are ready:\n'
-    printf '  KLI:       %s\n' "${VENV_DIR}/kli"
-    printf '  KERIA:     %s\n' "${VENV_DIR}/keria"
+    printf '  GEDA KLI:  %s (local KERIpy %s, version %s, at %s)\n' \
+        "${VENV_DIR}/geda-kli" "${GEDA_KERIPY_BRANCH}" \
+        "${GEDA_KERIPY_VERSION}" "${GEDA_KERIPY_DIR}"
+    printf '  KLI:       %s (local KERIpy branch %s)\n' \
+        "${VENV_DIR}/kli" "${LOCAL_KERIPY_BRANCH}"
+    printf '  KERIA:     %s (local source at %s)\n' \
+        "${VENV_DIR}/keria" "${LOCAL_KERIA_DIR}"
     printf '  witnesses: %s\n' "${VENV_DIR}/witnesses"
-    printf '  Sally:     %s\n' "${VENV_DIR}/sally"
+    printf '  Sally:     %s (local source at %s)\n' \
+        "${VENV_DIR}/sally" "${LOCAL_SALLY_DIR}"
     printf '  vLEI:      %s\n' "${VENV_DIR}/vlei"
 }
 
