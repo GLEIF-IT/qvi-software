@@ -47,8 +47,9 @@ The containerized workflows require Docker with the Compose plugin.
 host Node.js installation or a globally installed `tsx`.
 
 The local `keria_kli` workflow requires Node.js and the dependencies installed
-from `sig_ts_wallets/package-lock.json`. Its README describes how to use the
-project-local `tsx` executable.
+from `sig_ts_wallets/package-lock.json`. Its bootstrap script also creates
+pinned virtual environments for KERIpy, KERIA, HIO, Sally, and the vLEI schema
+server. Its README documents the complete local proof command.
 
 Each workflow has additional version and service requirements in its own
 README.

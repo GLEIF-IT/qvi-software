@@ -1,40 +1,65 @@
-# KERIA and KLI in local command line vLEI Workflow
+# Fully local KERIA and KLI vLEI workflow
 
-This vlei-workflow.sh uses the local command line environment for both the KLI (KERIpy) setup of the GARs and LARs and KERIA setup for the QARs and Person.
+This workflow runs the complete GEDA → QVI → LE → OOR/ECR holder → Sally →
+callback-recorder story directly on the host. It uses KLI for the GAR and LAR
+participants, isolated KERIA agencies for the QARs and Person, and SignifyTS as
+their wallet client.
 
-The `sig_ts_wallets` directory contains the SignifyTS code used to act like a wallet for the QARs and Person.
+All generated KERI state, service configuration, logs, results, and timings
+live under `runtime/`. The workflow manages its own witnesses, vLEI schema
+server, KERIA agencies, Sally, and callback recorder.
 
-## Usage
+## Bootstrap
+
+The bootstrap script creates pinned virtual environments and installs the
+locked SignifyTS dependencies:
 
 ```bash
 cd qvi-workflow/keria_kli
-./vlei-workflow.sh
+./bootstrap-local.sh
 ```
 
-## Requirements
+The local toolchain uses:
 
-- Node.js
-- The locked `sig_ts_wallets` dependencies, including
-  `signify-ts@0.4.0` and the project-local `tsx` executable:
+- KERIA 0.4.0;
+- KERIpy 1.2.12 for KERIA and witnesses;
+- HIO 0.6.14;
+- KERIpy 1.1.32 for the current GAR/LAR KLI compatibility lane; and
+- SignifyTS 0.4.0.
 
-  ```bash
-  cd ../sig_ts_wallets
-  npm ci
-  export PATH="$PWD/node_modules/.bin:$PATH"
-  cd ../keria_kli
-  ```
+The host needs Node.js, npm, pyenv, uv, Git, curl, jq, and standard macOS
+command-line tools. Python 3.12.6 must be available through pyenv.
 
-  A global `tsx` installation is not required.
-- KERIpy installed globally - version weboftrust/keripy:1.1.32
-    - then run `kli witness demo` in one terminal
-- The Sally presentation handler program installed globally - version GLEIF-IT/sally:1.0.0
-    - The script runs direct `sally server start` automatically. Sally owns
-      keystore initialization and no-witness identifier inception.
-- The vLEI-server schema server from the vLEI repo running in another terminal:
-    - `vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/`
-- The KERIA 0.4.0 command installed globally and running in another terminal
-    - `keria start --config-dir scripts --config-file keria --loglevel INFO`
+## Run the complete proof
 
-The workflow reads Signify participant data from
-`qvi_data/participants.json` and resolves the canonical QVI multisig OOBI
-produced by the shared Signify runner.
+```bash
+./vlei-workflow.sh --timeout 45
+```
+
+The 45-second operation deadline is a temporary reliability ceiling for the
+working baseline, not an accepted performance target. The default remains 30
+seconds while the local workflow is optimized toward a sub-180-second total.
+
+The canonical run proves:
+
+- all 16 directed challenge responses across eight relationships;
+- delegated QVI inception and rotations through sequences 0–3, ending with
+  QAR1, QAR2, and QAR4;
+- issuance and admission of QVI, LE, OOR-Auth, ECR-Auth, OOR, and ECR
+  credentials;
+- active QVI, LE, and OOR presentations to Sally;
+- converged QVI revocation of OOR and ECR; and
+- Sally's rejected revoked-OOR presentation and `rev` callback.
+
+Useful controls are `--timeout SECONDS`, `--stop-after PHASE`,
+`--keep-runtime`, and `--pause`. Run `./vlei-workflow.sh --help` for the full
+phase list and presentation modes.
+
+Pressing Ctrl+C sends SIGINT through the managed process trees so HIO-based
+services receive their normal `KeyboardInterrupt` cleanup. Normal completion
+also removes the isolated runtime. To stop processes retained with
+`--keep-runtime`, run:
+
+```bash
+./stop-local.sh
+```
