@@ -936,8 +936,30 @@ async function rotateMembersAction(
     };
 }
 
-/** Synchronize exact subject key states to explicit observer wallets. */
-async function synchronizeMembersAction(
+/** Serially refresh exact subject key states in one observer's KERIA store. */
+export async function refreshSubjectsForObserver(
+    observer: ReadyWallet,
+    subjects: readonly ReadyWallet[]
+): Promise<number> {
+    let queryCount = 0;
+
+    for (const subject of subjects) {
+        if (subject.aid.prefix === observer.aid.prefix) {
+            continue;
+        }
+
+        const operation = await observer.client
+            .keyStates()
+            .query(subject.aid.prefix, subject.aid.state.s);
+        await waitOperation(observer.client, operation);
+        queryCount += 1;
+    }
+
+    return queryCount;
+}
+
+/** Synchronize subject key states across independent observer stores. */
+async function synchronizeKeyStatesAction(
     config: WorkflowConfig,
     args: Record<string, string>
 ) {
@@ -949,38 +971,24 @@ async function synchronizeMembersAction(
         args['subject-roles'],
         'Subject roles'
     );
-    const allRoles = [
+    const rolesToLoad = [
         ...new Set([...observerRoles, ...subjectRoles]),
     ];
-    const wallets = await loadWallets(config, allRoles);
+    const wallets = await loadWallets(config, rolesToLoad);
     const observers = selectWallets(wallets, observerRoles);
     const subjects = selectWallets(wallets, subjectRoles);
     const queryCounts = await Promise.all(
-        observers.map(async (observer) => {
-            let observerQueryCount = 0;
-            // One observer wallet remains a serial mutation lane. Distinct
-            // observers can safely refresh their independent local stores at
-            // the same time.
-            for (const subject of subjects) {
-                if (observer.aid.prefix === subject.aid.prefix) {
-                    continue;
-                }
-                await waitOperation(
-                    observer.client,
-                    await observer.client
-                        .keyStates()
-                        .query(subject.aid.prefix, subject.aid.state.s)
-                );
-                observerQueryCount += 1;
-            }
-            return observerQueryCount;
-        })
+        observers.map((observer) =>
+            refreshSubjectsForObserver(observer, subjects)
+        )
     );
-    const queryCount = queryCounts.reduce(
-        (total, count) => total + count,
-        0
-    );
-    return {status: 'synchronized', queryCount};
+    return {
+        status: 'synchronized',
+        queryCount: queryCounts.reduce(
+            (total, count) => total + count,
+            0
+        ),
+    };
 }
 
 /** Resolve and refresh the group state needed by one joining wallet. */
@@ -1808,14 +1816,14 @@ export async function run(
                 args
             );
         }
-        case 'ms-sync-members': {
+        case 'ms-sync-key-states': {
             args = parseExactArguments(
                 values,
                 'config',
                 'observer-roles',
                 'subject-roles'
             );
-            return await synchronizeMembersAction(
+            return await synchronizeKeyStatesAction(
                 readWorkflowConfig(args.config),
                 args
             );

@@ -1192,7 +1192,7 @@ function create_qvi_multisig() {
     print_yellow "Creating QVI multisig AID with GEDA as delegator"
 
     run_qvi_json \
-        ms-sync-members \
+        ms-sync-key-states \
         --observer-roles qar1,qar2,qar3 \
         --subject-roles qar1,qar2,qar3 >/dev/null || return 1
 
@@ -1297,7 +1297,7 @@ rotate_qvi_existing_members() {
         ms-rotate-members \
         --roles "${signing_roles}" >/dev/null || return 1
     run_qvi_json \
-        ms-sync-members \
+        ms-sync-key-states \
         --observer-roles "${signing_roles}" \
         --subject-roles "${synchronization_roles}" >/dev/null || return 1
 
@@ -1341,7 +1341,7 @@ rotate_qvi_with_joining_member() {
         ms-rotate-members \
         --roles qar1,qar2,qar4 >/dev/null || return 1
     run_qvi_json \
-        ms-sync-members \
+        ms-sync-key-states \
         --observer-roles qar1,qar2,qar4 \
         --subject-roles qar1,qar2,qar4 >/dev/null || return 1
 
