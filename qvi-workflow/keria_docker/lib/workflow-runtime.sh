@@ -13,7 +13,6 @@ WORKFLOW_JOB_PIDS=("")
 WORKFLOW_JOB_STDOUTS=("")
 WORKFLOW_JOB_STDERRS=("")
 WORKFLOW_JOB_RESOURCES=("")
-WORKFLOW_JOB_STARTS=("")
 WORKFLOW_JOB_RESULTS=("")
 WORKFLOW_COMPLETED_JOB_NAMES=("")
 WORKFLOW_COMPLETED_JOB_RESULTS=("")
@@ -35,11 +34,10 @@ create_workflow_runtime() {
     WORKFLOW_LOG_DIR="${WORKFLOW_RUN_DIR}/logs"
     WORKFLOW_RESULT_DIR="${WORKFLOW_RUN_DIR}/results"
     SALLY_CALLBACK_FILE="${WORKFLOW_RUN_DIR}/sally-callbacks.jsonl"
-    WORKFLOW_TIMING_FILE="${WORKFLOW_RUN_DIR}/workflow-timings.jsonl"
 
     export WORKFLOW_RUN_DIR WORKFLOW_CONFIG_DIR KLI_DATA_DIR
     export LOCAL_QVI_DATA_DIR KEYSTORE_DIR WORKFLOW_LOG_DIR WORKFLOW_RESULT_DIR
-    export SALLY_CALLBACK_FILE WORKFLOW_TIMING_FILE
+    export SALLY_CALLBACK_FILE
 
     # A retained --keep-runtime run is intentionally replaced by the next run.
     workflow_compose down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -146,104 +144,6 @@ create_workflow_runtime() {
         }' > "${WORKFLOW_CONFIG_DIR}/participants.json"
 
     : > "${SALLY_CALLBACK_FILE}"
-    : > "${WORKFLOW_TIMING_FILE}"
-}
-
-record_workflow_timing() {
-    local kind=$1
-    local name=$2
-    local started_at=$3
-    local finished_at=$4
-    local status=$5
-    local resources=${6:-}
-
-    [[ -n "${WORKFLOW_TIMING_FILE:-}" ]] || return 0
-    jq -nc \
-        --arg kind "${kind}" \
-        --arg name "${name}" \
-        --arg resources "${resources}" \
-        --argjson startedAt "${started_at}" \
-        --argjson finishedAt "${finished_at}" \
-        --argjson duration "$((finished_at - started_at))" \
-        --argjson status "${status}" \
-        '{
-            kind: $kind,
-            name: $name,
-            resources: ($resources | split(",") | map(select(length > 0))),
-            startedAt: $startedAt,
-            finishedAt: $finishedAt,
-            durationSeconds: $duration,
-            status: $status
-        }' >> "${WORKFLOW_TIMING_FILE}"
-}
-
-run_workflow_phase() {
-    local phase_name=$1
-    shift
-    local started_at
-    local finished_at
-    local phase_status=0
-
-    started_at=$(date +%s)
-    "$@" || phase_status=$?
-    finished_at=$(date +%s)
-    record_workflow_timing \
-        phase "${phase_name}" "${started_at}" "${finished_at}" "${phase_status}"
-    return "${phase_status}"
-}
-
-run_workflow_command() {
-    local kind=$1
-    local command_name=$2
-    local resources=$3
-    shift 3
-    local started_at
-    local finished_at
-    local command_status=0
-
-    started_at=$(date +%s)
-    "$@" || command_status=$?
-    finished_at=$(date +%s)
-    record_workflow_timing \
-        "${kind}" "${command_name}" "${started_at}" "${finished_at}" \
-        "${command_status}" "${resources}"
-    return "${command_status}"
-}
-
-print_workflow_timing_summary() {
-    [[ -s "${WORKFLOW_TIMING_FILE:-}" ]] || return 0
-
-    print_lcyan "Workflow critical-path timing summary:"
-    jq -sr '
-        (map(.startedAt) | min) as $started |
-        (map(.finishedAt) | max) as $finished |
-        "total\tworkflow\t\($finished - $started)s",
-        (
-            map(select(.kind == "phase")) |
-            sort_by(.startedAt) |
-            .[] |
-            "phase\t\(.name)\t\(.durationSeconds)s\tstatus=\(.status)"
-        ),
-        (
-            map(select(.kind == "job")) |
-            sort_by(.durationSeconds) |
-            reverse |
-            .[0:10] |
-            .[] |
-            "slow-job\t\(.name)\t\(.durationSeconds)s\tstatus=\(.status)"
-        ),
-        (
-            map(select(.kind == "command")) |
-            sort_by(.durationSeconds) |
-            reverse |
-            .[0:15] |
-            .[] |
-            "slow-command\t\(.name)\t\(.durationSeconds)s\tstatus=\(.status)"
-        )
-    ' "${WORKFLOW_TIMING_FILE}" |
-        while IFS= read -r timing_line; do
-            print_lcyan "  ${timing_line}"
-        done
 }
 
 print_failure_diagnostics() {
@@ -442,7 +342,6 @@ register_background_job() {
     WORKFLOW_JOB_STDOUTS[${job_index}]="${stdout_log}"
     WORKFLOW_JOB_STDERRS[${job_index}]="${stderr_log}"
     WORKFLOW_JOB_RESOURCES[${job_index}]="${resources}"
-    WORKFLOW_JOB_STARTS[${job_index}]="$(date +%s)"
     WORKFLOW_JOB_RESULTS[${job_index}]="${result_file}"
 }
 
@@ -515,31 +414,19 @@ finish_workflow_job() {
     local stdout_log=${WORKFLOW_JOB_STDOUTS[${job_index}]}
     local stderr_log=${WORKFLOW_JOB_STDERRS[${job_index}]}
     local resources=${WORKFLOW_JOB_RESOURCES[${job_index}]:-}
-    local started_at=${WORKFLOW_JOB_STARTS[${job_index}]}
     local result_file=${WORKFLOW_JOB_RESULTS[${job_index}]}
-    local finished_at
 
-    finished_at=$(date +%s)
     [[ -f "${stdout_log}" ]] && cat "${stdout_log}"
     [[ -f "${stderr_log}" ]] && cat "${stderr_log}" >&2
-    record_workflow_timing \
-        job "${logical_name}" "${started_at}" "${finished_at}" \
-        "${exit_status}" "${resources}"
     jq -n \
         --arg name "${logical_name}" \
         --arg resources "${resources}" \
         --arg stdoutLog "${stdout_log}" \
         --arg stderrLog "${stderr_log}" \
-        --argjson startedAt "${started_at}" \
-        --argjson finishedAt "${finished_at}" \
-        --argjson durationSeconds "$((finished_at - started_at))" \
         --argjson status "${exit_status}" \
         '{
             name: $name,
             resources: ($resources | split(",") | map(select(length > 0))),
-            startedAt: $startedAt,
-            finishedAt: $finishedAt,
-            durationSeconds: $durationSeconds,
             status: $status,
             stdoutLog: $stdoutLog,
             stderrLog: $stderrLog
@@ -554,7 +441,6 @@ finish_workflow_job() {
     unset "WORKFLOW_JOB_STDOUTS[${job_index}]"
     unset "WORKFLOW_JOB_STDERRS[${job_index}]"
     unset "WORKFLOW_JOB_RESOURCES[${job_index}]"
-    unset "WORKFLOW_JOB_STARTS[${job_index}]"
     unset "WORKFLOW_JOB_RESULTS[${job_index}]"
 }
 

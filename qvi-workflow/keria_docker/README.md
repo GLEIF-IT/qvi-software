@@ -150,22 +150,14 @@ runtime/
 ├── logs/
 ├── qvi_data/
 ├── results/
-├── sally-callbacks.jsonl
-└── workflow-timings.jsonl
+└── sally-callbacks.jsonl
 ```
 
 The callback recorder accepts a JSON object at `POST /`, adds a receipt
 timestamp, and appends it to `sally-callbacks.jsonl`. See
 [`../callback_recorder/README.md`](../callback_recorder/README.md).
-Every named phase and background job also appends a JSON timing result to
-`workflow-timings.jsonl`; the driver prints the longest work first on exit.
 Each background job has dedicated stdout/stderr logs and an explicit JSON
-result under `runtime/results/`. Signify and KLI commands are timed as well,
-which makes the remaining protocol and transport waits visible without
-changing their deadlines.
-
-See [`BENCHMARK.md`](BENCHMARK.md) for the clean serial baseline, optimized
-measurements, machine allocation, and acceptance evidence.
+result under `runtime/results/`.
 
 ## Developer checks
 

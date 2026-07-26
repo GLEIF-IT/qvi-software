@@ -31,7 +31,6 @@ reset_job_registry() {
     WORKFLOW_JOB_STDOUTS=("")
     WORKFLOW_JOB_STDERRS=("")
     WORKFLOW_JOB_RESOURCES=("")
-    WORKFLOW_JOB_STARTS=("")
     WORKFLOW_JOB_RESULTS=("")
     WORKFLOW_COMPLETED_JOB_NAMES=("")
     WORKFLOW_COMPLETED_JOB_RESULTS=("")
@@ -66,10 +65,8 @@ test_background_job_contract() {
     trap 'rm -rf "${test_runtime}"' RETURN
     WORKFLOW_LOG_DIR="${test_runtime}/logs"
     WORKFLOW_RESULT_DIR="${test_runtime}/results"
-    WORKFLOW_TIMING_FILE="${test_runtime}/timings.jsonl"
     WORKFLOW_TIMEOUT_SECONDS=5
     mkdir -p "${WORKFLOW_LOG_DIR}" "${WORKFLOW_RESULT_DIR}"
-    : > "${WORKFLOW_TIMING_FILE}"
     reset_job_registry
 
     timed_job() {
@@ -82,8 +79,6 @@ test_background_job_contract() {
     elapsed=$(( $(date +%s) - started_at ))
     [[ "${elapsed}" -lt 4 ]] ||
         fail_test 'disjoint jobs did not execute concurrently'
-    [[ "$(jq -s 'length' "${WORKFLOW_TIMING_FILE}")" -eq 2 ]] ||
-        fail_test 'background job timings were not recorded'
     [[ "$(find "${WORKFLOW_RESULT_DIR}" -type f -name '*.json' |
         wc -l |
         tr -d '[:space:]')" -eq 2 ]] ||
@@ -95,14 +90,6 @@ test_background_job_contract() {
     load_workflow_job_result timed-a |
         jq -e '.name == "timed-a" and .status == 0' >/dev/null ||
         fail_test 'completed background job result could not be loaded'
-
-    run_workflow_command command contract-probe actor-probe true
-    jq -e -s \
-        'any(.[]; .kind == "command" and
-            .name == "contract-probe" and
-            .status == 0)' \
-        "${WORKFLOW_TIMING_FILE}" >/dev/null ||
-        fail_test 'foreground command timing was not recorded'
 
     reset_job_registry
     start_workflow_job conflict-a shared timed_job
@@ -180,13 +167,10 @@ test_keyboard_interrupt_propagation() {
     WORKFLOW_LOG_DIR="${test_runtime}/logs"
     WORKFLOW_RESULT_DIR="${test_runtime}/results"
     WORKFLOW_PID_DIR="${test_runtime}/pids"
-    WORKFLOW_TIMING_FILE="${test_runtime}/timings.jsonl"
     mkdir -p \
         "${WORKFLOW_LOG_DIR}" \
         "${WORKFLOW_RESULT_DIR}" \
         "${WORKFLOW_PID_DIR}"
-    # The no-op redirection creates an empty timing stream for the fixture run.
-    : > "${WORKFLOW_TIMING_FILE}"
 
     managed_ready="${test_runtime}/managed.ready"
     managed_cleanup="${test_runtime}/managed.cleanup"

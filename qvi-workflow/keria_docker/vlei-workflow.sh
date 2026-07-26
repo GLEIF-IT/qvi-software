@@ -97,9 +97,7 @@ run_signify_json() {
 run_qvi_json() {
     local phase=$1
     shift
-    run_workflow_command \
-        command "signify:${phase}" "" \
-        run_signify_json \
+    run_signify_json \
         "${QVI_SIGNIFY_DIR}/sig-wallet.ts" \
         "${phase}" \
         --config "${QVI_PARTICIPANT_CONFIG}" \
@@ -2871,7 +2869,6 @@ stop_after() {
   fi
 
   print_lcyan "Stopped after ${completed_phase} as requested"
-  print_workflow_timing_summary
   exit 0
 }
 
@@ -2880,58 +2877,45 @@ function main_flow() {
   print_lcyan "--------------------------------------------------------------------------------"
   print_lcyan "                       Running canonical QVI workflow"
   print_lcyan "--------------------------------------------------------------------------------"
-  run_workflow_phase setup setup || return 1
+  setup || return 1
   stop_after setup
-  run_workflow_phase \
-      geda_delegation_to_qvi geda_delegation_to_qvi || return 1
+  geda_delegation_to_qvi || return 1
   stop_after geda_delegation_to_qvi
-  run_workflow_phase qvi_credential qvi_credential || return 1
+  qvi_credential || return 1
   stop_after qvi_credential
 
-  run_workflow_phase \
-      le_creation_and_granting le_creation_and_granting || return 1
+  le_creation_and_granting || return 1
   stop_after le_creation_and_granting
   pause "Press [ENTER] to present LE credential to Sally" || return 1
-  run_workflow_phase \
-      le_sally_presentation le_sally_presentation || return 1
+  le_sally_presentation || return 1
   stop_after le_sally_presentation
 
   if [[ -z "${WORKFLOW_STOP_AFTER}" ]]; then
-    run_workflow_phase \
-        leaf_credential_pipeline \
-        optimized_leaf_credential_pipeline || return 1
+    optimized_leaf_credential_pipeline || return 1
     pause "Press [enter] to end workflow" || return 1
-    run_workflow_phase end_workflow end_workflow || return 1
+    end_workflow || return 1
     return 0
   fi
 
   # Keep the fine-grained --stop-after checkpoints serial and observable.
-  run_workflow_phase \
-      oor_auth_and_oor_cred oor_auth_and_oor_cred || return 1
+  oor_auth_and_oor_cred || return 1
   stop_after oor_auth_and_oor_cred
   pause "Press [ENTER] to present OOR to Sally" || return 1
-  run_workflow_phase \
-      person_present_oor_cred_to_sally \
-      person_present_oor_cred_to_sally || return 1
+  person_present_oor_cred_to_sally || return 1
   stop_after person_present_oor_cred_to_sally
 
-  run_workflow_phase \
-      revoke_oor_credential revoke_oor_credential || return 1
+  revoke_oor_credential || return 1
   stop_after revoke_oor_credential
-  run_workflow_phase \
-      present_revoked_oor_to_sally \
-      present_revoked_oor_to_sally || return 1
+  present_revoked_oor_to_sally || return 1
   stop_after present_revoked_oor_to_sally
 
-  run_workflow_phase \
-      ecr_auth_and_ecr_cred ecr_auth_and_ecr_cred || return 1
+  ecr_auth_and_ecr_cred || return 1
   stop_after ecr_auth_and_ecr_cred
-  run_workflow_phase \
-      revoke_ecr_credential revoke_ecr_credential || return 1
+  revoke_ecr_credential || return 1
   stop_after revoke_ecr_credential
 
   pause "Press [enter] to end workflow" || return 1
-  run_workflow_phase end_workflow end_workflow || return 1
+  end_workflow || return 1
   stop_after end_workflow
 }
 
@@ -3180,7 +3164,6 @@ main() {
 
     workflow_duration=$(( $(date +%s) - START_TIME ))
     print_lcyan "Full chain workflow completed in ${workflow_duration} seconds"
-    print_workflow_timing_summary
 }
 
 script_is_being_executed=false

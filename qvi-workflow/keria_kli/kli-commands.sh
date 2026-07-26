@@ -22,25 +22,12 @@ run_local_kli() {
         "${KLI_PYTHON}" "${KLI_LAUNCHER}" "$@"
 }
 
-# Run one KLI command with a readable timing label and the correct state policy.
+# Run one KLI command with the correct isolated-state policy.
 kli() {
-    local command_name="kli:${1:-unknown}"
-
-    # Include a nested subcommand such as "challenge:verify", but do not turn
-    # the first option of a flat command into part of its timing label.
-    case "${2:-}" in
-        ""|-*) ;;
-        *) command_name="${command_name}:${2}" ;;
-    esac
-
     if kli_uses_state "$@"; then
-        run_workflow_command \
-            command "${command_name}" "" \
-            run_local_kli "$@" --base "${KLI_BASE}"
+        run_local_kli "$@" --base "${KLI_BASE}"
     else
-        run_workflow_command \
-            command "${command_name}" "" \
-            run_local_kli "$@"
+        run_local_kli "$@"
     fi
 }
 
