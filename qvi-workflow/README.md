@@ -1,54 +1,103 @@
-# End-to-end vLEI QVI workflows
+# QVI interoperability workflow
 
-This directory contains five implementations of the QVI qualification story:
+`vlei-workflow.sh` is the one supported KLI/KERIA/SignifyTS workflow driver.
+Docker is the portable default; the local backend is the fast development and
+acceptance path.
 
-1. `kli_only/vlei-workflow.sh` uses local KERIpy keystores for every
-   participant.
-2. `kli_docker/vlei-workflow.sh` runs the KLI-only story with containerized
-   witnesses and KERIpy jobs.
-3. `keria_kli/vlei-workflow.sh` uses local KLI processes for the GAR and LAR
-   participants and KERIA with SignifyTS for the QARs and Person.
-4. `keria_docker/vlei-workflow.sh` runs the complete KLI/KERIA story in Docker
-   Compose.
-5. `single-sig/vlei-workflow.sh` is a focused compatibility workflow with
-   single-signature GEDA, QVI, and LE identifiers.
+```bash
+cd qvi-workflow
+./vlei-workflow.sh
+./vlei-workflow.sh --backend local
+```
 
-These are public interoperability demonstrations. They intentionally expose
-the commands and deterministic fixture data so developers can understand how
-KLI, KERIA, SignifyTS, and Sally fit together.
+Both backends run the same protocol phases and assertions. The adapters own
+only dependency validation, service lifecycle, KLI and Signify command
+execution, and backend logs.
 
-Local reporting uses direct Sally only.
+## Scenarios
 
-## Docker QVI story
+The default `canonical` scenario proves:
 
-The `keria_docker` workflow demonstrates:
+- four bidirectional challenge relationships: GAR1-GAR2, QAR1-QAR2,
+  GAR1-QAR1, and QAR1-LAR1;
+- delegated QVI inception followed by one same-roster multisig key rotation,
+  including a key rotation by QAR1, QAR2, and QAR3;
+- QVI and LE issuance, admission, and Sally presentation;
+- OOR authorization, issuance, admission, and active Sally reporting; and
+- OOR revocation, holder convergence, rejected revoked presentation, and the
+  revocation callback.
 
-- 16 successful directed challenge responses across eight useful
-  relationships;
-- convergence of the three-member delegated QVI, its thresholds, member sets,
-  establishment state, endpoint roles, and canonical multisig OOBI;
-- issuance, admission, and Sally presentation of the QVI, LE, and active OOR
-  credentials;
-- common three-QAR TEL state after the QVI revokes its OOR and ECR leaves; and
-- Sally's revoked-OOR rejection and revocation callback.
+The ordinary rotation leaves the QVI at sequence 1 with QAR1, QAR2, and QAR3.
+It is the required rotation proof, not preparation for a membership change.
 
-The QVI revokes only credentials it issued. The LE-issued OOR-Auth and
-ECR-Auth credentials remain active. Sally does not support ECR reporting, so
-the ECR branch ends after Person admission and converged revocation.
+Two focused regression scenarios reuse the shared setup:
 
-See [`keria_docker/README.md`](keria_docker/README.md) for the tutorial,
-configuration, runtime layout, and commands.
+```bash
+./vlei-workflow.sh --backend local --scenario ecr-regression
+./vlei-workflow.sh --backend local --scenario qar-replacement-regression
+```
 
-## Dependencies
+`ecr-regression` proves ECR authorization, issuance, admission, revocation, and
+TEL convergence. `qar-replacement-regression` carries the more expensive
+QAR3-to-QAR4 replacement through sequences 2 and 3. QAR3 remains endpoint
+authorized and resolvable after replacement but no longer signs.
 
-The containerized workflows require Docker with the Compose plugin.
-`keria_docker` builds its Signify runner with `npm ci`; it does not require a
-host Node.js installation or a globally installed `tsx`.
+## Options and artifacts
 
-The local `keria_kli` workflow requires Node.js and the dependencies installed
-from `sig_ts_wallets/package-lock.json`. Its bootstrap script also creates
-pinned virtual environments for KERIpy, KERIA, HIO, Sally, and the vLEI schema
-server. Its README documents the complete local proof command.
+```text
+--backend docker|local
+--scenario canonical|ecr-regression|qar-replacement-regression
+--timeout SECONDS
+--stop-after setup|delegation|qvi-credential|le-credential|le-presentation|leaf-lifecycle
+--keep-artifacts
+--pause
+```
 
-Each workflow has additional version and service requirements in its own
-README.
+Services and jobs always stop. `--keep-artifacts` preserves runtime state,
+domain result JSON, callbacks, and per-job logs. Without it, the backend
+removes the disposable runtime and state.
+
+To present an already-issued LE credential to an external Sally, first keep a
+canonical run and then use the standalone utility:
+
+```bash
+./vlei-workflow.sh --backend local --keep-artifacts
+./present-external-le.sh \
+  --backend local \
+  --artifacts "$PWD/keria_kli/runtime" \
+  --alias external-sally \
+  --oobi 'https://example.test/oobi/...'
+```
+
+The utility starts only the retained run's required KLI/witness services and
+always stops them. It has no staging, production, or baked-in remote target.
+
+## Implementation shape
+
+- `vlei-workflow.sh` owns phase order and fixed actor-disjoint waves.
+- `backends/` contains the local and Docker execution adapters.
+- `lib/jobs.sh` owns named jobs, common deadlines, fail-fast cancellation,
+  process-tree termination, and log replay.
+- `sig_ts_wallets/src/notifications.ts` owns exact notification correlation.
+- `multisig-coordinator.ts` owns initiator-first member execution and serial
+  notification consumption.
+- `multisig.ts` owns group inception, rotation, and join events.
+- `credential-mutations.ts` owns registry and TEL state mutations.
+- `ipex.ts` owns grants and admissions.
+
+The older `kli_only`, `kli_docker`, and `single-sig` examples are independent
+historical demonstrations. They are not alternate backends for this driver.
+
+## Checks
+
+```bash
+cd sig_ts_wallets
+npm run typecheck
+npm test
+
+cd ..
+bash -n \
+  vlei-workflow.sh present-external-le.sh lib/jobs.sh \
+  backends/local.sh backends/docker.sh \
+  keria_kli/lib/workflow-runtime.sh keria_docker/lib/workflow-runtime.sh
+```
