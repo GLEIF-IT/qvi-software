@@ -146,12 +146,17 @@ With `--keep-runtime`, the generated files are deliberately easy to find:
 runtime/
 ├── acdc-info/
 ├── config/
-├── keystores/
 ├── logs/
 ├── qvi_data/
 ├── results/
 └── sally-callbacks.jsonl
 ```
+
+KERI LMDB state lives in Docker-managed volumes, including `kli-vol` for the
+persistent KLI runner. This keeps database paths inside the Linux VM instead of
+exposing them through macOS VirtioFS. A normal teardown removes the disposable
+volumes. `--keep-runtime` preserves both the Compose stack and its volumes so a
+database tool can inspect them from a container.
 
 The callback recorder accepts a JSON object at `POST /`, adds a receipt
 timestamp, and appends it to `sally-callbacks.jsonl`. See

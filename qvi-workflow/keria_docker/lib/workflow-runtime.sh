@@ -30,13 +30,12 @@ create_workflow_runtime() {
     WORKFLOW_CONFIG_DIR="${WORKFLOW_RUN_DIR}/config"
     KLI_DATA_DIR="${WORKFLOW_RUN_DIR}/acdc-info"
     LOCAL_QVI_DATA_DIR="${WORKFLOW_RUN_DIR}/qvi_data"
-    KEYSTORE_DIR="${WORKFLOW_RUN_DIR}/keystores"
     WORKFLOW_LOG_DIR="${WORKFLOW_RUN_DIR}/logs"
     WORKFLOW_RESULT_DIR="${WORKFLOW_RUN_DIR}/results"
     SALLY_CALLBACK_FILE="${WORKFLOW_RUN_DIR}/sally-callbacks.jsonl"
 
     export WORKFLOW_RUN_DIR WORKFLOW_CONFIG_DIR KLI_DATA_DIR
-    export LOCAL_QVI_DATA_DIR KEYSTORE_DIR WORKFLOW_LOG_DIR WORKFLOW_RESULT_DIR
+    export LOCAL_QVI_DATA_DIR WORKFLOW_LOG_DIR WORKFLOW_RESULT_DIR
     export SALLY_CALLBACK_FILE
 
     # A retained --keep-runtime run is intentionally replaced by the next run.
@@ -48,7 +47,6 @@ create_workflow_runtime() {
         "${KLI_DATA_DIR}/rules" \
         "${KLI_DATA_DIR}/temp-data" \
         "${LOCAL_QVI_DATA_DIR}" \
-        "${KEYSTORE_DIR}" \
         "${WORKFLOW_LOG_DIR}" \
         "${WORKFLOW_RESULT_DIR}"
 

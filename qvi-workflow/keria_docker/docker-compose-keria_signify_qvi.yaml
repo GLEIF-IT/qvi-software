@@ -35,6 +35,9 @@ volumes:
   gar-wit-vol:
   qar-wit-vol:
   person-wit-vol:
+  # Keep KLI LMDB files inside the Linux VM. VirtioFS bind mounts retain
+  # macOS file descriptors and vnodes after their containers exit.
+  kli-vol:
   sally-vol:
   keria1-vol:
   keria2-vol:
@@ -259,7 +262,7 @@ services:
     environment:
       PYTHONWARNINGS: ignore::SyntaxWarning
     volumes:
-      - ./runtime/keystores:/usr/local/var/keri
+      - kli-vol:/usr/local/var/keri
       - ./runtime/config:/config
       - ./runtime/acdc-info:/acdc-info
 

@@ -302,9 +302,31 @@ test_sally_startup_contract() {
     fi
 }
 
+test_kli_uses_docker_managed_storage() {
+    local compose_model
+
+    compose_model=$(docker compose \
+        --project-directory "${WORKFLOW_DIR}" \
+        --env-file "${WORKFLOW_DIR}/keria-signify-docker.env" \
+        -f "${WORKFLOW_DIR}/docker-compose-keria_signify_qvi.yaml" \
+        config --format json)
+
+    jq -e '
+        [
+            .services.kli.volumes[] |
+            select(.target == "/usr/local/var/keri")
+        ] |
+        length == 1 and
+        .[0].type == "volume" and
+        .[0].source == "kli-vol"
+    ' <<< "${compose_model}" >/dev/null ||
+        fail_test 'the KLI database is not stored in a named volume'
+}
+
 test_rotation_failure_reaches_main_flow
 test_every_mode_uses_shared_qvi_lifecycle
 test_sally_startup_contract
+test_kli_uses_docker_managed_storage
 test_background_job_contract
 test_signal_cleanup_contract
 test_challenge_matrix_contract

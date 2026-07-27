@@ -7,14 +7,14 @@
 # credential usage.
 #
 # Note:
-# 1) This script uses Docker containers for the KERIpy keystores via the KLI, KERIA, witnesses,
-#    the vLEI-server for vLEI schemas, Sally for the vLEI Reporting API, the webhook Sally hits,
-#    and local NodeJS scripts for the SignifyTS creation of both QVI QAR AIDs and the Person AID.
+# 1) This script uses Docker containers and Docker-managed volumes for the KLI,
+#    KERIA, witness, and Sally KERIpy keystores. It also runs the vLEI schema
+#    server, callback recorder, and SignifyTS QVI and Person wallet commands.
 # 2) This script starts up and tears down the necessary Docker Compose environment.
 # 3) This script uses the KLI commands defined in ./kli-commands.sh to perform the QVI
 #    workflow steps.
-# 4) This is a one-run-at-a-time developer demonstration. Generated data lives
-#    in ./runtime and the next invocation replaces it.
+# 4) This is a one-run-at-a-time developer demonstration. Host-visible
+#    artifacts live in ./runtime; Compose owns and replaces the KERI volumes.
 
 set -Eeuo pipefail
 
