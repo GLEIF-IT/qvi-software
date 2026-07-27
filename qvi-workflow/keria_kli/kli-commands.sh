@@ -67,12 +67,11 @@ kli() {
     fi
 }
 
-# Start a named KLI background job whose logical name is also its resource lane.
+# Start one named KLI background job.
 klid() {
     local logical_name=$1
     shift
-    start_workflow_job \
-        "${logical_name}" "${logical_name}" kli "$@"
+    start_job "${logical_name}" kli "$@"
 }
 
 # Send one argument vector to the stateful local Signify wallet.
@@ -94,5 +93,5 @@ sig_wallet_request() {
 
 # Wait for a group of KLI jobs under one shared deadline.
 wait_kli_jobs() {
-    wait_for_background_jobs "$@"
+    wait_jobs "$@"
 }

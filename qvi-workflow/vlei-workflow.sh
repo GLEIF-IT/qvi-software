@@ -1,50 +1,52 @@
 #!/usr/bin/env bash
-# vlei-workflow.sh - fully local KERIA/KLI workflow
+# vlei-workflow.sh - shared QVI protocol story
 #
 # Runs the entire QVI issuance workflow end to end
 # Starts from multisig GLEIF External Delegated AID (GEDA) creation all the way to
 # OOR and ECR credential issuance and finally to the creation of the Person AID for OOR and ECR
 # credential usage.
 #
-# Every service and command runs directly on the host from a pinned local
-# virtual environment. Generated KERI state lives only in ./runtime.
+# Runtime-specific work belongs to backends/local.sh and backends/docker.sh.
 
 set -Eeuo pipefail
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-WORKFLOW_ENV_FILE="${SCRIPT_DIR}/local-workflow.env"
+WORKFLOW_ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+WORKFLOW_BACKEND=docker
+WORKFLOW_SCENARIO=canonical
+QVI_ACTIVE_ROLES=qar1,qar2,qar3
+QVI_SETUP_ROLES=qar1,qar2,qar3,person
 
-if [[ ! -f "${WORKFLOW_ENV_FILE}" ]]; then
-    printf 'Workflow environment file does not exist: %s\n' \
-        "${WORKFLOW_ENV_FILE}" >&2
-    exit 2
-fi
+# Select the adapter before ordinary parsing because it owns environment and
+# runtime initialization. parse_arguments validates the same value later.
+previous_argument=""
+for argument in "$@"; do
+    if [[ "${previous_argument}" == --backend ]]; then
+        WORKFLOW_BACKEND=${argument}
+        break
+    fi
+    previous_argument=${argument}
+done
+case "${WORKFLOW_BACKEND}" in
+    docker|local) ;;
+    *)
+        printf 'Unknown backend: %s\n' "${WORKFLOW_BACKEND}" >&2
+        exit 2
+        ;;
+esac
 
-set -a
-# shellcheck source=./local-workflow.env
-source "${WORKFLOW_ENV_FILE}"
-set +a
-
-# shellcheck source=./color-printing.sh
-source "${SCRIPT_DIR}/color-printing.sh"
-# shellcheck source=./lib/workflow-runtime.sh
-source "${SCRIPT_DIR}/lib/workflow-runtime.sh"
-
-QVI_SIGNIFY_DIR="${SCRIPT_DIR}/../sig_ts_wallets/src"
-QVI_DATA_DIR="${SCRIPT_DIR}/runtime/qvi_data"
-QVI_PARTICIPANT_CONFIG="${SCRIPT_DIR}/runtime/config/participants.json"
+# shellcheck source=./backends/local.sh
+# shellcheck source=./backends/docker.sh
+source "${WORKFLOW_ROOT_DIR}/backends/${WORKFLOW_BACKEND}.sh"
+# Source after the backend runtime so the shared lifecycle is authoritative.
+# shellcheck source=./lib/jobs.sh
+source "${WORKFLOW_ROOT_DIR}/lib/jobs.sh"
 
 : "${WORKFLOW_TIMEOUT_SECONDS:=120}"
 export WORKFLOW_TIMEOUT_SECONDS
-KEEP_RUNTIME=false
+KEEP_ARTIFACTS=false
 PAUSE_ENABLED=false
-WORKFLOW_MODE=default
 WORKFLOW_STOP_AFTER=""
 HELP_REQUESTED=false
-START_TIME=0
-
-ALT_SALLY_ALIAS="alternate"
-ALT_SALLY_OOBI="http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
 
 function pause() {
     if [[ $PAUSE_ENABLED == true ]]; then
@@ -225,7 +227,7 @@ revoked_oor_was_rejected_and_reported() {
 
     callback_was_recorded rev "${credential_said}" >/dev/null &&
         callback_found=true
-    sally_logs=$(tail -n 500 "${SALLY_LOG_FILE}") || return 1
+    sally_logs=$(backend_sally_logs "${submitted_after}") || return 1
     [[ "${sally_logs}" == *"${rejection_message}"* ]] &&
         rejection_found=true
 
@@ -245,49 +247,22 @@ require_system_commands() {
     local required_command
     local command_is_available=false
 
-    for required_command in jq curl awk sed wc lsof nohup pgrep; do
+    while IFS= read -r required_command; do
         command_is_available=false
         command -v "${required_command}" >/dev/null 2>&1 && command_is_available=true
         if [[ "${command_is_available}" == false ]]; then
             print_red "${required_command} is not installed. Please install it."
             return 1
         fi
-    done
-}
-
-verify_local_dependencies() {
-  local dependency
-
-  for dependency in \
-      "${GEDA_KLI_PYTHON}" \
-      "${KLI_PYTHON}" \
-      "${KLI_LAUNCHER}" \
-      "${KERIA_PYTHON}" \
-      "${KERIA_LAUNCHER}" \
-      "${WITNESS_PYTHON}" \
-      "${SALLY_PYTHON}" \
-      "${SALLY_LAUNCHER}" \
-      "${VLEI_BIN}" \
-      "${TSX_BIN}" \
-      "${SIGNAL_RESET_LAUNCHER}"; do
-      if [[ ! -x "${dependency}" ]]; then
-          print_red "Missing local dependency: ${dependency}"
-          print_red "Run ${SCRIPT_DIR}/bootstrap-local.sh first"
-          return 1
-      fi
-  done
+    done < <(backend_required_commands)
 }
 
 # QVI Config
 #### Witness Hosts ####
-# Wan 5642
-WIT_HOST_GAR=http://127.0.0.1:5642
+# Wan
 WAN_PRE=BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha
-# Wil 5643
-WIT_HOST_QAR=http://127.0.0.1:5643
+# Wil
 WIL_PRE=BLskRTInXnMxWaGqcpSyMgo0nYbalW99cGZESrz3zapM
-# Runtime configuration root used by the host KLI.
-CONT_CONFIG_DIR="${SCRIPT_DIR}/runtime/config"
 
 #### Identifier Information ####
 # GEDA AIDs - GLEIF External Delegated AID
@@ -334,36 +309,13 @@ export SALLY_PASSCODE SALLY_SALT
 export SALLY_PRE=""
 
 function start_foundation_services() {
-  start_local_foundation_services
+  backend_start_foundation
 }
 
 # Verify the package versions exposed by every participating runtime before
 # any KERI state is created.
 function preflight_versions() {
-  start_workflow_job \
-      preflight-signify preflight-signify preflight_signify_versions ||
-      return 1
-  start_workflow_job \
-      preflight-keria preflight-keria preflight_keria_versions ||
-      return 1
-  start_workflow_job \
-      preflight-witnesses preflight-witnesses \
-      preflight_local_keripy "${WITNESS_PYTHON}" witnesses ||
-      return 1
-  start_workflow_job \
-      preflight-geda-kli preflight-geda-kli \
-      preflight_python_package "${GEDA_KLI_PYTHON}" keri 1.1.42 ||
-      return 1
-  start_workflow_job \
-      preflight-kli preflight-kli \
-      preflight_local_keripy "${KLI_PYTHON}" kli ||
-      return 1
-  wait_for_background_jobs \
-      preflight-signify \
-      preflight-keria \
-      preflight-witnesses \
-      preflight-geda-kli \
-      preflight-kli
+  backend_preflight_versions
 }
 
 preflight_signify_versions() {
@@ -400,7 +352,7 @@ function start_sally() {
       fail_workflow "Cannot start Sally before the GEDA prefix exists"
   fi
 
-  start_local_sally "${GEDA_PRE}" || return 1
+  backend_start_sally "${GEDA_PRE}" || return 1
   load_sally_prefixes || return 1
 }
 
@@ -524,15 +476,15 @@ load_keria_identifier_artifact() {
           .QAR3.aid,
           .QAR3.agentOobi,
           .QAR3.agentEid,
-          .QAR4.aid,
-          .QAR4.agentOobi,
-          .QAR4.agentEid,
+          (.QAR4.aid // ""),
+          (.QAR4.agentOobi // ""),
+          (.QAR4.agentEid // ""),
           .PERSON.aid,
           .PERSON.agentOobi
         ] |
-        @tsv
+        join("|")
       ')
-  IFS=$'\t' read -r \
+  IFS='|' read -r \
       QAR1_PRE QAR1_OOBI QAR1_AGENT_EID \
       QAR2_PRE QAR2_OOBI QAR2_AGENT_EID \
       QAR3_PRE QAR3_OOBI QAR3_AGENT_EID \
@@ -546,8 +498,10 @@ load_keria_identifier_artifact() {
   print_dark_gray "QAR2     OOBI: $QAR2_OOBI"
   print_green     "QAR3   Prefix: $QAR3_PRE"
   print_dark_gray "QAR3     OOBI: $QAR3_OOBI"
-  print_green     "QAR4   Prefix: $QAR4_PRE"
-  print_dark_gray "QAR4     OOBI: $QAR4_OOBI"
+  if [[ -n "${QAR4_PRE}" ]]; then
+    print_green     "QAR4   Prefix: $QAR4_PRE"
+    print_dark_gray "QAR4     OOBI: $QAR4_OOBI"
+  fi
   print_green     "Person Prefix: $PERSON_PRE"
   print_dark_gray "Person   OOBI: $PERSON_OOBI"
 }
@@ -562,38 +516,38 @@ function resolve_gar_oobis() {
     GAR1_OOBI="${WIT_HOST_GAR}/oobi/${GAR1_PRE}/witness/${WAN_PRE}"
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
 
-    start_workflow_job \
-        resolve-gar1-member gar1 resolve_kli_aid_oobis \
+    start_job \
+        resolve-gar1-member resolve_kli_aid_oobis \
         "${GAR1}" "${GAR1_PASSCODE}" \
         "${GAR2}|${GAR2_OOBI}" || return 1
-    start_workflow_job \
-        resolve-gar2-member gar2 resolve_kli_aid_oobis \
+    start_job \
+        resolve-gar2-member resolve_kli_aid_oobis \
         "${GAR2}" "${GAR2_PASSCODE}" \
         "${GAR1}|${GAR1_OOBI}" || return 1
-    wait_for_background_jobs resolve-gar1-member resolve-gar2-member
+    wait_jobs resolve-gar1-member resolve-gar2-member
 }
 
 function resolve_lar_oobis() {
     LAR1_OOBI="${WIT_HOST_QAR}/oobi/${LAR1_PRE}/witness/${WIL_PRE}"
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
 
-    start_workflow_job \
-        resolve-lar1-member lar1 resolve_kli_aid_oobis \
+    start_job \
+        resolve-lar1-member resolve_kli_aid_oobis \
         "${LAR1}" "${LAR1_PASSCODE}" \
         "${LAR2}|${LAR2_OOBI}" || return 1
-    start_workflow_job \
-        resolve-lar2-member lar2 resolve_kli_aid_oobis \
+    start_job \
+        resolve-lar2-member resolve_kli_aid_oobis \
         "${LAR2}" "${LAR2_PASSCODE}" \
         "${LAR1}|${LAR1_OOBI}" || return 1
-    wait_for_background_jobs resolve-lar1-member resolve-lar2-member
+    wait_jobs resolve-lar1-member resolve-lar2-member
 }
 
 resolve_foundational_member_oobis() {
-    start_workflow_job \
-        resolve-gar-members gar1,gar2 resolve_gar_oobis || return 1
-    start_workflow_job \
-        resolve-lar-members lar1,lar2 resolve_lar_oobis || return 1
-    wait_for_background_jobs resolve-gar-members resolve-lar-members
+    start_job \
+        resolve-gar-members resolve_gar_oobis || return 1
+    start_job \
+        resolve-lar-members resolve_lar_oobis || return 1
+    wait_jobs resolve-gar-members resolve-lar-members
 }
 
 # initializes a keystore and creates a single sig AID
@@ -650,30 +604,30 @@ function create_aids() {
 
 setup_participant_identifiers_parallel() {
     print_green "------------------------------Creating identifiers (AIDs)------------------------------"
-    start_workflow_job \
-        setup-keria qar1,qar2,qar3,qar4,person \
+    start_job \
+        setup-keria \
         create_keria_identifier_artifact || return 1
-    start_workflow_job \
-        setup-gar1 gar1 \
+    start_job \
+        setup-gar1 \
         create_aid "${GAR1}" "${GAR1_SALT}" "${GAR1_PASSCODE}" \
         "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" \
         "${CONT_CONFIG_DIR}/incept-cfg-gars.json" || return 1
-    start_workflow_job \
-        setup-gar2 gar2 \
+    start_job \
+        setup-gar2 \
         create_aid "${GAR2}" "${GAR2_SALT}" "${GAR2_PASSCODE}" \
         "${CONT_CONFIG_DIR}" "habery-cfg-gars.json" \
         "${CONT_CONFIG_DIR}/incept-cfg-gars.json" || return 1
-    start_workflow_job \
-        setup-lar1 lar1 \
+    start_job \
+        setup-lar1 \
         create_aid "${LAR1}" "${LAR1_SALT}" "${LAR1_PASSCODE}" \
         "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" \
         "${CONT_CONFIG_DIR}/incept-cfg-qars.json" || return 1
-    start_workflow_job \
-        setup-lar2 lar2 \
+    start_job \
+        setup-lar2 \
         create_aid "${LAR2}" "${LAR2_SALT}" "${LAR2_PASSCODE}" \
         "${CONT_CONFIG_DIR}" "habery-cfg-qars.json" \
         "${CONT_CONFIG_DIR}/incept-cfg-qars.json" || return 1
-    wait_for_background_jobs \
+    wait_jobs \
         setup-keria setup-gar1 setup-gar2 setup-lar1 setup-lar2 ||
         return 1
     load_keria_identifier_artifact || return 1
@@ -767,24 +721,24 @@ function resolve_oobis() {
     print_green "SALLY OOBI: ${SALLY_OOBI}"
     print_green "------------------------------Connecting Keystores with OOBI Resolutions------------------------------"
 
-    start_workflow_job \
-        resolve-keria-oobis qar1,qar2,qar3,qar4,person \
+    start_job \
+        resolve-keria-oobis \
         resolve_keria_external_oobis || return 1
     # Member pairs were resolved before group inception. Only the two mixed
     # challenge relationships add KLI-side contacts at this stage.
-    start_workflow_job \
-        resolve-gar1-oobis gar1 resolve_kli_aid_oobis \
+    start_job \
+        resolve-gar1-oobis resolve_kli_aid_oobis \
         "${GAR1}" "${GAR1_PASSCODE}" \
         "${QAR1}|${QAR1_OOBI}" || return 1
-    start_workflow_job \
-        resolve-lar1-oobis lar1 resolve_lar_contacts \
+    start_job \
+        resolve-lar1-oobis resolve_lar_contacts \
         "${LAR1}" "${LAR1_PASSCODE}" \
         "${QAR1}|${QAR1_OOBI}" || return 1
-    start_workflow_job \
-        resolve-lar2-oobis lar2 resolve_lar_contacts \
+    start_job \
+        resolve-lar2-oobis resolve_lar_contacts \
         "${LAR2}" "${LAR2_PASSCODE}" || return 1
 
-    wait_for_background_jobs \
+    wait_jobs \
         resolve-keria-oobis \
         resolve-gar1-oobis \
         resolve-lar1-oobis \
@@ -1043,15 +997,15 @@ run_challenge_wave() {
   for relationship_record in "$@"; do
       IFS='|' read -r relationship left_id right_id <<< "${relationship_record}"
       job_names="${job_names} challenge-${relationship}"
-      start_workflow_job \
-          "challenge-${relationship}" "${left_id},${right_id}" \
+      start_job \
+          "challenge-${relationship}" \
           challenge_relationship_record "${relationship_record}" ||
           return 1
   done
   # Job names are generated from fixed relationship labels and contain no
   # whitespace, so intentional word splitting supplies the group members.
   # shellcheck disable=SC2086
-  wait_for_background_jobs ${job_names}
+  wait_jobs ${job_names}
 }
 
 function challenge_response() {
@@ -1059,19 +1013,13 @@ function challenge_response() {
 
   run_challenge_wave \
       "GAR1-GAR2|gar1|gar2" \
-      "LAR1-LAR2|lar1|lar2" \
       "QAR1-QAR2|qar1|qar2" || return 1
   run_challenge_wave \
-      "QAR1-QAR3|qar1|qar3" || return 1
-  run_challenge_wave \
-      "QAR2-QAR3|qar2|qar3" \
       "GAR1-QAR1|gar1|qar1" || return 1
   run_challenge_wave \
       "QAR1-LAR1|qar1|lar1" || return 1
-  run_challenge_wave \
-      "QAR1-Person|qar1|person" || return 1
 
-  print_green "[challenge] Completed 16 directed responses across 8 trust relationships"
+  print_green "[challenge] Completed 8 directed responses across 4 trust relationships"
 }
 
 ################# Create Multisigs and perform delegation ################
@@ -1107,7 +1055,7 @@ function create_geda_multisig() {
     klid gar1 multisig incept --name "${GAR1}" --alias "${GAR1}" \
         --passcode "${GAR1_PASSCODE}" \
         --group "${GEDA_NAME}" \
-        --file "${WORKFLOW_CONFIG_DIR}/geda-multisig-incept-config.json"
+        --file "${KLI_COMMAND_CONFIG_DIR}/geda-multisig-incept-config.json"
 
     echo
 
@@ -1157,7 +1105,7 @@ function qars_resolve_geda_oobi() {
         ms-resolve-oobi \
         --alias "${GEDA_NAME}" \
         --oobi "${GEDA_OOBI}" \
-        --roles qar1,qar2,qar3,qar4,person >/dev/null ||
+        --roles "${QVI_SETUP_ROLES}" >/dev/null ||
         geda_resolution_failed=true
     if [[ "${geda_resolution_failed}" == true ]]; then
         fail_workflow "QARs could not resolve the GEDA OOBI"
@@ -1287,15 +1235,15 @@ refresh_qvi_participants_for_geda_member() {
 }
 
 approve_qvi_delegation() {
-    start_workflow_job \
-        query-qvi-for-gar1 gar1 \
+    start_job \
+        query-qvi-for-gar1 \
         refresh_qvi_participants_for_geda_member \
         "${GAR1}" "${GAR1_PASSCODE}" "$@" || return 1
-    start_workflow_job \
-        query-qvi-for-gar2 gar2 \
+    start_job \
+        query-qvi-for-gar2 \
         refresh_qvi_participants_for_geda_member \
         "${GAR2}" "${GAR2_PASSCODE}" "$@" || return 1
-    wait_for_background_jobs query-qvi-for-gar1 query-qvi-for-gar2 ||
+    wait_jobs query-qvi-for-gar1 query-qvi-for-gar2 ||
         return 1
 
     klid gar1 delegate confirm \
@@ -1403,27 +1351,42 @@ establish_qvi() {
         qar1,qar2,qar3 \
         qar1,qar2,qar3 \
         qar1=1 qar2=1 qar3=1 || return 1
-    rotate_qvi_existing_members 2 \
+    authorize_qvi_multisig_agent_endpoint_role \
         qar1,qar2,qar3 \
-        qar1,qar2,qar4 \
-        qar1,qar2,qar3,qar4 \
-        qar1=2 qar2=2 qar3=2 || return 1
-    rotate_qvi_with_joining_member 3 \
-        qar1=3 qar2=3 qar4=1 || return 1
-    authorize_qvi_multisig_agent_endpoint_role || return 1
+        qar1,qar2,qar3 \
+        qar1,qar2,qar3 || return 1
+    if [[ "${WORKFLOW_SCENARIO}" == qar-replacement-regression ]]; then
+        rotate_qvi_existing_members 2 \
+            qar1,qar2,qar3 \
+            qar1,qar2,qar4 \
+            qar1,qar2,qar3,qar4 \
+            qar1=2 qar2=2 qar3=2 || return 1
+        rotate_qvi_with_joining_member 3 \
+            qar1=3 qar2=3 qar4=1 || return 1
+        authorize_qvi_multisig_agent_endpoint_role \
+            qar1,qar2,qar4 \
+            qar4 \
+            qar1,qar2,qar3,qar4 || return 1
+    fi
     resolve_qvi_oobi || return 1
 }
 
 # QVI: Authorize all agent endpoint roles and derive one multisig OOBI.
 QVI_OOBI=""
 function authorize_qvi_multisig_agent_endpoint_role(){
+    local member_roles=$1
+    local authorize_roles=$2
+    local expected_endpoint_roles=$3
     local authorization_result=""
     local authorization_failed=false
 
     print_yellow "Authorizing QVI multisig agent endpoint role"
     authorization_result=$(run_qvi_json \
       ms-authorize \
-      --data-dir "${QVI_DATA_DIR}") ||
+      --data-dir "${QVI_DATA_DIR}" \
+      --roles "${member_roles}" \
+      --authorize-roles "${authorize_roles}" \
+      --expected-endpoint-roles "${expected_endpoint_roles}") ||
       authorization_failed=true
     if [[ "${authorization_failed}" == true ]]; then
         fail_workflow "QVI agent endpoint-role authorization failed"
@@ -1448,7 +1411,7 @@ function create_le_multisig() {
     klid lar1 multisig incept --name "${LAR1}" --alias "${LAR1}" \
         --passcode "${LAR1_PASSCODE}" \
         --group "${LE_NAME}" \
-        --file "${WORKFLOW_CONFIG_DIR}/le-multisig-incept-config.json"
+        --file "${KLI_COMMAND_CONFIG_DIR}/le-multisig-incept-config.json"
 
     echo
 
@@ -1499,7 +1462,7 @@ function qars_resolve_le_oobi() {
         ms-resolve-oobi \
         --alias "${LE_NAME}" \
         --oobi "${LE_OOBI}" \
-        --roles qar1,qar2,qar4 >/dev/null ||
+        --roles "${QVI_ACTIVE_ROLES}" >/dev/null ||
         le_resolution_failed=true
     if [[ "${le_resolution_failed}" == true ]]; then
         fail_workflow "QARs could not resolve the LE OOBI"
@@ -1510,23 +1473,23 @@ function qars_resolve_le_oobi() {
 function resolve_qvi_oobi() {
     echo
     print_yellow "Resolving the canonical QVI multisig OOBI for GEDA and LE"
-    start_workflow_job \
-        resolve-qvi-gar1 gar1 kli oobi resolve \
+    start_job \
+        resolve-qvi-gar1 kli oobi resolve \
         --name "${GAR1}" --oobi-alias "${QVI_NAME}" \
         --passcode "${GAR1_PASSCODE}" --oobi "${QVI_OOBI}" || return 1
-    start_workflow_job \
-        resolve-qvi-gar2 gar2 kli oobi resolve \
+    start_job \
+        resolve-qvi-gar2 kli oobi resolve \
         --name "${GAR2}" --oobi-alias "${QVI_NAME}" \
         --passcode "${GAR2_PASSCODE}" --oobi "${QVI_OOBI}" || return 1
-    start_workflow_job \
-        resolve-qvi-lar1 lar1 kli oobi resolve \
+    start_job \
+        resolve-qvi-lar1 kli oobi resolve \
         --name "${LAR1}" --oobi-alias "${QVI_NAME}" \
         --passcode "${LAR1_PASSCODE}" --oobi "${QVI_OOBI}" || return 1
-    start_workflow_job \
-        resolve-qvi-lar2 lar2 kli oobi resolve \
+    start_job \
+        resolve-qvi-lar2 kli oobi resolve \
         --name "${LAR2}" --oobi-alias "${QVI_NAME}" \
         --passcode "${LAR2_PASSCODE}" --oobi "${QVI_OOBI}" || return 1
-    wait_for_background_jobs \
+    wait_jobs \
         resolve-qvi-gar1 resolve-qvi-gar2 \
         resolve-qvi-lar1 resolve-qvi-lar2 || return 1
 
@@ -1590,8 +1553,8 @@ function create_qvi_credential() {
         --registry-name "${GEDA_REGISTRY}" \
         --schema "${QVI_SCHEMA}" \
         --recipient "${QVI_PRE}" \
-        --data @"${KLI_DATA_DIR}/temp-data/qvi-cred-data.json" \
-        --rules @"${KLI_DATA_DIR}/rules/rules.json" \
+        --data @"${KLI_COMMAND_DATA_DIR}/temp-data/qvi-cred-data.json" \
+        --rules @"${KLI_COMMAND_DATA_DIR}/rules/rules.json" \
         --time "${KLI_TIME}"
 
     klid gar2 vc create \
@@ -1601,8 +1564,8 @@ function create_qvi_credential() {
         --registry-name "${GEDA_REGISTRY}" \
         --schema "${QVI_SCHEMA}" \
         --recipient "${QVI_PRE}" \
-        --data @"${KLI_DATA_DIR}/temp-data/qvi-cred-data.json" \
-        --rules @"${KLI_DATA_DIR}/rules/rules.json" \
+        --data @"${KLI_COMMAND_DATA_DIR}/temp-data/qvi-cred-data.json" \
+        --rules @"${KLI_COMMAND_DATA_DIR}/rules/rules.json" \
         --time "${KLI_TIME}"
 
     echo
@@ -1767,7 +1730,7 @@ function prepare_qvi_edge() {
         --arg schema "${QVI_SCHEMA}" \
         '{d: "", qvi: {n: $credentialSaid, s: $schema}}' \
         > "${KLI_DATA_DIR}/temp-data/qvi-edge.json"
-    kli saidify --file "${KLI_DATA_DIR}/temp-data/qvi-edge.json"
+    kli saidify --file "${KLI_COMMAND_DATA_DIR}/temp-data/qvi-edge.json"
     print_lcyan "Legal Entity edge Data"
     print_lcyan "$(jq '.' "${KLI_DATA_DIR}/temp-data/qvi-edge.json")"
 }
@@ -1829,7 +1792,7 @@ function create_le_credential() {
     issuance_result=$(run_qvi_json \
       ms-issue \
       --kind le \
-      --data-dir "${KLI_DATA_DIR}" \
+      --data-dir "${KLI_COMMAND_DATA_DIR}" \
       --issuee-prefix "${LE_PRE}") ||
       issuance_failed=true
     if [[ "${issuance_failed}" == true ]]; then
@@ -1860,7 +1823,7 @@ function create_and_grant_le_credential() {
 }
 
 # LE: Admit LE credential from QVI
-wait_for_kli_ipex_grant_said() {
+find_kli_ipex_grant_said() {
     local name=$1
     local alias=$2
     local passcode=$3
@@ -1890,6 +1853,22 @@ wait_for_kli_ipex_grant_said() {
         return 124
     fi
     printf '%s\n' "${grant_said}"
+}
+
+wait_for_kli_ipex_grant_said() {
+    local name=$1
+    local alias=$2
+    local passcode=$3
+    local expected_said=${4:-}
+
+    poll_until \
+        "fully signed IPEX grant for ${name}/${alias}" \
+        "${WORKFLOW_TIMEOUT_SECONDS}" \
+        find_kli_ipex_grant_said \
+        "${name}" \
+        "${alias}" \
+        "${passcode}" \
+        "${expected_said}"
 }
 
 function admit_le_credential() {
@@ -1995,7 +1974,7 @@ function prepare_le_edge() {
         --arg schema "${LE_SCHEMA}" \
         '{d: "", le: {n: $credentialSaid, s: $schema}}' \
         > "${KLI_DATA_DIR}/temp-data/legal-entity-edge.json"
-    kli saidify --file "${KLI_DATA_DIR}/temp-data/legal-entity-edge.json"
+    kli saidify --file "${KLI_COMMAND_DATA_DIR}/temp-data/legal-entity-edge.json"
 }
 
 # Prepare OOR Auth credential data
@@ -2030,9 +2009,9 @@ function create_oor_auth_credential() {
         --registry-name "${LE_REGISTRY}" \
         --schema "${OOR_AUTH_SCHEMA}" \
         --recipient "${QVI_PRE}" \
-        --data @"${KLI_DATA_DIR}/temp-data/oor-auth-data.json" \
-        --edges @"${KLI_DATA_DIR}/temp-data/legal-entity-edge.json" \
-        --rules @"${KLI_DATA_DIR}/rules/rules.json" \
+        --data @"${KLI_COMMAND_DATA_DIR}/temp-data/oor-auth-data.json" \
+        --edges @"${KLI_COMMAND_DATA_DIR}/temp-data/legal-entity-edge.json" \
+        --rules @"${KLI_COMMAND_DATA_DIR}/rules/rules.json" \
         --time "${KLI_TIME}"
 
     klid lar2 vc create \
@@ -2042,9 +2021,9 @@ function create_oor_auth_credential() {
         --registry-name "${LE_REGISTRY}" \
         --schema "${OOR_AUTH_SCHEMA}" \
         --recipient "${QVI_PRE}" \
-        --data @"${KLI_DATA_DIR}/temp-data/oor-auth-data.json" \
-        --edges @"${KLI_DATA_DIR}/temp-data/legal-entity-edge.json" \
-        --rules @"${KLI_DATA_DIR}/rules/rules.json" \
+        --data @"${KLI_COMMAND_DATA_DIR}/temp-data/oor-auth-data.json" \
+        --edges @"${KLI_COMMAND_DATA_DIR}/temp-data/legal-entity-edge.json" \
+        --rules @"${KLI_COMMAND_DATA_DIR}/rules/rules.json" \
         --time "${KLI_TIME}"
 
     wait_kli_jobs lar1 lar2
@@ -2138,7 +2117,7 @@ function prepare_oor_auth_edge() {
         --arg schema "${OOR_AUTH_SCHEMA}" \
         '{d: "", auth: {n: $credentialSaid, s: $schema, o: "I2I"}}' \
         > "${KLI_DATA_DIR}/temp-data/oor-auth-edge.json"
-    kli saidify --file "${KLI_DATA_DIR}/temp-data/oor-auth-edge.json"
+    kli saidify --file "${KLI_COMMAND_DATA_DIR}/temp-data/oor-auth-edge.json"
 }
 
 # Prepare OOR credential data
@@ -2172,7 +2151,7 @@ function create_oor_credential() {
     issuance_result=$(run_qvi_json \
       ms-issue \
       --kind oor \
-      --data-dir "${KLI_DATA_DIR}" \
+      --data-dir "${KLI_COMMAND_DATA_DIR}" \
       --issuee-prefix "${PERSON_PRE}") ||
       credential_creation_failed=true
     if [[ "${credential_creation_failed}" == true ]]; then
@@ -2412,9 +2391,9 @@ function create_ecr_auth_credential() {
         --registry-name "${LE_REGISTRY}" \
         --schema "${ECR_AUTH_SCHEMA}" \
         --recipient "${QVI_PRE}" \
-        --data @"${KLI_DATA_DIR}/temp-data/ecr-auth-data.json" \
-        --edges @"${KLI_DATA_DIR}/temp-data/legal-entity-edge.json" \
-        --rules @"${KLI_DATA_DIR}/rules/ecr-auth-rules.json" \
+        --data @"${KLI_COMMAND_DATA_DIR}/temp-data/ecr-auth-data.json" \
+        --edges @"${KLI_COMMAND_DATA_DIR}/temp-data/legal-entity-edge.json" \
+        --rules @"${KLI_COMMAND_DATA_DIR}/rules/ecr-auth-rules.json" \
         --time "${KLI_TIME}"
 
     klid lar2 vc create \
@@ -2424,9 +2403,9 @@ function create_ecr_auth_credential() {
         --registry-name "${LE_REGISTRY}" \
         --schema "${ECR_AUTH_SCHEMA}" \
         --recipient "${QVI_PRE}" \
-        --data @"${KLI_DATA_DIR}/temp-data/ecr-auth-data.json" \
-        --edges @"${KLI_DATA_DIR}/temp-data/legal-entity-edge.json" \
-        --rules @"${KLI_DATA_DIR}/rules/ecr-auth-rules.json" \
+        --data @"${KLI_COMMAND_DATA_DIR}/temp-data/ecr-auth-data.json" \
+        --edges @"${KLI_COMMAND_DATA_DIR}/temp-data/legal-entity-edge.json" \
+        --rules @"${KLI_COMMAND_DATA_DIR}/rules/ecr-auth-rules.json" \
         --time "${KLI_TIME}"
 
     wait_kli_jobs lar1 lar2
@@ -2520,7 +2499,7 @@ function prepare_ecr_auth_edge() {
         --arg schema "${ECR_AUTH_SCHEMA}" \
         '{d: "", auth: {n: $credentialSaid, s: $schema, o: "I2I"}}' \
         > "${KLI_DATA_DIR}/temp-data/ecr-auth-edge.json"
-    kli saidify --file "${KLI_DATA_DIR}/temp-data/ecr-auth-edge.json"
+    kli saidify --file "${KLI_COMMAND_DATA_DIR}/temp-data/ecr-auth-edge.json"
 }
 
 # Prepare ECR credential data
@@ -2553,7 +2532,7 @@ function create_ecr_credential() {
     issuance_result=$(run_qvi_json \
       ms-issue \
       --kind ecr \
-      --data-dir "${KLI_DATA_DIR}" \
+      --data-dir "${KLI_COMMAND_DATA_DIR}" \
       --issuee-prefix "${PERSON_PRE}") ||
       credential_creation_failed=true
     if [[ "${credential_creation_failed}" == true ]]; then
@@ -2595,60 +2574,6 @@ function admit_ecr_credential() {
     echo
 }
 
-############################ Staging Sally Presentation ##################################
-# Present LE credential to GLEIF Staging Sally
-function present_le_gleif_staging() {
-  SALLY_WIT_OOBI="http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
-  OOBI_ALIAS="sally-staging-wit-oc-au"
-  kli oobi resolve --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --oobi-alias "${OOBI_ALIAS}" --oobi "${SALLY_WIT_OOBI}"
-  kli oobi resolve --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --oobi-alias "${OOBI_ALIAS}" --oobi "${SALLY_WIT_OOBI}"
-  LE_SAID=$(kli vc list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --alias "${LE_NAME}" --said --schema "${LE_SCHEMA}" | tr -d '[:space:]')
-
-  print_yellow "[LE] Granting LE credential to GLEIF Staging Sally  at ${SALLY_WIT_OOBI}"
-  klid lar1 ipex grant --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" --said "${LE_SAID}" \
-        --recipient "${OOBI_ALIAS}"
-
-  klid lar2 ipex join --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --auto
-
-  print_dark_gray "[LE] Waiting for GLEIF Staging Sally to receive the LE Credential"
-  wait_kli_jobs lar1 lar2
-}
-
-function present_le_gleif_production() {
-  SALLY_WIT_OOBI="http://5.161.69.25:5623/oobi/EMRlhEQK44_V5804rsRvQ99Gtf7uDpYQqZuvrw0LhV3S/witness/BNfDO63ZpGc3xiFb0-jIOUnbr_bA-ixMva5cZb3s4BHB"
-  OOBI_ALIAS="sally-production-wit-na-us"
-  kli oobi resolve --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --oobi-alias "${OOBI_ALIAS}" --oobi "${SALLY_WIT_OOBI}"
-  kli oobi resolve --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --oobi-alias "${OOBI_ALIAS}" --oobi "${SALLY_WIT_OOBI}"
-  LE_SAID=$(kli vc list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --alias "${LE_NAME}" --said --schema "${LE_SCHEMA}" | tr -d '[:space:]')
-
-  print_yellow "[LE] Granting LE credential to GLEIF Production Sally  at ${SALLY_WIT_OOBI}"
-  klid lar1 ipex grant --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" --said "${LE_SAID}" \
-        --recipient "${OOBI_ALIAS}"
-
-  klid lar2 ipex join --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --auto
-
-  print_dark_gray "[LE] Waiting for GLEIF Staging Sally to receive the LE Credential"
-  wait_kli_jobs lar1 lar2
-}
-
-function present_le_to_alternate() {
-  local alt_alias=$1
-  local alt_oobi=$2
-  kli oobi resolve --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --oobi-alias "${alt_alias}" --oobi "${alt_oobi}"
-  kli oobi resolve --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --oobi-alias "${alt_alias}" --oobi "${alt_oobi}"
-  LE_SAID=$(kli vc list --name "${LAR1}" --passcode "${LAR1_PASSCODE}" --alias "${LE_NAME}" --said --schema "${LE_SCHEMA}" | tr -d '[:space:]')
-
-  print_yellow "[LE] Granting LE credential to alternate Sally at ${alt_oobi}"
-  klid lar1 ipex grant --name "${LAR1}" --alias "${LE_NAME}" --passcode "${LAR1_PASSCODE}" --said "${LE_SAID}" \
-        --recipient "${alt_alias}"
-
-  klid lar2 ipex join --name "${LAR2}" --passcode "${LAR2_PASSCODE}" --auto
-
-  print_dark_gray "[LE] Waiting for Alternate Sally to receive the LE Credential"
-  wait_kli_jobs lar1 lar2
-}
-# Prepare ECR Auth edge data
-
 ############################ Workflow functions ##################################
 function end_workflow() {
   return 0
@@ -2656,7 +2581,7 @@ function end_workflow() {
 
 # main setup function
 function setup() {
-  verify_local_dependencies || return 1
+  backend_prepare || return 1
   start_foundation_services || return 1
   preflight_versions || return 1
   setup_participant_identifiers_parallel || return 1
@@ -2681,11 +2606,11 @@ load_foundational_group_prefixes() {
 }
 
 create_foundational_multisigs_parallel() {
-  start_workflow_job \
-      create-geda gar1,gar2 create_geda_multisig || return 1
-  start_workflow_job \
-      create-le lar1,lar2 create_le_multisig || return 1
-  wait_for_background_jobs create-geda create-le || return 1
+  start_job \
+      create-geda create_geda_multisig || return 1
+  start_job \
+      create-le create_le_multisig || return 1
+  wait_jobs create-geda create-le || return 1
   load_foundational_group_prefixes
 }
 
@@ -2708,21 +2633,28 @@ qars_resolve_foundational_oobis() {
   qars_resolve_le_oobi
 }
 
-create_foundational_state_parallel() {
-  start_workflow_job \
-      create-geda-registry gar1,gar2 create_geda_reg || return 1
-  start_workflow_job \
-      create-le-registry lar1,lar2 create_le_reg || return 1
-  start_workflow_job \
-      start-sally sally start_sally || return 1
-  start_workflow_job \
-      resolve-foundation-qars qar1,qar2,qar3,qar4,person \
-      qars_resolve_foundational_oobis || return 1
-  wait_for_background_jobs \
-      create-geda-registry \
-      create-le-registry \
-      start-sally \
-      resolve-foundation-qars || return 1
+create_foundational_state() {
+  local -a jobs=(
+      create-geda-registry
+      create-le-registry
+      start-sally
+  )
+
+  if backend_supports_parallel_foundation_reads; then
+    start_job \
+        resolve-foundation-qars \
+        qars_resolve_foundational_oobis || return 1
+    jobs+=(resolve-foundation-qars)
+  else
+    qars_resolve_foundational_oobis || return 1
+  fi
+  start_job \
+      create-geda-registry create_geda_reg || return 1
+  start_job \
+      create-le-registry create_le_reg || return 1
+  start_job \
+      start-sally start_sally || return 1
+  wait_jobs "${jobs[@]}" || return 1
   load_sally_prefixes
 }
 
@@ -2730,7 +2662,7 @@ create_foundational_state_parallel() {
 function geda_delegation_to_qvi() {
   create_foundational_multisigs_parallel || return 1
   capture_foundational_group_oobis || return 1
-  create_foundational_state_parallel || return 1
+  create_foundational_state || return 1
   resolve_oobis || return 1
   challenge_response || return 1
   establish_qvi || return 1
@@ -2807,88 +2739,18 @@ function ecr_auth_and_ecr_cred() {
   ecr_cred || return 1
 }
 
-issue_and_grant_oor_auth_credential() {
-  create_oor_auth_credential || return 1
-  grant_oor_auth_credential
-}
-
-issue_and_grant_ecr_auth_credential() {
-  create_ecr_auth_credential || return 1
-  grant_ecr_auth_credential
-}
-
-# Complete the holder's active-OOR lane before its issuer may revoke the OOR.
-admit_and_present_active_oor() {
-  admit_oor_credential || return 1
-  person_present_oor_cred_to_sally
-}
-
-optimized_leaf_credential_pipeline() {
-  prepare_oor_auth_data || return 1
-  prepare_ecr_auth_data || return 1
-
-  create_oor_auth_credential || return 1
-  load_oor_auth_credential_said || return 1
-
-  # Both operations open the same two local KLI wallets, so keep them serial.
-  grant_oor_auth_credential || return 1
-  create_ecr_auth_credential || return 1
-  load_ecr_auth_credential_said || return 1
-
-  start_workflow_job \
-      admit-oor-auth qvi-exchange admit_oor_auth_credential || return 1
-  start_workflow_job \
-      grant-ecr-auth le-exchange grant_ecr_auth_credential || return 1
-  wait_for_background_jobs admit-oor-auth grant-ecr-auth || return 1
-
-  prepare_oor_auth_edge || return 1
-  prepare_ecr_auth_edge || return 1
-  prepare_oor_cred_data || return 1
-  prepare_ecr_cred_data || return 1
-
-  # Signify coordination notices carry exact route, group, credential, and
-  # embedded-event correlations, so these state and exchange lanes cannot
-  # consume one another's notices.
-  start_workflow_job \
-      issue-oor qvi-state create_oor_credential || return 1
-  start_workflow_job \
-      admit-ecr-auth qvi-exchange admit_ecr_auth_credential || return 1
-  wait_for_background_jobs issue-oor admit-ecr-auth || return 1
-  load_qvi_issuance_result oor || return 1
-
-  start_workflow_job \
-      grant-oor qvi-exchange grant_oor_credential || return 1
-  start_workflow_job \
-      issue-ecr qvi-state create_ecr_credential || return 1
-  wait_for_background_jobs grant-oor issue-ecr || return 1
-  load_qvi_issuance_result ecr || return 1
-
+# The canonical leaf lifecycle is deliberately linear. The state and exchange
+# boundaries are visible, and notification cleanup cannot race another member.
+canonical_leaf_lifecycle() {
+  oor_auth_and_oor_cred || return 1
   pause "Press [ENTER] to present OOR to Sally" || return 1
-  start_workflow_job \
-      admit-present-active-oor person,sally \
-      admit_and_present_active_oor || return 1
-  start_workflow_job \
-      grant-ecr qvi-exchange grant_ecr_credential || return 1
-  wait_for_background_jobs admit-present-active-oor grant-ecr || return 1
-
-  start_workflow_job \
-      admit-ecr person admit_ecr_credential || return 1
-  start_workflow_job \
-      revoke-oor qvi-state revoke_oor_credential || return 1
-  wait_for_background_jobs admit-ecr revoke-oor || return 1
-
-  # Refreshing and reporting the revoked OOR uses only the exchange lane.
-  # ECR revocation may therefore advance independently on the state lane.
-  start_workflow_job \
-      present-revoked-oor qvi-exchange,person,sally \
-      present_revoked_oor_to_sally || return 1
-  start_workflow_job \
-      revoke-ecr qvi-state revoke_ecr_credential || return 1
-  wait_for_background_jobs present-revoked-oor revoke-ecr
+  person_present_oor_cred_to_sally || return 1
+  revoke_oor_credential || return 1
+  present_revoked_oor_to_sally
 }
 
-# Exit successfully after the requested top-level workflow phase. The EXIT
-# trap owns cleanup and honors --keep-runtime.
+# Exit successfully after a supported major phase. The EXIT trap always stops
+# processes and decides only whether domain artifacts survive.
 stop_after() {
   local completed_phase=$1
 
@@ -2900,141 +2762,84 @@ stop_after() {
   exit 0
 }
 
-# Main workflow driving the end to end QVI credentialing and reporting process
-function main_flow() {
+run_phase() {
+  local phase_name=$1
+  shift
+  local phase_started=${SECONDS}
+
+  "$@" || return 1
+  print_lcyan "${phase_name} completed in $((SECONDS - phase_started)) seconds"
+  stop_after "${phase_name}"
+}
+
+run_shared_story_through_le() {
+  run_phase setup setup || return 1
+  run_phase delegation geda_delegation_to_qvi || return 1
+  run_phase qvi-credential qvi_credential || return 1
+  run_phase le-credential le_creation_and_granting || return 1
+  pause "Press [ENTER] to present LE credential to Sally" || return 1
+  run_phase le-presentation le_sally_presentation
+}
+
+canonical_flow() {
   print_lcyan "--------------------------------------------------------------------------------"
   print_lcyan "                       Running canonical QVI workflow"
   print_lcyan "--------------------------------------------------------------------------------"
-  setup || return 1
-  stop_after setup
-  geda_delegation_to_qvi || return 1
-  stop_after geda_delegation_to_qvi
-  qvi_credential || return 1
-  stop_after qvi_credential
-
-  le_creation_and_granting || return 1
-  stop_after le_creation_and_granting
-  pause "Press [ENTER] to present LE credential to Sally" || return 1
-  le_sally_presentation || return 1
-  stop_after le_sally_presentation
-
-  if [[ -z "${WORKFLOW_STOP_AFTER}" ]]; then
-    optimized_leaf_credential_pipeline || return 1
-    pause "Press [enter] to end workflow" || return 1
-    end_workflow || return 1
-    return 0
-  fi
-
-  # Keep the fine-grained --stop-after checkpoints serial and observable.
-  oor_auth_and_oor_cred || return 1
-  stop_after oor_auth_and_oor_cred
-  pause "Press [ENTER] to present OOR to Sally" || return 1
-  person_present_oor_cred_to_sally || return 1
-  stop_after person_present_oor_cred_to_sally
-
-  revoke_oor_credential || return 1
-  stop_after revoke_oor_credential
-  present_revoked_oor_to_sally || return 1
-  stop_after present_revoked_oor_to_sally
-
-  ecr_auth_and_ecr_cred || return 1
-  stop_after ecr_auth_and_ecr_cred
-  revoke_ecr_credential || return 1
-  stop_after revoke_ecr_credential
-
+  run_shared_story_through_le || return 1
+  run_phase leaf-lifecycle canonical_leaf_lifecycle || return 1
   pause "Press [enter] to end workflow" || return 1
-  end_workflow || return 1
-  stop_after end_workflow
+  end_workflow
 }
 
-# Runs the workflow and presents the LE credential to GLEIF Staging Sally
-function present_to_staging() {
-  print_green "--------------------------------------------------------------------------------"
-  print_green "Running workflow and presenting LE credential to GLEIF Staging Sally"
-  print_green "Using the following URL for Sally's mailbox:"
-  print_green "http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
-  print_green "--------------------------------------------------------------------------------"
-  setup || return 1
-  geda_delegation_to_qvi || return 1
-  qvi_credential || return 1
-  le_creation_and_granting || return 1
-  present_le_gleif_staging || return 1
-  end_workflow || return 1
+ecr_regression_flow() {
+  print_lcyan "Running focused ECR regression"
+  run_shared_story_through_le || return 1
+  ecr_auth_and_ecr_cred || return 1
+  revoke_ecr_credential
 }
 
-# Runs the workflow and presents the LE credential to GLEIF Production Sally
-function present_to_production() {
-  print_green "--------------------------------------------------------------------------------"
-  print_green "Running workflow and presenting LE credential to GLEIF Production Sally"
-  print_green "Using the following URL for Sally's mailbox:"
-  print_green "http://139.99.193.43:5623/oobi/EPZN94iifUVP-3u_6BNDOFS934c8nJDU2A5bcDF9FkzT/witness/BN6TBUuiDY_m87govmYhQ2ryYP2opJROqjDkZToxuxS2"
-  print_green "--------------------------------------------------------------------------------"
-  setup || return 1
-  geda_delegation_to_qvi || return 1
-  qvi_credential || return 1
-  le_creation_and_granting || return 1
-  present_le_gleif_production || return 1
-  end_workflow || return 1
+qar_replacement_regression_flow() {
+  print_lcyan "Running QAR3 to QAR4 replacement regression"
+  run_phase setup setup || return 1
+  run_phase delegation geda_delegation_to_qvi
 }
 
-# Runs the workflow and presents the LE credential to an alternate Sally
-function present_to_alternate_sally() {
-  print_green "--------------------------------------------------------------------------------"
-  print_green "Running workflow and presenting LE credential to alternate Sally: ${ALT_SALLY_ALIAS}"
-  print_green "Using the following URL for Sally's mailbox:"
-  print_green "${ALT_SALLY_OOBI}"
-  print_green "--------------------------------------------------------------------------------"
-  setup || return 1
-  geda_delegation_to_qvi || return 1
-  qvi_credential || return 1
-  le_creation_and_granting || return 1
-  present_le_to_alternate "${ALT_SALLY_ALIAS}" "${ALT_SALLY_OOBI}" || return 1
-  end_workflow || return 1
+configure_scenario_roster() {
+  local config_file="${WORKFLOW_RUN_DIR}/config/participants.json"
+  local temporary_file="${config_file}.tmp"
+  local final_members='["qar1","qar2","qar3"]'
+
+  if [[ "${WORKFLOW_SCENARIO}" == qar-replacement-regression ]]; then
+    final_members='["qar1","qar2","qar4"]'
+    QVI_ACTIVE_ROLES=qar1,qar2,qar4
+    QVI_SETUP_ROLES=qar1,qar2,qar3,qar4,person
+  fi
+  jq --argjson members "${final_members}" \
+    '.qvi.finalMembers = $members' \
+    "${config_file}" > "${temporary_file}" || return 1
+  mv "${temporary_file}" "${config_file}"
 }
 
 usage() {
     printf 'Usage: %s [options]\n' "${0##*/}"
     printf '%s\n' \
         "Options:" \
-        "  -t, --alternate       Present the LE credential to an alternate Sally" \
-        "  -s, --staging         Present the LE credential to GLEIF Staging Sally" \
-        "  -p, --production      Present the LE credential to GLEIF Production Sally" \
-        "  -a, --alias ALIAS     Alias for --alternate (default: alternate)" \
-        "  -o, --oobi OOBI       OOBI URL for --alternate" \
-        "      --timeout SECONDS Timeout for each bounded operation (default: 30)" \
+        "      --backend NAME    docker (default) or local" \
+        "      --scenario NAME   canonical (default), ecr-regression, or qar-replacement-regression" \
+        "      --timeout SECONDS Timeout for each bounded operation" \
         "      --stop-after PHASE Stop successfully after a major canonical phase" \
-        "      --keep-runtime    Preserve runtime/ and local service processes" \
+        "      --keep-artifacts  Preserve logs, state, and domain artifacts after teardown" \
         "      --pause           Pause at story checkpoints" \
         "  -h, --help            Display this help message" \
         "" \
         "Stop phases:" \
-        "  setup, geda_delegation_to_qvi, qvi_credential," \
-        "  le_creation_and_granting, le_sally_presentation," \
-        "  oor_auth_and_oor_cred, person_present_oor_cred_to_sally," \
-        "  revoke_oor_credential, present_revoked_oor_to_sally," \
-        "  ecr_auth_and_ecr_cred, revoke_ecr_credential, end_workflow"
-}
-
-select_workflow_mode() {
-    local requested_mode=$1
-    local mode_is_unset=false
-    local mode_matches=false
-
-    [[ "${WORKFLOW_MODE}" == default ]] && mode_is_unset=true
-    [[ "${WORKFLOW_MODE}" == "${requested_mode}" ]] && mode_matches=true
-    if [[ "${mode_is_unset}" == false && "${mode_matches}" == false ]]; then
-        print_red "Only one of --alternate, --staging, and --production may be selected"
-        return 1
-    fi
-    WORKFLOW_MODE="${requested_mode}"
+        "  setup, delegation, qvi-credential, le-credential," \
+        "  le-presentation, leaf-lifecycle"
 }
 
 parse_arguments() {
-    local alternate_mode_is_selected=false
     local option_has_value=false
     local timeout_is_valid=false
-    local alternate_option_was_customized=false
-    local mode_selection_succeeded=false
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -3042,9 +2847,37 @@ parse_arguments() {
                 PAUSE_ENABLED=true
                 shift
                 ;;
-            --keep-runtime)
-                KEEP_RUNTIME=true
+            --keep-artifacts)
+                KEEP_ARTIFACTS=true
                 shift
+                ;;
+            --backend)
+                [[ $# -ge 2 && -n "${2:-}" ]] || {
+                    print_red "Error: --backend requires a value"
+                    return 2
+                }
+                [[ "$2" == docker || "$2" == local ]] || {
+                    print_red "Error: unknown backend: $2"
+                    return 2
+                }
+                WORKFLOW_BACKEND=$2
+                shift 2
+                ;;
+            --scenario)
+                [[ $# -ge 2 && -n "${2:-}" ]] || {
+                    print_red "Error: --scenario requires a value"
+                    return 2
+                }
+                case "$2" in
+                    canonical|ecr-regression|qar-replacement-regression)
+                        WORKFLOW_SCENARIO=$2
+                        ;;
+                    *)
+                        print_red "Error: unknown scenario: $2"
+                        return 2
+                        ;;
+                esac
+                shift 2
                 ;;
             --timeout)
                 option_has_value=false
@@ -3071,18 +2904,8 @@ parse_arguments() {
                     return 2
                 fi
                 case "$2" in
-                    setup|\
-                    geda_delegation_to_qvi|\
-                    qvi_credential|\
-                    le_creation_and_granting|\
-                    le_sally_presentation|\
-                    oor_auth_and_oor_cred|\
-                    person_present_oor_cred_to_sally|\
-                    revoke_oor_credential|\
-                    present_revoked_oor_to_sally|\
-                    ecr_auth_and_ecr_cred|\
-                    revoke_ecr_credential|\
-                    end_workflow)
+                    setup|delegation|qvi-credential|le-credential|\
+                    le-presentation|leaf-lifecycle)
                         WORKFLOW_STOP_AFTER=$2
                         ;;
                     *)
@@ -3091,52 +2914,6 @@ parse_arguments() {
                         ;;
                 esac
                 shift 2
-                ;;
-            -a|--alias)
-                option_has_value=false
-                [[ $# -ge 2 && -n "${2:-}" ]] && option_has_value=true
-                if [[ "${option_has_value}" == false ]]; then
-                    print_red "Error: --alias requires a value"
-                    return 2
-                fi
-                ALT_SALLY_ALIAS=$2
-                alternate_option_was_customized=true
-                shift 2
-                ;;
-            -o|--oobi)
-                option_has_value=false
-                [[ $# -ge 2 && -n "${2:-}" ]] && option_has_value=true
-                if [[ "${option_has_value}" == false ]]; then
-                    print_red "Error: --oobi requires a value"
-                    return 2
-                fi
-                ALT_SALLY_OOBI=$2
-                alternate_option_was_customized=true
-                shift 2
-                ;;
-            -t|--alternate)
-                mode_selection_succeeded=false
-                select_workflow_mode alternate && mode_selection_succeeded=true
-                if [[ "${mode_selection_succeeded}" == false ]]; then
-                    return 2
-                fi
-                shift
-                ;;
-            -s|--staging)
-                mode_selection_succeeded=false
-                select_workflow_mode staging && mode_selection_succeeded=true
-                if [[ "${mode_selection_succeeded}" == false ]]; then
-                    return 2
-                fi
-                shift
-                ;;
-            -p|--production)
-                mode_selection_succeeded=false
-                select_workflow_mode production && mode_selection_succeeded=true
-                if [[ "${mode_selection_succeeded}" == false ]]; then
-                    return 2
-                fi
-                shift
                 ;;
             -h|--help)
                 HELP_REQUESTED=true
@@ -3148,23 +2925,11 @@ parse_arguments() {
                 ;;
         esac
     done
-
-    [[ "${WORKFLOW_MODE}" == alternate ]] && alternate_mode_is_selected=true
-    if [[ "${alternate_option_was_customized}" == true &&
-          "${alternate_mode_is_selected}" == false ]]; then
-        print_red "--alias and --oobi require --alternate"
-        return 2
-    fi
-    if [[ -n "${WORKFLOW_STOP_AFTER}" &&
-          "${WORKFLOW_MODE}" != default ]]; then
-        print_red "--stop-after is available only for the canonical default workflow"
-        return 2
-    fi
 }
 
 main() {
     local argument_parse_succeeded=false
-    local workflow_duration
+    local workflow_started=${SECONDS}
 
     parse_arguments "$@" && argument_parse_succeeded=true
     if [[ "${argument_parse_succeeded}" == false ]]; then
@@ -3179,19 +2944,17 @@ main() {
     require_system_commands
     install_workflow_traps
     create_workflow_runtime
+    configure_scenario_roster
     # shellcheck source=./kli-commands.sh
     source "${SCRIPT_DIR}/kli-commands.sh"
-    START_TIME=$(date +%s)
-
-    case "${WORKFLOW_MODE}" in
-        alternate) present_to_alternate_sally ;;
-        staging) present_to_staging ;;
-        production) present_to_production ;;
-        default) main_flow ;;
+    case "${WORKFLOW_SCENARIO}" in
+        canonical) canonical_flow ;;
+        ecr-regression) ecr_regression_flow ;;
+        qar-replacement-regression) qar_replacement_regression_flow ;;
     esac
 
-    workflow_duration=$(( $(date +%s) - START_TIME ))
-    print_lcyan "Full chain workflow completed in ${workflow_duration} seconds"
+    print_lcyan \
+        "Workflow completed in $((SECONDS - workflow_started)) seconds"
 }
 
 script_is_being_executed=false

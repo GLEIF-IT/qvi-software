@@ -2,16 +2,6 @@
 
 # Runtime, concurrency, and managed-process helpers for the local QVI workflow.
 
-# Bash 3.2 treats an empty indexed array as unset under `set -u`. Keep index
-# zero as an inert sentinel so the job registry remains safe on macOS Bash.
-WORKFLOW_JOB_NAMES=("")
-WORKFLOW_JOB_PIDS=("")
-WORKFLOW_JOB_STDOUTS=("")
-WORKFLOW_JOB_STDERRS=("")
-WORKFLOW_JOB_RESOURCES=("")
-WORKFLOW_JOB_RESULTS=("")
-WORKFLOW_COMPLETED_JOB_NAMES=("")
-WORKFLOW_COMPLETED_JOB_RESULTS=("")
 WORKFLOW_PROCESS_NAMES=("")
 WORKFLOW_PROCESS_PIDS=("")
 WORKFLOW_PROCESS_LOGS=("")
@@ -151,7 +141,7 @@ stop_process_from_pid_file() {
     kill -TERM "${pid}" 2>/dev/null || true
 }
 
-# Stop services left behind by an earlier --keep-runtime run.
+# Stop services left behind by an interrupted earlier run.
 stop_retained_local_processes() {
     local pid_file
     local stop_status=0
@@ -164,7 +154,7 @@ stop_retained_local_processes() {
     return "${stop_status}"
 }
 
-# Recreate isolated state, generated configs, logs, results, and callback files.
+# Recreate isolated state, generated configs, logs, and callback files.
 create_workflow_runtime() {
     WORKFLOW_RUN_DIR="${SCRIPT_DIR}/runtime"
     WORKFLOW_CONFIG_DIR="${WORKFLOW_RUN_DIR}/config"
@@ -172,7 +162,6 @@ create_workflow_runtime() {
     LOCAL_QVI_DATA_DIR="${WORKFLOW_RUN_DIR}/qvi_data"
     KEYSTORE_DIR="${WORKFLOW_RUN_DIR}/keystores"
     WORKFLOW_LOG_DIR="${WORKFLOW_RUN_DIR}/logs"
-    WORKFLOW_RESULT_DIR="${WORKFLOW_RUN_DIR}/results"
     WORKFLOW_PID_DIR="${WORKFLOW_RUN_DIR}/pids"
     KERI_HEAD_DIR="${WORKFLOW_RUN_DIR}/state"
     KLI_HEAD_DIR="${KERI_HEAD_DIR}"
@@ -183,13 +172,13 @@ create_workflow_runtime() {
     SALLY_LOG_FILE="${WORKFLOW_LOG_DIR}/sally.log"
 
     export WORKFLOW_RUN_DIR WORKFLOW_CONFIG_DIR KLI_DATA_DIR
-    export LOCAL_QVI_DATA_DIR KEYSTORE_DIR WORKFLOW_LOG_DIR WORKFLOW_RESULT_DIR
+    export LOCAL_QVI_DATA_DIR KEYSTORE_DIR WORKFLOW_LOG_DIR
     export WORKFLOW_PID_DIR KERI_HEAD_DIR KLI_HEAD_DIR KLI_BASE
     export WITNESS_BASE SALLY_BASE
     export SALLY_CALLBACK_FILE
     export SALLY_LOG_FILE
 
-    # A retained --keep-runtime run is intentionally replaced by the next run.
+    # Kept artifacts from the previous run are intentionally replaced.
     stop_retained_local_processes
     rm -rf "${WORKFLOW_RUN_DIR}"
 
@@ -200,7 +189,6 @@ create_workflow_runtime() {
         "${LOCAL_QVI_DATA_DIR}" \
         "${KEYSTORE_DIR}" \
         "${WORKFLOW_LOG_DIR}" \
-        "${WORKFLOW_RESULT_DIR}" \
         "${WORKFLOW_PID_DIR}" \
         "${KERI_HEAD_DIR}"
 
@@ -210,6 +198,8 @@ create_workflow_runtime() {
         "${WORKFLOW_CONFIG_DIR}/multi-sig-delegated-incept-config.json" \
         "${WORKFLOW_CONFIG_DIR}/single-sig-incept-config.json"
     cp -R "${SCRIPT_DIR}/acdc-info/rules/." "${KLI_DATA_DIR}/rules/"
+    jq -n --arg backend local '{backend: $backend}' \
+        > "${WORKFLOW_RUN_DIR}/backend.json"
 
     mkdir -p "${WORKFLOW_CONFIG_DIR}/witnesses/keri/cf"
     cp "${SCRIPT_DIR}"/config/witnesses/*.json \
@@ -453,19 +443,21 @@ start_local_keria() {
 
 # Fail before startup when any workflow-owned TCP port already has a listener.
 assert_local_ports_available() {
+    local -a ports=(
+        3901 3902 3903
+        4901 4902 4903
+        5901 5902 5903
+        7901 7902 7903
+        5642 5643 5644
+        7723 8923 9823 9923
+    )
     local port
     local listener=""
 
-    for port in \
-        3901 3902 3903 \
-        4901 4902 4903 \
-        5901 5902 5903 \
-        6901 6902 6903 \
-        7901 7902 7903 \
-        5642 5643 5644 \
-        7723 \
-        8923 \
-        9823 9923; do
+    if [[ "${WORKFLOW_SCENARIO}" == qar-replacement-regression ]]; then
+        ports+=(6901 6902 6903)
+    fi
+    for port in "${ports[@]}"; do
         listener=$(lsof -nP -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
         if [[ -n "${listener}" ]]; then
             printf 'Local workflow port %s is already used by PID %s\n' \
@@ -518,7 +510,9 @@ start_local_foundation_services() {
     start_local_keria qar1 keria-qar1 3901 3902 3903 || return 1
     start_local_keria qar2 keria-qar2 4901 4902 4903 || return 1
     start_local_keria qar3 keria-qar3 5901 5902 5903 || return 1
-    start_local_keria qar4 keria-qar4 6901 6902 6903 || return 1
+    if [[ "${WORKFLOW_SCENARIO}" == qar-replacement-regression ]]; then
+        start_local_keria qar4 keria-qar4 6901 6902 6903 || return 1
+    fi
     start_local_keria person keria-person 7901 7902 7903 || return 1
 
     wait_for_managed_process \
@@ -544,8 +538,10 @@ start_local_foundation_services() {
         keria-qar2 http://127.0.0.1:4902/spec.yaml || return 1
     wait_for_managed_process \
         keria-qar3 http://127.0.0.1:5902/spec.yaml || return 1
-    wait_for_managed_process \
-        keria-qar4 http://127.0.0.1:6902/spec.yaml || return 1
+    if [[ "${WORKFLOW_SCENARIO}" == qar-replacement-regression ]]; then
+        wait_for_managed_process \
+            keria-qar4 http://127.0.0.1:6902/spec.yaml || return 1
+    fi
     wait_for_managed_process \
         keria-person http://127.0.0.1:7902/spec.yaml
 }
@@ -670,34 +666,30 @@ stop_all_managed_processes() {
     done
 }
 
-# Cancel active work, stop services, and remove runtime state unless explicitly retained.
+# Cancel active work, stop services, then preserve or remove artifacts.
 workflow_cleanup() {
     local original_status=$1
     local cleanup_status=0
     local workflow_failed=false
-    local runtime_should_be_kept=false
+    local artifacts_should_be_kept=false
 
     [[ "${original_status}" -ne 0 ]] && workflow_failed=true
-    [[ "${KEEP_RUNTIME:-false}" == true ]] && runtime_should_be_kept=true
-    # A user interrupt always owns cleanup, even when --keep-runtime was set.
-    [[ -n "${WORKFLOW_CLEANUP_SIGNAL}" ]] && runtime_should_be_kept=false
-
-    if [[ "${runtime_should_be_kept}" == true ]]; then
-        print_yellow "Runtime retained at ${WORKFLOW_RUN_DIR}"
-        print_yellow "Local services retained; stop them with ${SCRIPT_DIR}/stop-local.sh"
-        return "${original_status}"
-    fi
+    [[ "${KEEP_ARTIFACTS:-false}" == true ]] && artifacts_should_be_kept=true
 
     if [[ "${workflow_failed}" == true &&
           -z "${WORKFLOW_CLEANUP_SIGNAL}" ]]; then
         print_failure_diagnostics
     fi
 
-    cancel_all_workflow_jobs "${WORKFLOW_CLEANUP_SIGNAL:-TERM}"
+    cancel_jobs
 
     stop_all_managed_processes "${WORKFLOW_CLEANUP_SIGNAL:-TERM}" ||
         cleanup_status=$?
-    rm -rf "${WORKFLOW_RUN_DIR}"
+    if [[ "${artifacts_should_be_kept}" == true ]]; then
+        print_yellow "Artifacts retained at ${WORKFLOW_RUN_DIR}"
+    else
+        rm -rf "${WORKFLOW_RUN_DIR}"
+    fi
 
     if [[ "${original_status}" -ne 0 ]]; then
         return "${original_status}"
@@ -784,316 +776,4 @@ poll_until() {
     printf 'Timed out after %ss waiting for %s. Last observation: %s\n' \
         "${timeout_seconds}" "${description}" "${last_observation}" >&2
     return 1
-}
-
-# Predicate used by tests and waits to detect a completed background process.
-background_job_has_stopped() {
-    local pid=$1
-    if kill -0 "${pid}" 2>/dev/null; then
-        printf 'process %s is still running\n' "${pid}"
-        return 1
-    fi
-}
-
-# Return success when two comma-delimited resource sets intersect.
-workflow_resources_overlap() {
-    local left=$1
-    local right=$2
-    local left_resource
-    local right_resource
-    local old_ifs=${IFS}
-
-    # Temporarily split only these resource lists without leaking IFS changes.
-    IFS=,
-    for left_resource in ${left}; do
-        for right_resource in ${right}; do
-            if [[ -n "${left_resource}" &&
-                  "${left_resource}" == "${right_resource}" ]]; then
-                IFS=${old_ifs}
-                return 0
-            fi
-        done
-    done
-    IFS=${old_ifs}
-    return 1
-}
-
-# Reject duplicate names and overlapping resource sets before launching a job.
-assert_workflow_job_can_start() {
-    local requested_name=$1
-    local requested_resources=$2
-    local active_name
-    local active_resources
-    local index
-
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        # Completed jobs leave sparse array slots; skip those and the sentinel.
-        active_name=${WORKFLOW_JOB_NAMES[${index}]:-}
-        [[ -n "${active_name}" ]] || continue
-
-        if [[ "${active_name}" == "${requested_name}" ]]; then
-            printf 'Background job %s is already active\n' \
-                "${requested_name}" >&2
-            return 1
-        fi
-
-        active_resources=${WORKFLOW_JOB_RESOURCES[${index}]:-}
-        if workflow_resources_overlap \
-            "${requested_resources}" "${active_resources}"; then
-            printf 'Background job %s conflicts with active job %s on resources %s / %s\n' \
-                "${requested_name}" "${active_name}" \
-                "${requested_resources}" "${active_resources}" >&2
-            return 1
-        fi
-    done
-}
-
-# Register one already-admitted background job and its result artifacts.
-register_background_job() {
-    local logical_name=$1
-    local resources=$2
-    local stdout_log=$3
-    local stderr_log=$4
-    local result_file=$5
-    local pid=$6
-
-    local job_index=${#WORKFLOW_JOB_NAMES[@]}
-
-    WORKFLOW_JOB_NAMES[${job_index}]="${logical_name}"
-    WORKFLOW_JOB_PIDS[${job_index}]="${pid}"
-    WORKFLOW_JOB_STDOUTS[${job_index}]="${stdout_log}"
-    WORKFLOW_JOB_STDERRS[${job_index}]="${stderr_log}"
-    WORKFLOW_JOB_RESOURCES[${job_index}]="${resources}"
-    WORKFLOW_JOB_RESULTS[${job_index}]="${result_file}"
-}
-
-# Validate resources, launch one background command, and capture separate logs.
-start_workflow_job() {
-    local logical_name=$1
-    local resources=$2
-    shift 2
-
-    local artifact_stem
-    local stdout_log
-    local stderr_log
-    local result_file
-    local pid
-
-    artifact_stem="${logical_name}-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
-    stdout_log="${WORKFLOW_LOG_DIR}/${artifact_stem}.out.log"
-    stderr_log="${WORKFLOW_LOG_DIR}/${artifact_stem}.err.log"
-    result_file="${WORKFLOW_RESULT_DIR}/${artifact_stem}.json"
-
-    assert_workflow_job_can_start "${logical_name}" "${resources}" || return 1
-
-    # Launch only after admission so no rejected process can escape the registry.
-    "$@" >"${stdout_log}" 2>"${stderr_log}" &
-    pid=$!
-    register_background_job \
-        "${logical_name}" "${resources}" \
-        "${stdout_log}" "${stderr_log}" "${result_file}" "${pid}"
-}
-
-# Return the active registry index for a logical background-job name.
-find_workflow_job_index() {
-    local logical_name=$1
-    local index
-
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        if [[ "${WORKFLOW_JOB_NAMES[${index}]:-}" == "${logical_name}" ]]; then
-            printf '%s\n' "${index}"
-            return 0
-        fi
-    done
-    return 1
-}
-
-# Persist a completed job result, replay its logs, and remove its active entry.
-finish_workflow_job() {
-    local job_index=$1
-    local exit_status=$2
-    local logical_name=${WORKFLOW_JOB_NAMES[${job_index}]}
-    local stdout_log=${WORKFLOW_JOB_STDOUTS[${job_index}]}
-    local stderr_log=${WORKFLOW_JOB_STDERRS[${job_index}]}
-    local resources=${WORKFLOW_JOB_RESOURCES[${job_index}]:-}
-    local result_file=${WORKFLOW_JOB_RESULTS[${job_index}]}
-
-    [[ -f "${stdout_log}" ]] && cat "${stdout_log}"
-    [[ -f "${stderr_log}" ]] && cat "${stderr_log}" >&2
-    jq -n \
-        --arg name "${logical_name}" \
-        --arg resources "${resources}" \
-        --arg stdoutLog "${stdout_log}" \
-        --arg stderrLog "${stderr_log}" \
-        --argjson status "${exit_status}" \
-        '{
-            name: $name,
-            resources: ($resources | split(",") | map(select(length > 0))),
-            status: $status,
-            stdoutLog: $stdoutLog,
-            stderrLog: $stderrLog
-        }' > "${result_file}"
-
-    local completed_index=${#WORKFLOW_COMPLETED_JOB_NAMES[@]}
-    WORKFLOW_COMPLETED_JOB_NAMES[${completed_index}]="${logical_name}"
-    WORKFLOW_COMPLETED_JOB_RESULTS[${completed_index}]="${result_file}"
-
-    unset "WORKFLOW_JOB_NAMES[${job_index}]"
-    unset "WORKFLOW_JOB_PIDS[${job_index}]"
-    unset "WORKFLOW_JOB_STDOUTS[${job_index}]"
-    unset "WORKFLOW_JOB_STDERRS[${job_index}]"
-    unset "WORKFLOW_JOB_RESOURCES[${job_index}]"
-    unset "WORKFLOW_JOB_RESULTS[${job_index}]"
-}
-
-# Return the newest JSON result file for a completed logical job name.
-workflow_job_result_file() {
-    local logical_name=$1
-    local index
-
-    # Return the most recent result when a logical name is reused in a later
-    # conflict-free wave.
-    for ((index=${#WORKFLOW_COMPLETED_JOB_NAMES[@]} - 1; index >= 1; index--)); do
-        if [[ "${WORKFLOW_COMPLETED_JOB_NAMES[${index}]:-}" == "${logical_name}" ]]; then
-            printf '%s\n' "${WORKFLOW_COMPLETED_JOB_RESULTS[${index}]}"
-            return 0
-        fi
-    done
-    printf 'No completed background job result is registered as %s\n' \
-        "${logical_name}" >&2
-    return 1
-}
-
-# Load and validate a completed job's JSON result.
-load_workflow_job_result() {
-    local logical_name=$1
-    local result_file
-
-    result_file=$(workflow_job_result_file "${logical_name}") || return 1
-    jq -e '.' "${result_file}"
-}
-
-# Report whether any registered background job remains alive.
-workflow_jobs_are_running() {
-    local index
-    local pid
-
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
-        pid=${WORKFLOW_JOB_PIDS[${index}]}
-        if workflow_process_is_running "${pid}"; then
-            return 0
-        fi
-    done
-    return 1
-}
-
-# Give active jobs a short common grace period to stop.
-wait_for_workflow_jobs_to_stop() {
-    local timeout_seconds=$1
-    local deadline=$((SECONDS + timeout_seconds))
-
-    while workflow_jobs_are_running; do
-        [[ "${SECONDS}" -ge "${deadline}" ]] && return 1
-        sleep 0.1
-    done
-}
-
-# Cancel every active job with one signal and record a conventional exit status.
-cancel_all_workflow_jobs() {
-    local signal_name=${1:-TERM}
-    local signal_status
-    local index
-    local pid
-    local active_jobs_found=false
-
-    signal_status=$(workflow_signal_status "${signal_name}")
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
-        active_jobs_found=true
-        pid=${WORKFLOW_JOB_PIDS[${index}]}
-        signal_workflow_process_tree "${signal_name}" "${pid}"
-    done
-    [[ "${active_jobs_found}" == true ]] || return 0
-
-    if ! wait_for_workflow_jobs_to_stop 5; then
-        if [[ "${signal_name}" != TERM ]]; then
-            for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-                [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
-                pid=${WORKFLOW_JOB_PIDS[${index}]}
-                signal_workflow_process_tree TERM "${pid}"
-            done
-            wait_for_workflow_jobs_to_stop 1 || true
-        fi
-    fi
-
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
-        pid=${WORKFLOW_JOB_PIDS[${index}]}
-        if workflow_process_is_running "${pid}"; then
-            signal_workflow_process_tree KILL "${pid}"
-        fi
-        wait "${pid}" 2>/dev/null || true
-        finish_workflow_job "${index}" "${signal_status}"
-    done
-}
-
-# Wait for one named job through the common job-group implementation.
-wait_for_background_job() {
-    local logical_name=$1
-    wait_for_background_jobs "${logical_name}"
-}
-
-# Wait for a conflict-free job group with one deadline and fail-fast cancellation.
-wait_for_background_jobs() {
-    local requested_names=("$@")
-    local deadline=$((SECONDS + WORKFLOW_TIMEOUT_SECONDS))
-    local remaining=${#requested_names[@]}
-    local logical_name
-    local job_index
-    local pid
-    local exit_status
-    local made_progress
-
-    for logical_name in "${requested_names[@]}"; do
-        find_workflow_job_index "${logical_name}" >/dev/null || {
-            printf 'No background job is registered as %s\n' "${logical_name}" >&2
-            return 1
-        }
-    done
-
-    while [[ "${remaining}" -gt 0 ]]; do
-        made_progress=false
-        for logical_name in "${requested_names[@]}"; do
-            job_index=$(find_workflow_job_index "${logical_name}") || continue
-            pid=${WORKFLOW_JOB_PIDS[${job_index}]}
-            if kill -0 "${pid}" 2>/dev/null; then
-                continue
-            fi
-
-            exit_status=0
-            wait "${pid}" || exit_status=$?
-            finish_workflow_job "${job_index}" "${exit_status}"
-            remaining=$((remaining - 1))
-            made_progress=true
-            if [[ "${exit_status}" -ne 0 ]]; then
-                printf 'Background job %s failed with status %s\n' \
-                    "${logical_name}" "${exit_status}" >&2
-                cancel_all_workflow_jobs
-                return "${exit_status}"
-            fi
-        done
-
-        [[ "${remaining}" -eq 0 ]] && break
-        if [[ "${SECONDS}" -ge "${deadline}" ]]; then
-            printf 'Timed out after %ss waiting for background job group: %s\n' \
-                "${WORKFLOW_TIMEOUT_SECONDS}" "${requested_names[*]}" >&2
-            cancel_all_workflow_jobs
-            return 124
-        fi
-        # Bash 3.2 has no wait -n. A short PID poll keeps sub-second local
-        # commands from being rounded up by a one-second completion sleep.
-        [[ "${made_progress}" == true ]] ||
-        sleep "${WORKFLOW_POLL_INTERVAL_SECONDS}"
-    done
 }

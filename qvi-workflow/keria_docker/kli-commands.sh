@@ -9,8 +9,7 @@ kli() {
 klid() {
     local logical_name=$1
     shift
-    start_workflow_job \
-        "${logical_name}" "${logical_name}" kli "$@"
+    start_job "${logical_name}" kli "$@"
 }
 
 sig_tsx() {
@@ -18,5 +17,5 @@ sig_tsx() {
 }
 
 wait_kli_jobs() {
-    wait_for_background_jobs "$@"
+    wait_jobs "$@"
 }

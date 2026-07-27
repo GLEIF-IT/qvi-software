@@ -1,7 +1,7 @@
 {
-    "wub": {
+    "wit": {
         "dt": "2024-12-31T14:06:30.123456+00:00",
-        "curls": ["tcp://gar-witnesses:5636/", "http://gar-witnesses:5646/"]
+        "curls": ["tcp://witnesses:5635/", "http://witnesses:5645/"]
     },
     "dt": "2024-12-31T14:06:30.123456+00:00",
     "iurls": []

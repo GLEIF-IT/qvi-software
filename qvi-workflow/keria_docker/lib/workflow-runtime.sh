@@ -1,24 +1,14 @@
 #!/usr/bin/env bash
 
-# Small, sourceable runtime helpers for the local QVI demonstration.
+# Small, sourceable runtime helpers for the Docker QVI demonstration.
 #
 # The workflow deliberately supports one run at a time. Docker Compose owns the
 # network and named volumes; generated files live in the visible runtime/
 # directory beside the driver.
 
-# Bash 3.2 treats an empty indexed array as unset under `set -u`. Keep index
-# zero as an inert sentinel so the job registry remains safe on macOS Bash.
-WORKFLOW_JOB_NAMES=("")
-WORKFLOW_JOB_PIDS=("")
-WORKFLOW_JOB_STDOUTS=("")
-WORKFLOW_JOB_STDERRS=("")
-WORKFLOW_JOB_RESOURCES=("")
-WORKFLOW_JOB_RESULTS=("")
-WORKFLOW_COMPLETED_JOB_NAMES=("")
-WORKFLOW_COMPLETED_JOB_RESULTS=("")
-
 workflow_compose() {
     docker compose \
+        --project-name qvi-workflow-keria-docker \
         --project-directory "${SCRIPT_DIR}" \
         --env-file "${WORKFLOW_ENV_FILE}" \
         -f "${DOCKER_COMPOSE_FILE}" \
@@ -31,14 +21,13 @@ create_workflow_runtime() {
     KLI_DATA_DIR="${WORKFLOW_RUN_DIR}/acdc-info"
     LOCAL_QVI_DATA_DIR="${WORKFLOW_RUN_DIR}/qvi_data"
     WORKFLOW_LOG_DIR="${WORKFLOW_RUN_DIR}/logs"
-    WORKFLOW_RESULT_DIR="${WORKFLOW_RUN_DIR}/results"
     SALLY_CALLBACK_FILE="${WORKFLOW_RUN_DIR}/sally-callbacks.jsonl"
 
     export WORKFLOW_RUN_DIR WORKFLOW_CONFIG_DIR KLI_DATA_DIR
-    export LOCAL_QVI_DATA_DIR WORKFLOW_LOG_DIR WORKFLOW_RESULT_DIR
+    export LOCAL_QVI_DATA_DIR WORKFLOW_LOG_DIR
     export SALLY_CALLBACK_FILE
 
-    # A retained --keep-runtime run is intentionally replaced by the next run.
+    # Kept artifacts from the previous run are intentionally replaced.
     workflow_compose down --volumes --remove-orphans >/dev/null 2>&1 || true
     rm -rf "${WORKFLOW_RUN_DIR}"
 
@@ -47,8 +36,7 @@ create_workflow_runtime() {
         "${KLI_DATA_DIR}/rules" \
         "${KLI_DATA_DIR}/temp-data" \
         "${LOCAL_QVI_DATA_DIR}" \
-        "${WORKFLOW_LOG_DIR}" \
-        "${WORKFLOW_RESULT_DIR}"
+        "${WORKFLOW_LOG_DIR}"
 
     cp -R "${SCRIPT_DIR}/config/." "${WORKFLOW_CONFIG_DIR}/"
     rm -f \
@@ -56,6 +44,11 @@ create_workflow_runtime() {
         "${WORKFLOW_CONFIG_DIR}/multi-sig-delegated-incept-config.json" \
         "${WORKFLOW_CONFIG_DIR}/single-sig-incept-config.json"
     cp -R "${SCRIPT_DIR}/acdc-info/rules/." "${KLI_DATA_DIR}/rules/"
+    jq -n \
+        --arg backend docker \
+        --arg stateVolume qvi-workflow-keria-docker_kli-vol \
+        '{backend: $backend, stateVolume: $stateVolume}' \
+        > "${WORKFLOW_RUN_DIR}/backend.json"
 
     mkdir -p "${WORKFLOW_CONFIG_DIR}/sally/keri/cf"
     cp \
@@ -83,15 +76,15 @@ create_workflow_runtime() {
                 witnesses: [
                     {
                         id: "BBilc4-L3tFUnfM_wJr4S4OJanAv_VmF_dJNN6vkf2Ha",
-                        url: "http://gar-witnesses:5642"
+                        url: "http://witnesses:5642"
                     },
                     {
                         id: "BLskRTInXnMxWaGqcpSyMgo0nYbalW99cGZESrz3zapM",
-                        url: "http://qar-witnesses:5643"
+                        url: "http://witnesses:5643"
                     },
                     {
                         id: "BIKKuvBwpmDVA4Ds-EpL5bt9OqPzWPja2LigFYZN2YfX",
-                        url: "http://person-witnesses:5644"
+                        url: "http://witnesses:5644"
                     }
                 ]
             },
@@ -172,25 +165,26 @@ workflow_cleanup() {
     local original_status=$1
     local cleanup_status=0
     local workflow_failed=false
-    local runtime_should_be_kept=false
+    local artifacts_should_be_kept=false
 
     [[ "${original_status}" -ne 0 ]] && workflow_failed=true
-    [[ "${KEEP_RUNTIME:-false}" == true ]] && runtime_should_be_kept=true
-
-    if [[ "${runtime_should_be_kept}" == true ]]; then
-        print_yellow "Runtime retained at ${WORKFLOW_RUN_DIR}"
-        print_yellow "Teardown: cd ${SCRIPT_DIR} && docker compose --env-file ${WORKFLOW_ENV_FILE} -f ${DOCKER_COMPOSE_FILE} down -v --remove-orphans"
-        return "${original_status}"
-    fi
+    [[ "${KEEP_ARTIFACTS:-false}" == true ]] && artifacts_should_be_kept=true
 
     if [[ "${workflow_failed}" == true ]]; then
         print_failure_diagnostics
     fi
 
-    cancel_all_workflow_jobs
+    cancel_jobs
 
-    workflow_compose down --volumes --remove-orphans || cleanup_status=$?
-    rm -rf "${WORKFLOW_RUN_DIR}"
+    if [[ "${artifacts_should_be_kept}" == true ]]; then
+        # Containers always stop. Keep named state volumes so the standalone
+        # external-presentation utility can reuse this exact canonical run.
+        workflow_compose down --remove-orphans || cleanup_status=$?
+        print_yellow "Artifacts retained at ${WORKFLOW_RUN_DIR}"
+    else
+        workflow_compose down --volumes --remove-orphans || cleanup_status=$?
+        rm -rf "${WORKFLOW_RUN_DIR}"
+    fi
 
     if [[ "${original_status}" -ne 0 ]]; then
         return "${original_status}"
@@ -276,270 +270,4 @@ poll_until() {
     printf 'Timed out after %ss waiting for %s. Last observation: %s\n' \
         "${timeout_seconds}" "${description}" "${last_observation}" >&2
     return 1
-}
-
-background_job_has_stopped() {
-    local pid=$1
-    if kill -0 "${pid}" 2>/dev/null; then
-        printf 'process %s is still running\n' "${pid}"
-        return 1
-    fi
-}
-
-workflow_resources_overlap() {
-    local left=$1
-    local right=$2
-    local left_resource
-    local right_resource
-    local old_ifs=${IFS}
-
-    IFS=,
-    for left_resource in ${left}; do
-        for right_resource in ${right}; do
-            if [[ -n "${left_resource}" &&
-                  "${left_resource}" == "${right_resource}" ]]; then
-                IFS=${old_ifs}
-                return 0
-            fi
-        done
-    done
-    IFS=${old_ifs}
-    return 1
-}
-
-register_background_job() {
-    local logical_name=$1
-    local resources=$2
-    local stdout_log=$3
-    local stderr_log=$4
-    local result_file=$5
-    local pid=$6
-
-    local existing_name
-    local existing_resources
-    local index
-    local job_index=${#WORKFLOW_JOB_NAMES[@]}
-
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        existing_name=${WORKFLOW_JOB_NAMES[${index}]}
-        if [[ "${existing_name}" == "${logical_name}" ]]; then
-            printf 'Background job %s is already active\n' "${logical_name}" >&2
-            return 1
-        fi
-        existing_resources=${WORKFLOW_JOB_RESOURCES[${index}]:-}
-        if workflow_resources_overlap "${resources}" "${existing_resources}"; then
-            printf 'Background job %s conflicts with active job %s on resources %s / %s\n' \
-                "${logical_name}" "${existing_name}" \
-                "${resources}" "${existing_resources}" >&2
-            return 1
-        fi
-    done
-
-    WORKFLOW_JOB_NAMES[${job_index}]="${logical_name}"
-    WORKFLOW_JOB_PIDS[${job_index}]="${pid}"
-    WORKFLOW_JOB_STDOUTS[${job_index}]="${stdout_log}"
-    WORKFLOW_JOB_STDERRS[${job_index}]="${stderr_log}"
-    WORKFLOW_JOB_RESOURCES[${job_index}]="${resources}"
-    WORKFLOW_JOB_RESULTS[${job_index}]="${result_file}"
-}
-
-start_workflow_job() {
-    local logical_name=$1
-    local resources=$2
-    shift 2
-
-    local artifact_stem
-    local stdout_log
-    local stderr_log
-    local result_file
-    local pid
-
-    artifact_stem="${logical_name}-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
-    stdout_log="${WORKFLOW_LOG_DIR}/${artifact_stem}.out.log"
-    stderr_log="${WORKFLOW_LOG_DIR}/${artifact_stem}.err.log"
-    result_file="${WORKFLOW_RESULT_DIR}/${artifact_stem}.json"
-
-    # Validate conflicts before launching so a rejected job cannot escape the
-    # workflow registry.
-    local existing_resources
-    local index
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
-        existing_resources=${WORKFLOW_JOB_RESOURCES[${index}]:-}
-        if [[ "${WORKFLOW_JOB_NAMES[${index}]}" == "${logical_name}" ]] ||
-           workflow_resources_overlap "${resources}" "${existing_resources}"; then
-            printf 'Cannot start background job %s with resources %s\n' \
-                "${logical_name}" "${resources}" >&2
-            return 1
-        fi
-    done
-
-    "$@" >"${stdout_log}" 2>"${stderr_log}" &
-    pid=$!
-    register_background_job \
-        "${logical_name}" "${resources}" \
-        "${stdout_log}" "${stderr_log}" "${result_file}" "${pid}"
-}
-
-run_background_compose_job() {
-    local service_name=$1
-    local logical_name=$2
-    local resources=$3
-    shift 3
-
-    start_workflow_job \
-        "${logical_name}" "${resources}" \
-        workflow_compose exec -T "${service_name}" "$@"
-}
-
-find_workflow_job_index() {
-    local logical_name=$1
-    local index
-
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        if [[ "${WORKFLOW_JOB_NAMES[${index}]:-}" == "${logical_name}" ]]; then
-            printf '%s\n' "${index}"
-            return 0
-        fi
-    done
-    return 1
-}
-
-finish_workflow_job() {
-    local job_index=$1
-    local exit_status=$2
-    local logical_name=${WORKFLOW_JOB_NAMES[${job_index}]}
-    local stdout_log=${WORKFLOW_JOB_STDOUTS[${job_index}]}
-    local stderr_log=${WORKFLOW_JOB_STDERRS[${job_index}]}
-    local resources=${WORKFLOW_JOB_RESOURCES[${job_index}]:-}
-    local result_file=${WORKFLOW_JOB_RESULTS[${job_index}]}
-
-    [[ -f "${stdout_log}" ]] && cat "${stdout_log}"
-    [[ -f "${stderr_log}" ]] && cat "${stderr_log}" >&2
-    jq -n \
-        --arg name "${logical_name}" \
-        --arg resources "${resources}" \
-        --arg stdoutLog "${stdout_log}" \
-        --arg stderrLog "${stderr_log}" \
-        --argjson status "${exit_status}" \
-        '{
-            name: $name,
-            resources: ($resources | split(",") | map(select(length > 0))),
-            status: $status,
-            stdoutLog: $stdoutLog,
-            stderrLog: $stderrLog
-        }' > "${result_file}"
-
-    local completed_index=${#WORKFLOW_COMPLETED_JOB_NAMES[@]}
-    WORKFLOW_COMPLETED_JOB_NAMES[${completed_index}]="${logical_name}"
-    WORKFLOW_COMPLETED_JOB_RESULTS[${completed_index}]="${result_file}"
-
-    unset "WORKFLOW_JOB_NAMES[${job_index}]"
-    unset "WORKFLOW_JOB_PIDS[${job_index}]"
-    unset "WORKFLOW_JOB_STDOUTS[${job_index}]"
-    unset "WORKFLOW_JOB_STDERRS[${job_index}]"
-    unset "WORKFLOW_JOB_RESOURCES[${job_index}]"
-    unset "WORKFLOW_JOB_RESULTS[${job_index}]"
-}
-
-workflow_job_result_file() {
-    local logical_name=$1
-    local index
-
-    # Return the most recent result when a logical name is reused in a later
-    # conflict-free wave.
-    for ((index=${#WORKFLOW_COMPLETED_JOB_NAMES[@]} - 1; index >= 1; index--)); do
-        if [[ "${WORKFLOW_COMPLETED_JOB_NAMES[${index}]:-}" == "${logical_name}" ]]; then
-            printf '%s\n' "${WORKFLOW_COMPLETED_JOB_RESULTS[${index}]}"
-            return 0
-        fi
-    done
-    printf 'No completed background job result is registered as %s\n' \
-        "${logical_name}" >&2
-    return 1
-}
-
-load_workflow_job_result() {
-    local logical_name=$1
-    local result_file
-
-    result_file=$(workflow_job_result_file "${logical_name}") || return 1
-    jq -e '.' "${result_file}"
-}
-
-cancel_all_workflow_jobs() {
-    local index
-    local pid
-    local active_jobs_found=false
-
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
-        active_jobs_found=true
-        pid=${WORKFLOW_JOB_PIDS[${index}]}
-        kill "${pid}" 2>/dev/null || true
-    done
-    [[ "${active_jobs_found}" == true ]] || return 0
-    sleep 1
-    for index in "${!WORKFLOW_JOB_NAMES[@]}"; do
-        [[ -n "${WORKFLOW_JOB_NAMES[${index}]:-}" ]] || continue
-        pid=${WORKFLOW_JOB_PIDS[${index}]}
-        kill -9 "${pid}" 2>/dev/null || true
-        wait "${pid}" 2>/dev/null || true
-        finish_workflow_job "${index}" 143
-    done
-}
-
-wait_for_background_job() {
-    local logical_name=$1
-    wait_for_background_jobs "${logical_name}"
-}
-
-wait_for_background_jobs() {
-    local requested_names=("$@")
-    local deadline=$((SECONDS + WORKFLOW_TIMEOUT_SECONDS))
-    local remaining=${#requested_names[@]}
-    local logical_name
-    local job_index
-    local pid
-    local exit_status
-    local made_progress
-
-    for logical_name in "${requested_names[@]}"; do
-        find_workflow_job_index "${logical_name}" >/dev/null || {
-            printf 'No background job is registered as %s\n' "${logical_name}" >&2
-            return 1
-        }
-    done
-
-    while [[ "${remaining}" -gt 0 ]]; do
-        made_progress=false
-        for logical_name in "${requested_names[@]}"; do
-            job_index=$(find_workflow_job_index "${logical_name}") || continue
-            pid=${WORKFLOW_JOB_PIDS[${job_index}]}
-            if kill -0 "${pid}" 2>/dev/null; then
-                continue
-            fi
-
-            exit_status=0
-            wait "${pid}" || exit_status=$?
-            finish_workflow_job "${job_index}" "${exit_status}"
-            remaining=$((remaining - 1))
-            made_progress=true
-            if [[ "${exit_status}" -ne 0 ]]; then
-                printf 'Background job %s failed with status %s\n' \
-                    "${logical_name}" "${exit_status}" >&2
-                cancel_all_workflow_jobs
-                return "${exit_status}"
-            fi
-        done
-
-        [[ "${remaining}" -eq 0 ]] && break
-        if [[ "${SECONDS}" -ge "${deadline}" ]]; then
-            printf 'Timed out after %ss waiting for background job group: %s\n' \
-                "${WORKFLOW_TIMEOUT_SECONDS}" "${requested_names[*]}" >&2
-            cancel_all_workflow_jobs
-            return 124
-        fi
-        [[ "${made_progress}" == true ]] || sleep 1
-    done
 }
