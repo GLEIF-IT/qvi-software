@@ -12,6 +12,7 @@ import {
     SignifyClient,
     Tier,
 } from 'signify-ts';
+import {LOCAL_OPERATION_POLLING} from './retry.ts';
 
 export type ParticipantRole =
     | 'qar1'
@@ -403,7 +404,10 @@ export async function waitOperation(
     waitSignal.throwIfAborted();
     const completed = await client
         .operations()
-        .wait(current, {signal: waitSignal});
+        .wait(current, {
+            signal: waitSignal,
+            ...LOCAL_OPERATION_POLLING,
+        });
     return requireCompletedOperation(completed);
 }
 

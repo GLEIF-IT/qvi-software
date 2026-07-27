@@ -130,6 +130,52 @@ function clientFor(
 }
 
 describe('notification correlation', () => {
+    it('polls delayed local notifications without exponential overshoot', async () => {
+        const expectedNote = notification(1, 'EDelayed');
+        const expectedExchange = exchange({
+            said: 'EDelayed',
+            sender: 'EInitiator',
+            embeddedDigest: 'ECurrentRev',
+        });
+        let listCalls = 0;
+        const client = {
+            notifications: () => ({
+                list: async () => {
+                    listCalls += 1;
+                    const notes = listCalls < 5
+                        ? []
+                        : [expectedNote];
+                    return {
+                        start: 0,
+                        end: Math.max(0, notes.length - 1),
+                        total: notes.length,
+                        notes,
+                    };
+                },
+                mark: async (said: string) => said,
+                delete: async () => undefined,
+            }),
+            exchanges: () => ({
+                get: async () => expectedExchange,
+            }),
+        };
+        const startedAt = performance.now();
+
+        const matched = await waitForMatchingNotification(
+            client,
+            {
+                notificationRoute: '/multisig/rev',
+                exchangeRoute: '/multisig/rev',
+                sender: 'EInitiator',
+                embeddedDigest: 'ECurrentRev',
+            }
+        );
+
+        assert.equal(matched.exchangeSaid, 'EDelayed');
+        assert.equal(listCalls, 5);
+        assert.ok(performance.now() - startedAt < 500);
+    });
+
     it('paginates beyond 25 entries and ignores stale same-route traffic', async () => {
         const notes = Array.from({length: 27}, (_, index) =>
             notification(index, `E${index}`)

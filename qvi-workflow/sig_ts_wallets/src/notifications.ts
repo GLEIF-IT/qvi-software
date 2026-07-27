@@ -342,7 +342,7 @@ export async function waitForMatchingNotification(
         );
     }
 
-    return retry(async () => {
+    return await retry(async () => {
         const matches = await findMatchingNotifications(
             client,
             expectation
@@ -361,7 +361,11 @@ export async function waitForMatchingNotification(
             );
         }
         return matches[0];
-    }, options);
+    }, {
+        minSleep: 32,
+        maxSleep: 32,
+        ...options,
+    });
 }
 
 export async function consumeNotification(

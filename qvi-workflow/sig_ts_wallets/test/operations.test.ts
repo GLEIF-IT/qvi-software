@@ -39,7 +39,12 @@ function client(options: {
     get?: (name: string) => Promise<Operation>;
     wait?: (
         operation: Operation,
-        options?: {signal?: AbortSignal}
+        options?: {
+            signal?: AbortSignal;
+            minSleep?: number;
+            maxSleep?: number;
+            increaseFactor?: number;
+        }
     ) => Promise<CompletedDoneOperation>;
 }): SignifyClient {
     return {
@@ -76,6 +81,18 @@ describe('operation lifecycle', () => {
                 wait: async (operation, options) => {
                     calls.push(`wait:${operation.name}`);
                     assert.ok(options?.signal);
+                    assert.deepEqual(
+                        {
+                            minSleep: options?.minSleep,
+                            maxSleep: options?.maxSleep,
+                            increaseFactor: options?.increaseFactor,
+                        },
+                        {
+                            minSleep: 32,
+                            maxSleep: 32,
+                            increaseFactor: 32,
+                        }
+                    );
                     return completed;
                 },
             }),
