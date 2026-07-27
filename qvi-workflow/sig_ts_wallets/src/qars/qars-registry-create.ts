@@ -1,5 +1,5 @@
 import type {GroupMember} from '../client.ts';
-import {createRegistry} from '../credentials.ts';
+import {createRegistry} from '../credential-mutations.ts';
 import {retry} from '../retry.ts';
 
 /** Create the QVI registry and require it to converge across all members. */

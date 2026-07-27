@@ -5,35 +5,51 @@ import type {
 } from 'signify-ts';
 
 import {
-    completeMultisigOps,
-    type MultisigResult,
-} from './coordinated-operation.ts';
-import type {MatchedNotification} from './notifications.ts';
+    consumeNotifications,
+    type NotificationWriter,
+} from './notifications.ts';
+import {
+    waitOperation,
+    type OperationClient,
+} from './operations.ts';
 
-export interface MultisigMember {
-    client: SignifyClient;
+export interface MultisigMember<
+    Client extends OperationClient & NotificationWriter = SignifyClient,
+> {
+    client: Client;
     aid: HabState;
 }
 
-export interface MultisigMemberContext extends MultisigMember {
+export interface MultisigMemberContext<
+    Client extends OperationClient & NotificationWriter = SignifyClient,
+> extends MultisigMember<Client> {
     otherMembers: HabState[];
     isInitiator: boolean;
-    coordinatorPrefix: string;
+    initiatorPrefix: string;
 }
 
-export type RunMemberOperation = (
-    context: MultisigMemberContext
+export interface MultisigResult {
+    operation: Operation | string;
+    notificationIds: string[];
+}
+
+export type RunMemberOperation<
+    Client extends OperationClient & NotificationWriter = SignifyClient,
+> = (
+    context: MultisigMemberContext<Client>
 ) => Promise<MultisigResult>;
 
 export interface MemberSubmission {
     memberPrefix: string;
     operation: Operation | string;
-    notifications: MatchedNotification[];
+    notificationIds: string[];
 }
 
 /** Validate a concrete member set and its explicit operation initiator. */
-function requireMembers(
-    members: MultisigMember[],
+function requireMembers<
+    Client extends OperationClient & NotificationWriter,
+>(
+    members: MultisigMember<Client>[],
     initiatorPrefix: string
 ): void {
     if (members.length === 0) {
@@ -53,10 +69,12 @@ function requireMembers(
 }
 
 /** Build member-local operation inputs around an explicit initiator. */
-export function memberContexts(
-    members: MultisigMember[],
+export function memberContexts<
+    Client extends OperationClient & NotificationWriter,
+>(
+    members: MultisigMember<Client>[],
     initiatorPrefix: string
-): MultisigMemberContext[] {
+): MultisigMemberContext<Client>[] {
     requireMembers(members, initiatorPrefix);
     return members.map((member) => ({
         ...member,
@@ -64,18 +82,45 @@ export function memberContexts(
             .filter((candidate) => candidate !== member)
             .map(({aid}) => aid),
         isInitiator: member.aid.prefix === initiatorPrefix,
-        coordinatorPrefix: initiatorPrefix,
+        initiatorPrefix,
     }));
+}
+
+interface CompletedMember {
+    client: OperationClient & NotificationWriter;
+    result: MultisigResult;
+}
+
+/**
+ * Wait for the shared success barrier, then consume each member's local
+ * notification records in deterministic member order.
+ */
+export async function completeMultisigOperations(
+    members: CompletedMember[]
+): Promise<void> {
+    await Promise.all(
+        members.map(({client, result}) =>
+            waitOperation(client, result.operation)
+        )
+    );
+
+    for (const {client, result} of members) {
+        if (result.notificationIds.length > 0) {
+            await consumeNotifications(client, result.notificationIds);
+        }
+    }
 }
 
 /**
  * Starts the proposal, overlaps independent follower contributions, and waits
  * for every member's local operation to complete.
  */
-export async function coordinateMultisigOperation(
-    members: MultisigMember[],
+export async function coordinateMultisigOperation<
+    Client extends OperationClient & NotificationWriter,
+>(
+    members: MultisigMember<Client>[],
     initiatorPrefix: string,
-    runMember: RunMemberOperation
+    runMember: RunMemberOperation<Client>
 ): Promise<void> {
     const contexts = memberContexts(members, initiatorPrefix);
     const initiator = contexts.find(({isInitiator}) => isInitiator);
@@ -93,18 +138,11 @@ export async function coordinateMultisigOperation(
         followers.map((context) => runMember(context))
     );
 
-    await completeMultisigOps([
+    await completeMultisigOperations([
         {client: initiator.client, result: initiatorResult},
         ...followers.map((context, index) => ({
             client: context.client,
             result: followerResults[index],
         })),
     ]);
-}
-
-export function operationFrom(
-    operation: Operation,
-    coordination: MatchedNotification[]
-): MultisigResult {
-    return {operation, coordination};
 }

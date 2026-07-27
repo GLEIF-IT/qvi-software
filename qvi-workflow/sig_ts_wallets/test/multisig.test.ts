@@ -15,7 +15,7 @@ function memberEvent(
         member: {
             memberPrefix,
             operation: `op-${memberPrefix}`,
-            notifications: [],
+            notificationIds: [],
         },
         groupPrefix: 'E-group',
         eventSaid,
@@ -26,10 +26,10 @@ function memberEvent(
 describe('multisig event aggregation', () => {
     it('preserves separate signing and next rosters', () => {
         const signing = ['E1', 'E2', 'E3'].map(
-            (prefix) => ({prefix}) as never
+            (prefix) => ({prefix})
         );
         const rotation = ['E1', 'E2', 'E4'].map(
-            (prefix) => ({prefix}) as never
+            (prefix) => ({prefix})
         );
         const event = buildGroupEvent(
             signing,
@@ -45,8 +45,8 @@ describe('multisig event aggregation', () => {
         assert.throws(
             () =>
                 buildGroupEvent(
-                    [{prefix: 'E1'} as never],
-                    [{prefix: 'E1'} as never],
+                    [{prefix: 'E1'}],
+                    [{prefix: 'E1'}],
                     [
                         memberEvent('E1'),
                         memberEvent('E2', 'E-other'),

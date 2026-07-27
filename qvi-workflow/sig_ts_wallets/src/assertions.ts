@@ -44,6 +44,26 @@ export interface QviMultisigOobi {
     agentEndpoints: AgentEndpoint[];
 }
 
+interface EndRoleObservation {
+    cid: string;
+    role: string;
+    eid: string;
+}
+
+/** The exact KERIA observation surface needed for QVI endpoint proof. */
+export interface QviEndRoleClient {
+    oobis(): {
+        get(name: string, role: string): Promise<{oobis: string[]}>;
+        endroles(
+            prefix: string,
+            role: string
+        ): Promise<EndRoleObservation[]>;
+    };
+    identifiers(): {
+        members(name: string): Promise<unknown>;
+    };
+}
+
 /** Return whether a value is a non-null object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
@@ -127,7 +147,7 @@ function readAgentEndpoints(
 
 /** Require every observer to report the same member-agent endpoints. */
 export async function observeQviEndpoints(
-    clients: SignifyClient[],
+    clients: QviEndRoleClient[],
     groupName: string,
     expectedEids: string[]
 ): Promise<AgentEndpoint[]> {
@@ -154,7 +174,7 @@ export async function observeQviEndpoints(
 
 /** Require every observer to report the exact authorized agent EIDs. */
 async function exactAuthorizedEids(
-    clients: SignifyClient[],
+    clients: QviEndRoleClient[],
     qviPrefix: string,
     expectedEids: string[]
 ): Promise<void> {
@@ -210,44 +230,64 @@ function groupOobi(
 
 /** Assert the exact authorized endpoints and return the QVI OOBI. */
 export async function assertQviEndRoles(
-    clients: SignifyClient[],
+    clients: QviEndRoleClient[],
     groupName: string,
     qviPrefix: string,
-    expectedEndpoints: AgentEndpoint[]
+    expectedMemberEndpoints: AgentEndpoint[],
+    expectedAuthorizedEndpoints: AgentEndpoint[] =
+        expectedMemberEndpoints
 ): Promise<QviMultisigOobi> {
-    const normalizedEndpoints = sortAgentEndpointsByEid(
-        expectedEndpoints.map(({eid, url}) => ({
+    const memberEndpoints = sortAgentEndpointsByEid(
+        expectedMemberEndpoints.map(({eid, url}) => ({
             eid,
             url: new URL(url).toString(),
         }))
     );
-    const expectedEids = normalizedEndpoints.map(({eid}) => eid);
+    const authorizedEndpoints = sortAgentEndpointsByEid(
+        expectedAuthorizedEndpoints.map(({eid, url}) => ({
+            eid,
+            url: new URL(url).toString(),
+        }))
+    );
+    const expectedMemberEids = memberEndpoints.map(({eid}) => eid);
+    const expectedAuthorizedEids = authorizedEndpoints.map(({eid}) => eid);
     if (
-        expectedEids.length === 0 ||
-        new Set(expectedEids).size !== expectedEids.length ||
-        new Set(normalizedEndpoints.map(({url}) => url)).size !==
-            normalizedEndpoints.length
+        expectedMemberEids.length === 0 ||
+        new Set(expectedMemberEids).size !== expectedMemberEids.length ||
+        new Set(memberEndpoints.map(({url}) => url)).size !==
+            memberEndpoints.length ||
+        new Set(expectedAuthorizedEids).size !==
+            expectedAuthorizedEids.length ||
+        new Set(authorizedEndpoints.map(({url}) => url)).size !==
+            authorizedEndpoints.length ||
+        expectedMemberEids.some(
+            (eid) => expectedAuthorizedEids.includes(eid) === false
+        )
     ) {
         throw new Error(
             'Expected QVI agent EIDs and URLs must be unique'
         );
     }
-    await exactAuthorizedEids(clients, qviPrefix, expectedEids);
+    await exactAuthorizedEids(
+        clients,
+        qviPrefix,
+        expectedAuthorizedEids
+    );
     const endpoints = await observeQviEndpoints(
         clients,
         groupName,
-        expectedEids
+        expectedMemberEids
     );
     if (
         JSON.stringify(endpoints) !==
-        JSON.stringify(normalizedEndpoints)
+        JSON.stringify(memberEndpoints)
     ) {
         throw new Error(
             'QVI member endpoint locations do not match the workflow'
         );
     }
     const expectedOobis = new Set(
-        endpoints.map((endpoint) =>
+        authorizedEndpoints.map((endpoint) =>
             qualifiedAgentOobi(endpoint, qviPrefix)
         )
     );
@@ -274,7 +314,7 @@ export async function assertQviEndRoles(
     return {
         qviPrefix,
         multisigOobi: groupOobi(enumeratedOobis[0], qviPrefix),
-        agentEndpoints: endpoints,
+        agentEndpoints: authorizedEndpoints,
     };
 }
 

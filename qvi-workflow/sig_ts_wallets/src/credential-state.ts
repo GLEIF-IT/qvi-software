@@ -12,7 +12,24 @@ export interface CredentialSnapshot {
     currentTelDigest: string;
 }
 
-type CredentialSad = CredentialResult['sad'];
+export interface CredentialObservation {
+    sad: {
+        [key: string]: unknown;
+        d: string;
+        i: string;
+        s: string;
+        a?: unknown;
+        A?: unknown;
+    };
+    iss: {d: string};
+    status: {
+        ri: string;
+        s: string;
+        d: string;
+    };
+}
+
+type CredentialSad = CredentialObservation['sad'];
 type CredentialStateSnapshot = Omit<
     CredentialSnapshot,
     'observerAid'
@@ -40,7 +57,7 @@ function requireNonemptyString(
 }
 
 function credentialStateSnapshot(
-    credential: CredentialResult
+    credential: CredentialObservation
 ): CredentialStateSnapshot {
     const sad = credential.sad;
     const credentialHasEdgeAttributes = hasEdgeAttributes(sad);
@@ -83,7 +100,7 @@ function credentialStateSnapshot(
 }
 
 export function credentialSnapshot(
-    credential: CredentialResult,
+    credential: CredentialObservation,
     observerAid: string
 ): CredentialSnapshot {
     return {

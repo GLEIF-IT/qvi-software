@@ -1,61 +1,92 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import type {HabState, SignifyClient} from 'signify-ts';
+import type {
+    CompletedOOBIOperation,
+    Operation,
+} from 'signify-ts';
 
-import {refreshSubjectsForObserver} from '../src/sig-wallet.ts';
-import type {WorkflowConfig} from '../src/client.ts';
+import {
+    refreshSubjectsForObserver,
+    type KeyStateRefreshConfig,
+    type KeyStateRefreshWallet,
+} from '../src/sig-wallet.ts';
 
 interface TestWallet {
     role: 'qar1' | 'qar2' | 'qar3';
-    aid: HabState;
-    client: SignifyClient;
+    aid: KeyStateRefreshWallet['aid'];
+    client: KeyStateRefreshWallet['client'];
 }
 
-function aid(prefix: string, sequence = '0'): HabState {
+function aid(prefix: string, sequence = '0') {
     return {
-        name: prefix,
         prefix,
         state: {i: prefix, s: sequence, d: `${prefix}-${sequence}`},
-    } as HabState;
+    };
 }
 
 function wallet(
     role: TestWallet['role'],
     prefix: string,
-    resolve: (oobi: string) => Promise<unknown>
+    resolve: (oobi: string) => Promise<Operation>
 ): TestWallet {
     return {
         role,
         aid: aid(prefix),
         client: {
             oobis: () => ({resolve}),
-        } as unknown as SignifyClient,
+            operations: () => ({
+                get: async () => {
+                    throw new Error('unexpected operation lookup');
+                },
+                wait: async () => {
+                    throw new Error('unexpected operation wait');
+                },
+            }),
+        },
     };
 }
 
-function completedOperation(name: string, prefix: string) {
+function completedOperation(
+    name: string,
+    prefix: string
+): CompletedOOBIOperation {
+    const digest = `${prefix}-0`;
     return {
         name,
         done: true,
-        error: null,
         response: {
             i: prefix,
             s: '0',
-            d: `${prefix}-0`,
+            p: '',
+            d: digest,
+            f: '0',
+            dt: '2026-01-01T00:00:00.000000+00:00',
+            et: 'icp',
+            kt: '1',
+            k: [],
+            nt: '1',
+            n: [],
+            bt: '0',
+            b: [],
+            c: [],
+            ee: {s: '0', d: digest},
+            di: '',
         },
     };
 }
 
 describe('observer key-state synchronization', () => {
     it('skips self, serializes each observer, overlaps observers, and counts exactly', async () => {
-        const config = {
+        const config: KeyStateRefreshConfig = {
             participants: {
                 qar1: {oobiUrl: 'http://127.0.0.1:3901'},
                 qar2: {oobiUrl: 'http://127.0.0.1:3902'},
                 qar3: {oobiUrl: 'http://127.0.0.1:3903'},
+                qar4: {oobiUrl: 'http://127.0.0.1:6903'},
+                person: {oobiUrl: 'http://127.0.0.1:7903'},
             },
-        } as WorkflowConfig;
+        };
         let globallyActive = 0;
         let maximumGloballyActive = 0;
         const activeByObserver = new Map<string, number>();
@@ -63,7 +94,7 @@ describe('observer key-state synchronization', () => {
         const queried = new Map<string, string[]>();
 
         function resolveFor(observer: string) {
-            return async (oobi: string) => {
+            return async (oobi: string): Promise<Operation> => {
                 const subject = new URL(oobi).pathname.split('/').at(-1);
                 assert.ok(subject);
                 const observerActive =

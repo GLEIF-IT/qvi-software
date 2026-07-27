@@ -1,10 +1,8 @@
 import {readFileSync} from 'node:fs';
 
 import {
-    type CompletedOperation,
     type CreateIdentiferArgs,
     type EventResult,
-    type FailedOperation,
     type HabState,
     type KeyState,
     type Operation,
@@ -12,7 +10,12 @@ import {
     SignifyClient,
     Tier,
 } from 'signify-ts';
-import {LOCAL_OPERATION_POLLING} from './retry.ts';
+import {
+    waitOperation,
+    type OperationClient,
+} from './operations.ts';
+
+export {waitOperation} from './operations.ts';
 
 export type ParticipantRole =
     | 'qar1'
@@ -229,13 +232,22 @@ export function readWorkflowConfig(path: string): WorkflowConfig {
         'qvi.finalMembers'
     );
     const expectedInitial = ['qar1', 'qar2', 'qar3'];
-    const expectedFinal = ['qar1', 'qar2', 'qar4'];
+    const replacementMembers = ['qar1', 'qar2', 'qar4'];
+    const finalRosterIsInitial = finalMembers.every(
+        (member, index) => member === expectedInitial[index]
+    );
+    const finalRosterIsReplacement = finalMembers.every(
+        (member, index) => member === replacementMembers[index]
+    );
     if (
-        initialMembers.some((member, index) => member !== expectedInitial[index]) ||
-        finalMembers.some((member, index) => member !== expectedFinal[index])
+        initialMembers.some(
+            (member, index) => member !== expectedInitial[index]
+        ) ||
+        (finalRosterIsInitial === false &&
+            finalRosterIsReplacement === false)
     ) {
         throw new Error(
-            'QVI membership must rotate qar3 out and qar4 in at position 2'
+            'QVI membership must either retain qar3 or replace it with qar4'
         );
     }
 
@@ -352,65 +364,6 @@ export async function connectClient(
     return client;
 }
 
-/** Convert a failed Signify operation into a contextual workflow error. */
-function failedOperationError(operation: FailedOperation): Error {
-    const details =
-        operation.error.details === undefined ||
-        operation.error.details === null
-            ? ''
-            : ` Details: ${JSON.stringify(operation.error.details)}`;
-    return new Error(
-        `Operation '${operation.name}' failed [Code ${operation.error.code}]: ${operation.error.message}${details}`
-    );
-}
-
-/** Narrow an operation response to a completed, non-failed operation. */
-function requireCompletedOperation(
-    operation: Operation
-): CompletedOperation {
-    if (
-        operation.done === true &&
-        'error' in operation &&
-        operation.error !== null
-    ) {
-        throw failedOperationError(operation as FailedOperation);
-    }
-    if (operation.done !== true || 'response' in operation === false) {
-        throw new Error(
-            `Operation '${operation.name}' did not reach a completed state`
-        );
-    }
-    return operation as CompletedOperation;
-}
-
-/** Wait for an operation with the job deadline and preserve failure details. */
-export async function waitOperation(
-    client: SignifyClient,
-    operation: Operation | string,
-    signal?: AbortSignal
-): Promise<CompletedOperation> {
-    const current =
-        typeof operation === 'string'
-            ? await client.operations().get(operation)
-            : operation;
-    if (current.done === true) {
-        return requireCompletedOperation(current);
-    }
-    const waitSignal =
-        signal ??
-        AbortSignal.timeout(
-            Number(process.env.QVI_OPERATION_TIMEOUT_SECONDS ?? '120') * 1000
-        );
-    waitSignal.throwIfAborted();
-    const completed = await client
-        .operations()
-        .wait(current, {
-            signal: waitSignal,
-            ...LOCAL_OPERATION_POLLING,
-        });
-    return requireCompletedOperation(completed);
-}
-
 /** Narrow an OOBI response to the key-state shape the workflow consumes. */
 function isKeyState(value: unknown): value is KeyState {
     return (
@@ -429,9 +382,16 @@ function isOobiAcknowledgement(
     return isRecord(value) && value.oobi === expectedOobi;
 }
 
+/** The exact OOBI and operation surface needed for resolution. */
+export interface OobiResolutionClient extends OperationClient {
+    oobis(): {
+        resolve(oobi: string, alias?: string): Promise<Operation>;
+    };
+}
+
 /** Submit and complete one validated OOBI resolution request. */
 async function resolveOobiResponse(
-    client: SignifyClient,
+    client: OobiResolutionClient,
     oobi: string,
     alias?: string
 ): Promise<OobiResponse> {
@@ -443,7 +403,7 @@ async function resolveOobiResponse(
 
 /** Resolve any OOBI and accept only KERIA's two documented response shapes. */
 export async function resolveOobi(
-    client: SignifyClient,
+    client: OobiResolutionClient,
     oobi: string,
     alias?: string
 ): Promise<void> {
@@ -458,7 +418,7 @@ export async function resolveOobi(
 
 /** Resolve an identifier OOBI and require the resulting key state. */
 export async function resolveAidOobi(
-    client: SignifyClient,
+    client: OobiResolutionClient,
     oobi: string,
     alias?: string
 ): Promise<KeyState> {

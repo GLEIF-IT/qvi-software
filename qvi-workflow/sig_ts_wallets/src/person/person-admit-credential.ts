@@ -1,6 +1,6 @@
 import type {HabState, SignifyClient} from 'signify-ts';
 
-import {admitSinglesig} from '../credentials.ts';
+import {admitSinglesig} from '../ipex.ts';
 import {credentialSnapshot} from '../credential-state.ts';
 
 /** Admit one credential into a concrete person wallet. */

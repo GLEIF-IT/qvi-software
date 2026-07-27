@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import type {
-    CompletedOperation,
-    CredentialResult,
-    ExchangeResourceV1,
-    SignifyClient,
-} from 'signify-ts';
+import type {Operation} from 'signify-ts';
 
-import {admitSinglesig} from '../src/credentials.ts';
-import type {Notification} from '../src/notifications.ts';
+import {
+    admitSinglesig,
+    type SinglesigAdmissionClient,
+} from '../src/ipex.ts';
+import type {
+    Exchange,
+    Notification,
+} from '../src/notifications.ts';
 
 const AID_NAME = 'person';
 const HOLDER_PREFIX = 'EHolder';
@@ -40,14 +41,29 @@ interface AdmissionTrace {
     credentialLookups: number;
 }
 
+interface AdmitEvent {
+    said: string;
+}
+
+interface TestCredential {
+    sad: {
+        d: string;
+        i: string;
+        s: string;
+        a: {
+            i: string;
+        };
+    };
+}
+
 interface AdmissionHarness {
-    client: SignifyClient;
-    credential: CredentialResult;
+    client: SinglesigAdmissionClient<AdmitEvent, TestCredential>;
+    credential: TestCredential;
     deliveryIds: string[];
     trace: AdmissionTrace;
 }
 
-function grantExchange(): ExchangeResourceV1 {
+function grantExchange(): Exchange {
     return {
         exn: {
             v: 'KERI10JSON000000_',
@@ -102,7 +118,7 @@ function admissionHarness({
                 i: HOLDER_PREFIX,
             },
         },
-    } as unknown as CredentialResult;
+    };
     const trace: AdmissionTrace = {
         events: [],
         marked: [],
@@ -110,18 +126,18 @@ function admissionHarness({
         submitAdmitCalls: [],
         credentialLookups: 0,
     };
-    const pendingOperation = {
+    const pendingOperation: Operation = {
         name: ADMIT_OPERATION_NAME,
         done: false,
     };
-    const completedOperation = {
+    const completedOperation: Operation = {
         name: ADMIT_OPERATION_NAME,
         done: true,
         response: {
-            d: 'EAdmit',
+            said: 'EAdmit',
         },
-    } as CompletedOperation;
-    const failedOperation = {
+    };
+    const failedOperation: Operation = {
         name: ADMIT_OPERATION_NAME,
         done: true,
         error: {
@@ -130,7 +146,10 @@ function admissionHarness({
         },
     };
 
-    const client = {
+    const client: SinglesigAdmissionClient<
+        AdmitEvent,
+        TestCredential
+    > = {
         identifiers: () => ({
             get: async () => ({
                 name: AID_NAME,
@@ -172,6 +191,7 @@ function admissionHarness({
             },
         }),
         operations: () => ({
+            get: async () => pendingOperation,
             wait: async () => {
                 const operationCompleted =
                     operationOutcome === 'completed';
@@ -198,7 +218,7 @@ function admissionHarness({
                 return [];
             },
         }),
-    } as unknown as SignifyClient;
+    };
 
     return {
         client,

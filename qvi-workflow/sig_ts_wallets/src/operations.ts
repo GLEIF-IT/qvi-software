@@ -4,12 +4,31 @@ import type {
     KeyState,
     Operation,
     PendingOperation,
-    SignifyClient,
 } from 'signify-ts';
 import {
     LOCAL_OPERATION_POLLING,
     workflowTimeoutMs,
 } from './retry.ts';
+
+interface OperationWaitOptions {
+    signal?: AbortSignal;
+    minSleep?: number;
+    maxSleep?: number;
+    increaseFactor?: number;
+}
+
+interface OperationApi {
+    get(name: string): Promise<Operation>;
+    wait(
+        operation: Operation,
+        options?: OperationWaitOptions
+    ): Promise<Operation>;
+}
+
+/** The exact operation surface used by workflow polling. */
+export interface OperationClient {
+    operations(): OperationApi;
+}
 
 export function isPendingOperation(
     operation: Operation
@@ -75,7 +94,7 @@ function requireCompletedOperation(
  * Compose volumes.
  */
 export async function waitOperation(
-    client: SignifyClient,
+    client: OperationClient,
     operation: Operation | string,
     signal?: AbortSignal
 ): Promise<CompletedOperation> {
@@ -129,7 +148,7 @@ function isKeyState(value: unknown): value is KeyState {
 }
 
 export async function waitKeyStateOperation(
-    client: SignifyClient,
+    client: OperationClient,
     operation: Operation | string,
     signal?: AbortSignal
 ): Promise<KeyState> {

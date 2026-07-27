@@ -3,63 +3,35 @@ import {describe, it} from 'node:test';
 
 import type {
     CompletedOperation,
-    ExchangeResourceV1,
     Operation,
-    SignifyClient,
 } from 'signify-ts';
 
-import {completeMultisigOps} from '../src/coordinated-operation.ts';
-import type {
-    MatchedNotification,
-    Notification,
-} from '../src/notifications.ts';
+import {completeMultisigOperations} from '../src/multisig-coordinator.ts';
+import type {NotificationWriter} from '../src/notifications.ts';
+import type {OperationClient} from '../src/operations.ts';
+
+interface MemberOptions {
+    notificationCount?: number;
+    onMark?: (id: string) => Promise<void>;
+}
 
 function member(
     name: string,
     outcome: 'success' | 'failure',
     trace: string[],
-    options: {
-        notificationCount?: number;
-        onMark?: (id: string) => Promise<void>;
-    } = {}
+    options: MemberOptions = {}
 ) {
     const operation = {
         name: `group.${name}`,
         done: false,
     } as Operation;
-    const note: Notification = {
-        i: `N${name}`,
-        dt: '',
-        r: false,
-        a: {r: '/multisig/rot', d: `E${name}`},
-    };
-    const coordination = Array.from(
-        {length: options.notificationCount ?? 1},
-        (_, index): MatchedNotification => {
-            const deliveryNote = {
-                ...note,
-                i: `${note.i}-${index}`,
-            };
-            return {
-                note: deliveryNote,
-                deliveryNotes: [deliveryNote],
-                exchangeSaid: `E${name}-${index}`,
-                exchange: {
-                    exn: {d: `E${name}-${index}`},
-                } as ExchangeResourceV1,
-            };
-        }
-    );
     const client = {
         operations: () => ({
-            wait: async () => {
+            get: async () => operation,
+            wait: async (): Promise<CompletedOperation> => {
                 trace.push(`complete:${name}`);
                 if (outcome === 'failure') {
-                    return {
-                        name: operation.name,
-                        done: true,
-                        error: {code: 500, message: `${name} failed`},
-                    };
+                    throw new Error(`${name} failed`);
                 }
                 return {
                     name: operation.name,
@@ -78,31 +50,37 @@ function member(
                 trace.push(`delete:${id}`);
             },
         }),
-    } as unknown as SignifyClient;
+    } satisfies OperationClient & NotificationWriter;
     return {
         client,
-        result: {operation, coordination},
+        result: {
+            operation,
+            notificationIds: Array.from(
+                {length: options.notificationCount ?? 1},
+                (_, index) => `N${name}-${index}`
+            ),
+        },
     };
 }
 
-describe('coordinated operation completion', () => {
-    it('consumes notices after every operation succeeds', async () => {
+describe('multisig operation completion', () => {
+    it('consumes notifications after every operation succeeds', async () => {
         const trace: string[] = [];
-        await completeMultisigOps([
+        await completeMultisigOperations([
             member('qar1', 'success', trace),
             member('qar2', 'success', trace),
             member('qar3', 'success', trace),
         ]);
-        const firstNotice = trace.findIndex((entry) =>
+        const firstNotification = trace.findIndex((entry) =>
             entry.startsWith('mark:')
         );
-        assert.equal(firstNotice, 3);
+        assert.equal(firstNotification, 3);
     });
 
-    it('retains notices when one operation fails', async () => {
+    it('retains every notification when one operation fails', async () => {
         const trace: string[] = [];
         await assert.rejects(
-            completeMultisigOps([
+            completeMultisigOperations([
                 member('qar1', 'success', trace),
                 member('qar2', 'failure', trace),
                 member('qar3', 'success', trace),
@@ -115,47 +93,8 @@ describe('coordinated operation completion', () => {
         );
     });
 
-    it('cleans independent member stores concurrently', async () => {
+    it('cleans member stores serially', async () => {
         const trace: string[] = [];
-        let marksStarted = 0;
-        let releaseMarks = () => {};
-        let reportBothStarted = () => {};
-        const marksMayFinish = new Promise<void>((resolve) => {
-            releaseMarks = resolve;
-        });
-        const bothMarksStarted = new Promise<void>((resolve) => {
-            reportBothStarted = resolve;
-        });
-        const onMark = async () => {
-            marksStarted += 1;
-            if (marksStarted === 2) {
-                reportBothStarted();
-            }
-            await marksMayFinish;
-        };
-
-        const completion = completeMultisigOps([
-            member('qar1', 'success', trace, {onMark}),
-            member('qar2', 'success', trace, {onMark}),
-        ]);
-        await Promise.race([
-            bothMarksStarted,
-            new Promise((_, reject) =>
-                setTimeout(
-                    () => reject(new Error('member cleanup was serial')),
-                    250
-                )
-            ),
-        ]);
-
-        assert.equal(marksStarted, 2);
-        releaseMarks();
-        await completion;
-    });
-
-    it('keeps notices serial within one member store', async () => {
-        const trace: string[] = [];
-        let marksStarted = 0;
         let releaseFirstMark = () => {};
         let reportFirstMark = () => {};
         const firstMarkMayFinish = new Promise<void>((resolve) => {
@@ -164,26 +103,40 @@ describe('coordinated operation completion', () => {
         const firstMarkStarted = new Promise<void>((resolve) => {
             reportFirstMark = resolve;
         });
-        const onMark = async () => {
-            marksStarted += 1;
-            if (marksStarted === 1) {
-                reportFirstMark();
-                await firstMarkMayFinish;
-            }
-        };
-
-        const completion = completeMultisigOps([
+        const completion = completeMultisigOperations([
             member('qar1', 'success', trace, {
-                notificationCount: 2,
-                onMark,
+                onMark: async () => {
+                    reportFirstMark();
+                    await firstMarkMayFinish;
+                },
             }),
+            member('qar2', 'success', trace),
         ]);
-        await firstMarkStarted;
-        await new Promise((resolve) => setTimeout(resolve, 20));
 
-        assert.equal(marksStarted, 1);
+        await firstMarkStarted;
+        assert.equal(
+            trace.some((entry) => entry === 'mark:Nqar2-0'),
+            false
+        );
         releaseFirstMark();
         await completion;
-        assert.equal(marksStarted, 2);
+        assert.ok(
+            trace.indexOf('delete:Nqar1-0') <
+                trace.indexOf('mark:Nqar2-0')
+        );
+    });
+
+    it('marks every member notification before deleting any', async () => {
+        const trace: string[] = [];
+        await completeMultisigOperations([
+            member('qar1', 'success', trace, {notificationCount: 2}),
+        ]);
+
+        assert.deepEqual(trace.slice(1), [
+            'mark:Nqar1-0',
+            'mark:Nqar1-1',
+            'delete:Nqar1-0',
+            'delete:Nqar1-1',
+        ]);
     });
 });

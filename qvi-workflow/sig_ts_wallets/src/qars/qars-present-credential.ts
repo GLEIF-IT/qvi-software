@@ -1,6 +1,6 @@
 import {createTimestamp} from '../create-aid.ts';
 import type {GroupMember} from '../client.ts';
-import {grantCredential} from '../credentials.ts';
+import {grantCredential} from '../ipex.ts';
 import {getCredential} from '../credential-state.ts';
 
 export interface PresentCredentialOptions {

@@ -22,17 +22,17 @@ const PENDING_EVENT = {
     members: [
         {
             memberPrefix: 'E-qar1',
-            operationName: 'op-1',
+            operation: 'op-1',
             notificationIds: [],
         },
         {
             memberPrefix: 'E-qar2',
-            operationName: 'op-2',
+            operation: 'op-2',
             notificationIds: ['note-2'],
         },
         {
             memberPrefix: 'E-qar3',
-            operationName: 'op-3',
+            operation: 'op-3',
             notificationIds: ['note-3'],
         },
     ],

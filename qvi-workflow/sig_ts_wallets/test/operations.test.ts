@@ -2,11 +2,10 @@ import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
 import type {
-    CompletedDoneOperation,
-    FailedDoneOperation,
+    CompletedExchangeOperation,
+    FailedExchangeOperation,
     Operation,
-    PendingDoneOperation,
-    SignifyClient,
+    PendingExchangeOperation,
 } from 'signify-ts';
 
 import {
@@ -14,18 +13,19 @@ import {
     isFailedOperation,
     isPendingOperation,
     waitOperation,
+    type OperationClient,
 } from '../src/operations.ts';
 
-const pending: PendingDoneOperation = {
+const pending: PendingExchangeOperation = {
     name: 'group.EEvent',
     done: false,
 };
-const completed = {
+const completed: CompletedExchangeOperation = {
     name: pending.name,
     done: true,
-    response: {d: 'EEvent'},
-} as CompletedDoneOperation;
-const failed: FailedDoneOperation = {
+    response: {said: 'EEvent'},
+};
+const failed: FailedExchangeOperation = {
     name: pending.name,
     done: true,
     error: {
@@ -45,8 +45,8 @@ function client(options: {
             maxSleep?: number;
             increaseFactor?: number;
         }
-    ) => Promise<CompletedDoneOperation>;
-}): SignifyClient {
+    ) => Promise<Operation>;
+}): OperationClient {
     return {
         operations: () => ({
             get:
@@ -60,7 +60,7 @@ function client(options: {
                     throw new Error('unexpected wait');
                 }),
         }),
-    } as unknown as SignifyClient;
+    };
 }
 
 describe('operation lifecycle', () => {

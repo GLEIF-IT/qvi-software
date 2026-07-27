@@ -23,6 +23,7 @@ import {
     requireHttpUrl,
     resolveAidOobi,
     resolveOobi,
+    type OobiResolutionClient,
     type ParticipantEvidence,
     type GroupMember,
     type WorkflowConfig,
@@ -46,18 +47,22 @@ import {
     type GroupEventSubmission,
     type GroupMemberEvent,
 } from './multisig.ts';
-import {completeSavedMultisigOps} from './coordinated-operation.ts';
-import {notificationReference} from './notifications.ts';
 import {
-    admitCredential as admitGroupCredential,
+    completeMultisigOperations,
+    type MemberSubmission,
+} from './multisig-coordinator.ts';
+import {
     createRegistry,
     ECR_SCHEMA_SAID,
-    grantCredential,
     issueCredential,
     LE_SCHEMA_SAID,
     OOR_SCHEMA_SAID,
     revokeCredential,
-} from './credentials.ts';
+} from './credential-mutations.ts';
+import {
+    admitCredential as admitGroupCredential,
+    grantCredential,
+} from './ipex.ts';
 import {createTimestamp} from './create-aid.ts';
 import {presentCredential} from './qars/qars-present-credential.ts';
 import {authorizeEndRole} from './multisig-creation.ts';
@@ -79,14 +84,6 @@ const SCHEMA_SAIDS = [
     OOR_SCHEMA_SAID,
 ] as const;
 
-const SETUP_ROLES: readonly ParticipantRole[] = [
-    'qar1',
-    'qar2',
-    'qar3',
-    'qar4',
-    'person',
-];
-
 interface SetupWallet {
     role: ParticipantRole;
     client: SignifyClient;
@@ -98,6 +95,34 @@ interface ReadyWallet extends SetupWallet {
 
 interface PreparedWallet extends ReadyWallet {
     evidence: ParticipantEvidence;
+}
+
+export interface KeyStateRefreshConfig {
+    participants: Record<ParticipantRole, {oobiUrl: string}>;
+}
+
+export interface KeyStateRefreshWallet {
+    role: ParticipantRole;
+    client: OobiResolutionClient;
+    aid: {
+        prefix: string;
+        state: {
+            i: string;
+            s: string;
+            d: string;
+        };
+    };
+}
+
+/** Wallets required by this configured story, without inactive alternates. */
+function setupRoles(config: WorkflowConfig): ParticipantRole[] {
+    return [
+        ...new Set<ParticipantRole>([
+            ...config.qvi.initialMembers,
+            ...config.qvi.finalMembers,
+            'person',
+        ]),
+    ];
 }
 
 /** Connect concrete participants in the requested workflow order. */
@@ -183,26 +208,19 @@ function firstGroupMember(members: GroupMember[]): GroupMember {
     return member;
 }
 
-/** Build the exact final QVI agent endpoint set from workflow config. */
+/** Build an exact configured agent endpoint set from connected wallets. */
 function qviAgentEndpoints(
     config: WorkflowConfig,
-    members: GroupMember[]
+    wallets: ReadyWallet[]
 ): AgentEndpoint[] {
-    if (members.length !== config.qvi.finalMembers.length) {
-        throw new Error(
-            'Final QVI members do not match the configured roster'
-        );
-    }
-    return members.map(({client}, index) => {
-        const role = config.qvi.finalMembers[index];
+    return wallets.map(({client, role}) => {
         const eid = client.agent?.pre;
         if (
-            role === undefined ||
             typeof eid !== 'string' ||
             eid.length === 0
         ) {
             throw new Error(
-                'Final QVI member has no configured agent endpoint'
+                'QVI participant has no connected agent endpoint'
             );
         }
         return {
@@ -228,11 +246,7 @@ export interface PendingWorkflowEvent {
     eventSequence: string;
     signingMembers: string[];
     rotationMembers: string[];
-    members: Array<{
-        memberPrefix: string;
-        operationName: string;
-        notificationIds: string[];
-    }>;
+    members: MemberSubmission[];
 }
 
 export class UsageError extends Error {}
@@ -372,14 +386,11 @@ function saveGroupEvent(
         rotationMembers: submission.rotationMembers,
         members: submission.members.map((member) => ({
             memberPrefix: member.memberPrefix,
-            operationName:
+            operation:
                 typeof member.operation === 'string'
                     ? member.operation
                     : member.operation.name,
-            notificationIds: member.notifications.flatMap(
-                (notification) =>
-                    notificationReference(notification).notificationIds
-            ),
+            notificationIds: member.notificationIds,
         })),
     };
 }
@@ -477,7 +488,7 @@ export async function readPendingWorkflowEvent(
         }
         requireExactFields(
             member,
-            ['memberPrefix', 'operationName', 'notificationIds'],
+            ['memberPrefix', 'operation', 'notificationIds'],
             `Pending member ${index}`
         );
         return {
@@ -485,8 +496,8 @@ export async function readPendingWorkflowEvent(
                 member.memberPrefix,
                 `Pending member ${index} prefix`
             ),
-            operationName: persistedString(
-                member.operationName,
+            operation: persistedString(
+                member.operation,
                 `Pending member ${index} operation`
             ),
             notificationIds: persistedStrings(
@@ -548,7 +559,7 @@ async function completePendingEvent(
     const clients = new Map(
         signingWallets.map(({client, aid}) => [aid.prefix, client])
     );
-    await completeSavedMultisigOps(
+    await completeMultisigOperations(
         event.members.map((member) => {
             const client = clients.get(member.memberPrefix);
             if (client === undefined) {
@@ -559,7 +570,7 @@ async function completePendingEvent(
             return {
                 client,
                 result: {
-                    operationName: member.operationName,
+                    operation: member.operation,
                     notificationIds: member.notificationIds,
                 },
             };
@@ -735,13 +746,7 @@ async function resolveExternalOobis(
             ),
         };
     });
-    const roles: ParticipantRole[] = [
-        'qar1',
-        'qar2',
-        'qar3',
-        'qar4',
-        'person',
-    ];
+    const roles = setupRoles(config);
     const wallets = await connectWallets(config, roles);
     await Promise.all(
         wallets.flatMap(({client}) =>
@@ -758,7 +763,7 @@ async function bootSetupWallets(
     config: WorkflowConfig
 ): Promise<SetupWallet[]> {
     return await Promise.all(
-        SETUP_ROLES.map(async (role) => ({
+        setupRoles(config).map(async (role) => ({
             role,
             client: await bootClient(config.participants[role]),
         }))
@@ -863,18 +868,6 @@ async function resolveSetupSchemas(
     );
 }
 
-/** Return setup evidence for one required participant role. */
-function setupEvidence(
-    wallets: PreparedWallet[],
-    role: ParticipantRole
-): ParticipantEvidence {
-    const wallet = wallets.find((candidate) => candidate.role === role);
-    if (wallet === undefined) {
-        throw new Error(`Setup produced no wallet for ${role}`);
-    }
-    return wallet.evidence;
-}
-
 /** Run the explicit fresh-wallet setup sequence and return public evidence. */
 async function setupAction(config: WorkflowConfig) {
     assertSignifyVersion();
@@ -887,15 +880,17 @@ async function setupAction(config: WorkflowConfig) {
     );
     await resolveSetupPeers(config, preparedWallets);
     await resolveSetupSchemas(config, preparedWallets);
+    const participants = Object.fromEntries(
+        preparedWallets.map((wallet) => [
+            wallet.role === 'person'
+                ? 'PERSON'
+                : wallet.role.toUpperCase(),
+            wallet.evidence,
+        ])
+    );
     return {
         status: 'ready',
-        participants: {
-            QAR1: setupEvidence(preparedWallets, 'qar1'),
-            QAR2: setupEvidence(preparedWallets, 'qar2'),
-            QAR3: setupEvidence(preparedWallets, 'qar3'),
-            QAR4: setupEvidence(preparedWallets, 'qar4'),
-            PERSON: setupEvidence(preparedWallets, 'person'),
-        },
+        participants,
     };
 }
 
@@ -977,8 +972,8 @@ async function rotateMembersAction(
 
 /** Build a cache-safe direct OOBI for one participant's current event. */
 function participantStateOobi(
-    config: WorkflowConfig,
-    subject: ReadyWallet
+    config: KeyStateRefreshConfig,
+    subject: KeyStateRefreshWallet
 ): string {
     const oobi = new URL(
         `/oobi/${subject.aid.prefix}`,
@@ -993,9 +988,9 @@ function participantStateOobi(
 
 /** Serially refresh exact subject key states in one observer's KERIA store. */
 export async function refreshSubjectsForObserver(
-    config: WorkflowConfig,
-    observer: ReadyWallet,
-    subjects: readonly ReadyWallet[]
+    config: KeyStateRefreshConfig,
+    observer: KeyStateRefreshWallet,
+    subjects: readonly KeyStateRefreshWallet[]
 ): Promise<number> {
     let refreshCount = 0;
 
@@ -1279,12 +1274,35 @@ async function submitJoiningRotationAction(
     return {status: 'submitted', event};
 }
 
-/** Authorize the exact final QVI member-agent endpoint set once. */
+/** Authorize new endpoints and prove current plus historical endpoint state. */
 async function authorizeAction(
     config: WorkflowConfig,
     args: Record<string, string>
 ) {
-    const members = await loadFinalQviMembers(config);
+    const memberRoles = parseRoles(args.roles, 'Authorization members');
+    const authorizeRoles = parseRoles(
+        args['authorize-roles'],
+        'New endpoint roles'
+    );
+    const expectedRoles = parseRoles(
+        args['expected-endpoint-roles'],
+        'Expected endpoint roles'
+    );
+    if (
+        authorizeRoles.some(
+            (role) => expectedRoles.includes(role) === false
+        )
+    ) {
+        throw new UsageError(
+            'New endpoint roles must be included in expected endpoint roles'
+        );
+    }
+    const memberWallets = await loadWallets(config, memberRoles);
+    const members = await loadGroupMembers(
+        memberWallets.map(({client}) => client),
+        memberWallets.map(({aid}) => aid.name),
+        config.qvi.name
+    );
     const initiator = firstGroupMember(members);
     const qviPrefix = initiator.groupAid.prefix;
     if (
@@ -1294,19 +1312,34 @@ async function authorizeAction(
     ) {
         throw new Error('QVI members disagree on the group prefix');
     }
-    const endpoints = qviAgentEndpoints(config, members);
+    const authorizeWallets = await loadWallets(config, authorizeRoles);
+    const expectedWallets = await loadWallets(config, expectedRoles);
+    const memberEndpoints = qviAgentEndpoints(config, memberWallets);
+    const authorizeEndpoints = qviAgentEndpoints(
+        config,
+        authorizeWallets
+    );
+    const expectedEndpoints = qviAgentEndpoints(
+        config,
+        expectedWallets
+    );
     const existing = await Promise.all(
         members.map(({client}) =>
             client.oobis().endroles(qviPrefix, 'agent')
         )
     );
-    if (existing.some((roles) => roles.length > 0)) {
+    const existingEids = new Set(
+        existing.flatMap((roles) => roles.map(({eid}) => eid))
+    );
+    if (
+        authorizeEndpoints.some(({eid}) => existingEids.has(eid))
+    ) {
         throw new Error(
-            'QVI agent roles already exist before authorization'
+            'A requested QVI agent role already exists before authorization'
         );
     }
     const timestamp = createTimestamp();
-    for (const {eid} of endpoints) {
+    for (const {eid} of authorizeEndpoints) {
         await authorizeEndRole({
             members,
             initiatorPrefix: initiator.memberAid.prefix,
@@ -1319,7 +1352,8 @@ async function authorizeAction(
             members.map(({client}) => client),
             config.qvi.name,
             qviPrefix,
-            endpoints
+            memberEndpoints,
+            expectedEndpoints
         )
     );
     await fs.writeFile(
@@ -1980,7 +2014,14 @@ export async function run(
             );
         }
         case 'ms-authorize': {
-            args = parseExactArguments(values, 'config', 'data-dir');
+            args = parseExactArguments(
+                values,
+                'config',
+                'data-dir',
+                'roles',
+                'authorize-roles',
+                'expected-endpoint-roles'
+            );
             return await authorizeAction(
                 readWorkflowConfig(args.config),
                 args

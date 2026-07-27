@@ -1,7 +1,7 @@
 import {getOrCreateClient} from "./keystore-creation.ts";
 import {parseAidInfo} from "./create-aid.ts";
 import {TestEnvironmentPreset} from "./resolve-env.ts";
-import {getIssuedCredential, getReceivedCredential} from "./credentials.ts";
+import {getIssuedCredential, getReceivedCredential} from "./credential-mutations.ts";
 import {waitOperation} from "./operations.ts";
 
 /**

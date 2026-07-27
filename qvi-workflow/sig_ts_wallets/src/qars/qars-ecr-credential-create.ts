@@ -12,7 +12,7 @@ import {
     type WorkflowConfig,
 } from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
-import {ECR_SCHEMA_SAID} from '../credentials.ts';
+import {ECR_SCHEMA_SAID} from '../credential-mutations.ts';
 import {issueAndGrantCredential} from './issue-and-grant.ts';
 
 /** Read one workflow credential fragment from disk. */
