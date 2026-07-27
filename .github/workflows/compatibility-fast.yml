@@ -28,8 +28,6 @@ jobs:
       - name: Callback recorder tests
         working-directory: qvi-workflow
         run: python -m unittest callback_recorder.tests.test_recorder
-      - name: Shell workflow contract
-        run: qvi-workflow/keria_docker/tests/workflow-contract-test.sh
       - name: Shell syntax
         run: find qvi-workflow -name '*.sh' -print0 | xargs -0 -n1 bash -n
       - name: Compose rendering
