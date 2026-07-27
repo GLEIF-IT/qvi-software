@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import type {ExchangeResourceV1} from 'signify-ts';
-
 import {
-    consumeNotification,
+    consumeNotifications,
     listAllNotifications,
     waitForMatchingNotification,
+    type Exchange,
     type Notification,
 } from '../src/notifications.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 interface ExchangeFixture {
     said: string;
@@ -28,7 +28,7 @@ function exchange({
     groupPrefix = 'EGroup',
     credentialSaid = 'ECredential',
     route = '/multisig/rev',
-}: ExchangeFixture): ExchangeResourceV1 {
+}: ExchangeFixture): Exchange {
     return {
         exn: {
             v: 'KERI10JSON000000_',
@@ -73,7 +73,7 @@ function notification(
 function ipexGrant(
     recipient: string,
     routedRecipient = ''
-): ExchangeResourceV1 {
+): Exchange {
     const grant = exchange({
         said: 'EGrant',
         sender: 'EIssuer',
@@ -95,13 +95,11 @@ function ipexGrant(
 
 function clientFor(
     notes: Notification[],
-    exchanges: Map<string, ExchangeResourceV1>
+    exchanges: Map<string, Exchange>
 ) {
     const marked: string[] = [];
     const deleted: string[] = [];
-    return {
-        marked,
-        deleted,
+    const client = testSignifyClient({
         notifications: () => ({
             list: async (start = 0, end = 24) => ({
                 start,
@@ -126,10 +124,56 @@ function clientFor(
                 return found;
             },
         }),
-    };
+    });
+    return Object.assign(client, {marked, deleted});
 }
 
 describe('notification correlation', () => {
+    it('polls delayed local notifications without exponential overshoot', async () => {
+        const expectedNote = notification(1, 'EDelayed');
+        const expectedExchange = exchange({
+            said: 'EDelayed',
+            sender: 'EInitiator',
+            embeddedDigest: 'ECurrentRev',
+        });
+        let listCalls = 0;
+        const client = testSignifyClient({
+            notifications: () => ({
+                list: async () => {
+                    listCalls += 1;
+                    const notes = listCalls < 5
+                        ? []
+                        : [expectedNote];
+                    return {
+                        start: 0,
+                        end: Math.max(0, notes.length - 1),
+                        total: notes.length,
+                        notes,
+                    };
+                },
+                mark: async (said: string) => said,
+                delete: async () => undefined,
+            }),
+            exchanges: () => ({
+                get: async () => expectedExchange,
+            }),
+        });
+        const startedAt = performance.now();
+
+        const matched = await waitForMatchingNotification(
+            client,
+            {
+                exchangeRoute: '/multisig/rev',
+                sender: 'EInitiator',
+                embeddedDigest: 'ECurrentRev',
+            }
+        );
+
+        assert.equal(matched.said, 'EDelayed');
+        assert.equal(listCalls, 5);
+        assert.ok(performance.now() - startedAt < 500);
+    });
+
     it('paginates beyond 25 entries and ignores stale same-route traffic', async () => {
         const notes = Array.from({length: 27}, (_, index) =>
             notification(index, `E${index}`)
@@ -159,7 +203,6 @@ describe('notification correlation', () => {
         const matched = await waitForMatchingNotification(
             client,
             {
-                notificationRoute: '/multisig/rev',
                 exchangeRoute: '/multisig/rev',
                 sender: 'EInitiator',
                 recipient: 'EFollower',
@@ -169,11 +212,11 @@ describe('notification correlation', () => {
             },
             {timeout: 100, maxRetries: 1}
         );
-        assert.equal(matched.note.i, 'N26');
+        assert.deepEqual(matched.notificationIds, ['N26']);
         assert.deepEqual(client.marked, []);
         assert.deepEqual(client.deleted, []);
 
-        await consumeNotification(client, matched);
+        await consumeNotifications(client, matched.notificationIds);
         assert.deepEqual(client.marked, ['N26']);
         assert.deepEqual(client.deleted, ['N26']);
     });
@@ -206,7 +249,6 @@ describe('notification correlation', () => {
         const matched = await waitForMatchingNotification(
             client,
             {
-                notificationRoute: '/multisig/rev',
                 exchangeRoute: '/multisig/rev',
                 sender: 'EInitiator',
                 recipient: 'EFollower',
@@ -215,7 +257,7 @@ describe('notification correlation', () => {
             },
             {timeout: 100, maxRetries: 1}
         );
-        assert.equal(matched.exchangeSaid, 'EFromInitiator');
+        assert.equal(matched.said, 'EFromInitiator');
     });
 
     it('ignores same-route noise that differs in any exact correlation field', async () => {
@@ -274,7 +316,6 @@ describe('notification correlation', () => {
         const matched = await waitForMatchingNotification(
             client,
             {
-                notificationRoute: '/multisig/rev',
                 exchangeRoute: '/multisig/rev',
                 sender: 'EInitiator',
                 recipient: 'EFollower',
@@ -285,7 +326,7 @@ describe('notification correlation', () => {
             {timeout: 100, maxRetries: 1}
         );
 
-        assert.equal(matched.exchangeSaid, 'ETarget');
+        assert.equal(matched.said, 'ETarget');
         assert.deepEqual(client.marked, []);
         assert.deepEqual(client.deleted, []);
     });
@@ -310,7 +351,6 @@ describe('notification correlation', () => {
             waitForMatchingNotification(
                 client,
                 {
-                    notificationRoute: '/multisig/rev',
                     exchangeRoute: '/multisig/rev',
                     sender: 'EInitiator',
                     recipient: 'EFollower',
@@ -344,7 +384,7 @@ describe('notification correlation', () => {
             {timeout: 100, maxRetries: 1}
         );
 
-        assert.equal(matched.exchangeSaid, 'EGrant');
+        assert.equal(matched.said, 'EGrant');
     });
 
     it('treats duplicate notification records for one EXN as one logical grant', async () => {
@@ -370,9 +410,9 @@ describe('notification correlation', () => {
             {timeout: 100, maxRetries: 1}
         );
 
-        assert.equal(matched.exchangeSaid, 'EGrant');
-        assert.equal(matched.note.i, 'N1');
-        await consumeNotification(client, matched);
+        assert.equal(matched.said, 'EGrant');
+        assert.deepEqual(matched.notificationIds, ['N1', 'N2', 'N3']);
+        await consumeNotifications(client, matched.notificationIds);
         assert.deepEqual(client.marked, ['N1', 'N2', 'N3']);
         assert.deepEqual(client.deleted, ['N1', 'N2', 'N3']);
     });
@@ -468,7 +508,6 @@ describe('notification correlation', () => {
             waitForMatchingNotification(
                 client,
                 {
-                    notificationRoute: '/multisig/rev',
                     exchangeRoute: '/multisig/rev',
                     sender: 'EInitiator',
                 },
@@ -480,7 +519,7 @@ describe('notification correlation', () => {
 
     it('does not delete evidence when marking fails', async () => {
         const deleted: string[] = [];
-        const client = {
+        const client = testSignifyClient({
             notifications: () => ({
                 list: async () => ({
                     start: 0,
@@ -500,22 +539,10 @@ describe('notification correlation', () => {
                     throw new Error('unused');
                 },
             }),
-        };
+        });
 
         await assert.rejects(
-            consumeNotification(client, {
-                note: notification(1, 'E1'),
-                deliveryNotes: [
-                    notification(1, 'E1'),
-                    notification(2, 'E1'),
-                ],
-                exchangeSaid: 'E1',
-                exchange: exchange({
-                    said: 'E1',
-                    sender: 'EInitiator',
-                    embeddedDigest: 'ERev',
-                }),
-            }),
+            consumeNotifications(client, ['N1', 'N2']),
             /mark failed/
         );
         assert.deepEqual(deleted, []);

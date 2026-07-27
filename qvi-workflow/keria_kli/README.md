@@ -1,40 +1,44 @@
-# KERIA and KLI in local command line vLEI Workflow
+# Local execution adapter
 
-This vlei-workflow.sh uses the local command line environment for both the KLI (KERIpy) setup of the GARs and LARs and KERIA setup for the QARs and Person.
+This directory contains the local runtime and command adapter used by
+`../vlei-workflow.sh`. It is not a separate workflow story.
 
-The `sig_ts_wallets` directory contains the SignifyTS code used to act like a wallet for the QARs and Person.
-
-## Usage
+## Bootstrap
 
 ```bash
 cd qvi-workflow/keria_kli
-./vlei-workflow.sh
+./bootstrap-local.sh
 ```
 
-## Requirements
+Bootstrap creates the pinned Python environments and installs the locked
+SignifyTS dependencies. The host needs Node.js, npm, pyenv, uv, Git, curl, jq,
+and the standard macOS command-line tools. Python 3.12.6 must be available
+through pyenv.
 
-- Node.js
-- The locked `sig_ts_wallets` dependencies, including
-  `signify-ts@0.4.0` and the project-local `tsx` executable:
+The local toolchain uses:
 
-  ```bash
-  cd ../sig_ts_wallets
-  npm ci
-  export PATH="$PWD/node_modules/.bin:$PATH"
-  cd ../keria_kli
-  ```
+- local KERIA main at `86e21cbd`;
+- GLEIF KERIpy 1.1.42 for GEDA KLI wallets;
+- the local KERIpy `v1.2.14` branch for KERIA, witnesses, Sally, and remaining
+  KLI wallets;
+- Sally 1.0.5, HIO 0.6.19, and SignifyTS 0.4.0.
 
-  A global `tsx` installation is not required.
-- KERIpy installed globally - version weboftrust/keripy:1.1.32
-    - then run `kli witness demo` in one terminal
-- The Sally presentation handler program installed globally - version GLEIF-IT/sally:1.0.0
-    - The script runs direct `sally server start` automatically. Sally owns
-      keystore initialization and no-witness identifier inception.
-- The vLEI-server schema server from the vLEI repo running in another terminal:
-    - `vLEI-server -s ./schema/acdc -c ./samples/acdc/ -o ./samples/oobis/`
-- The KERIA 0.4.0 command installed globally and running in another terminal
-    - `keria start --config-dir scripts --config-file keria --loglevel INFO`
+The bootstrap expects the normal multi-repository workspace layout. Override
+`KERI_WORKSPACE_DIR` or the individual source-directory variables for another
+layout.
 
-The workflow reads Signify participant data from
-`qvi_data/participants.json` and resolves the canonical QVI multisig OOBI
-produced by the shared Signify runner.
+## Run
+
+Run the canonical driver from its parent directory:
+
+```bash
+cd ..
+./vlei-workflow.sh --backend local
+```
+
+Generated state lives under `runtime/` only when `--keep-artifacts` is used.
+All local witnesses, KERIA agencies, KLI/Signify runners, Sally, and the
+callback recorder stop on success, failure, or interruption.
+
+`stop-local.sh` remains a recovery tool for an interrupted process whose shell
+could not execute its cleanup trap.

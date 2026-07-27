@@ -1,28 +1,64 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import {memberContexts} from '../src/multisig-coordinator.ts';
+import type {
+    CompletedOperation,
+    HabState,
+    Operation,
+} from 'signify-ts';
+
+import {
+    coordinateMultisigOperation,
+    memberContexts,
+} from '../src/multisig-coordinator.ts';
+import {testSignifyClient} from './test-signify-client.ts';
+
+function aid(prefix: string): HabState {
+    return {prefix, name: prefix} as HabState;
+}
+
+function completionClient() {
+    const operation = {
+        name: 'done',
+        done: true,
+        response: {},
+    } as Operation;
+    return testSignifyClient({
+        operations: () => ({
+            get: async () => operation,
+            wait: async () => operation as CompletedOperation,
+        }),
+        notifications: () => ({
+            mark: async (id: string) => id,
+            delete: async () => {},
+        }),
+    });
+}
+
+function members(prefixes: string[]) {
+    return prefixes.map((prefix) => ({
+        aid: aid(prefix),
+        client: completionClient(),
+    }));
+}
 
 describe('multisig coordinator', () => {
-    it('assigns one initiator and one explicit coordinator', () => {
-        const members = ['EQar1', 'EQar2', 'EQar3'].map(
-            (prefix, index) => ({
-                aid: {prefix, name: `qar${index + 1}`} as never,
-                client: {} as never,
-            })
+    it('derives one initiator from its prefix', () => {
+        const contexts = memberContexts(
+            members(['EQar1', 'EQar2', 'EQar3']),
+            'EQar2'
         );
-        const contexts = memberContexts(members, 'EQar2');
         assert.deepEqual(
             contexts.map(
                 ({
-                    aid,
+                    aid: memberAid,
                     isInitiator,
-                    coordinatorPrefix,
+                    initiatorPrefix,
                     otherMembers,
                 }) => ({
-                    prefix: aid.prefix,
+                    prefix: memberAid.prefix,
                     isInitiator,
-                    coordinatorPrefix,
+                    initiatorPrefix,
                     recipients: otherMembers.map(({prefix}) => prefix),
                 })
             ),
@@ -30,19 +66,19 @@ describe('multisig coordinator', () => {
                 {
                     prefix: 'EQar1',
                     isInitiator: false,
-                    coordinatorPrefix: 'EQar2',
+                    initiatorPrefix: 'EQar2',
                     recipients: ['EQar2', 'EQar3'],
                 },
                 {
                     prefix: 'EQar2',
                     isInitiator: true,
-                    coordinatorPrefix: 'EQar2',
+                    initiatorPrefix: 'EQar2',
                     recipients: ['EQar1', 'EQar3'],
                 },
                 {
                     prefix: 'EQar3',
                     isInitiator: false,
-                    coordinatorPrefix: 'EQar2',
+                    initiatorPrefix: 'EQar2',
                     recipients: ['EQar1', 'EQar2'],
                 },
             ]
@@ -53,13 +89,7 @@ describe('multisig coordinator', () => {
         assert.throws(
             () =>
                 memberContexts(
-                    ['1', '1', '3'].map((suffix) => ({
-                        aid: {
-                            prefix: `EQar${suffix}`,
-                            name: `qar${suffix}`,
-                        } as never,
-                        client: {} as never,
-                    })),
+                    members(['EQar1', 'EQar1', 'EQar3']),
                     'EQar1'
                 ),
             /prefixes must be unique/
@@ -67,27 +97,70 @@ describe('multisig coordinator', () => {
     });
 
     it('does not impose the workflow three-member fixture', () => {
-        const members = ['E1', 'E2'].map((prefix) => ({
-            aid: {prefix, name: prefix} as never,
-            client: {} as never,
-        }));
-        assert.equal(memberContexts(members, 'E1').length, 2);
+        assert.equal(
+            memberContexts(members(['E1', 'E2']), 'E1').length,
+            2
+        );
     });
 
     it('rejects an initiator outside the member set', () => {
         assert.throws(
             () =>
                 memberContexts(
-                    ['1', '2'].map((suffix) => ({
-                        aid: {
-                            prefix: `EQar${suffix}`,
-                            name: `qar${suffix}`,
-                        } as never,
-                        client: {} as never,
-                    })),
+                    members(['EQar1', 'EQar2']),
                     'EQar3'
                 ),
             /is not a member/
         );
+    });
+
+    it('submits the initiator before overlapping followers', async () => {
+        let releaseInitiator = () => {};
+        let reportInitiatorStarted = () => {};
+        let releaseFollowers = () => {};
+        let reportFollowersStarted = () => {};
+        const initiatorMayFinish = new Promise<void>((resolve) => {
+            releaseInitiator = resolve;
+        });
+        const initiatorStarted = new Promise<void>((resolve) => {
+            reportInitiatorStarted = resolve;
+        });
+        const followersMayFinish = new Promise<void>((resolve) => {
+            releaseFollowers = resolve;
+        });
+        const followersStarted = new Promise<void>((resolve) => {
+            reportFollowersStarted = resolve;
+        });
+        let activeFollowers = 0;
+
+        const completion = coordinateMultisigOperation(
+            members(['E1', 'E2', 'E3']),
+            'E2',
+            async ({aid: memberAid, isInitiator}) => {
+                if (isInitiator) {
+                    reportInitiatorStarted();
+                    await initiatorMayFinish;
+                } else {
+                    activeFollowers += 1;
+                    if (activeFollowers === 2) {
+                        reportFollowersStarted();
+                    }
+                    await followersMayFinish;
+                    activeFollowers -= 1;
+                }
+                return {
+                    operation: `done.${memberAid.prefix}`,
+                    notificationIds: [],
+                };
+            }
+        );
+
+        await initiatorStarted;
+        assert.equal(activeFollowers, 0);
+        releaseInitiator();
+        await followersStarted;
+        assert.equal(activeFollowers, 2);
+        releaseFollowers();
+        await completion;
     });
 });

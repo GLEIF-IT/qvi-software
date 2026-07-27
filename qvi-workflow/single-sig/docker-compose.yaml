@@ -17,7 +17,7 @@ x-keria-image: &keria-image
 x-vlei-image: &vlei-image
   image: gleif/vlei:1.0.0
 x-sally-image: &sally-image
-  image: gleif/sally:1.0.2
+  image: gleif/sally:1.0.5
 
 x-healthcheck: &healthcheck
   interval: 3s
@@ -38,7 +38,7 @@ volumes:
   gar-wit-vol:
   qar-wit-vol:
   person-wit-vol:
-  direct-sally-vol:
+  sally-vol:
   keria-vol:
 
 services:
@@ -160,26 +160,26 @@ services:
       - "9923:9923"
     entrypoint: [ 'sally', 'hook', 'demo' ]
 
-  # Direct mode Sally (runs own mailbox, no witnesses or witness mailbox)
-  direct-sally:
+  # Sally runs its own mailbox without witnesses.
+  sally:
     stop_grace_period: 1s
     <<: *sally-image
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - SALLY_KS_NAME=${DIRECT_SALLY}
-      - SALLY_ALIAS=${DIRECT_SALLY_ALIAS}
-      - SALLY_SALT=${DIRECT_SALLY_SALT}
-      - SALLY_PASSCODE=${DIRECT_SALLY_PASSCODE}
+      - SALLY_KS_NAME=${SALLY_KS_NAME}
+      - SALLY_ALIAS=${SALLY_ALIAS}
+      - SALLY_SALT=${SALLY_SALT}
+      - SALLY_PASSCODE=${SALLY_PASSCODE}
       - WEBHOOK_HOST=${WEBHOOK_HOST}
       - GEDA_PRE=${GAR_PRE}
       - PYTHONWARNINGS=ignore::SyntaxWarning
       - SALLY_PORT=9823
     volumes:
-      - ./direct-sally/keri/cf/direct-sally.json:/sally/conf/keri/cf/direct-sally.json
-      - ./direct-sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json
-      - ./direct-sally/entry-point.sh:/sally/entry-point.sh
-      - direct-sally-vol:/usr/local/var/keri
+      - ./sally/keri/cf/sally.json:/sally/conf/keri/cf/sally.json
+      - ./sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json
+      - ./sally/entry-point.sh:/sally/entry-point.sh
+      - sally-vol:/usr/local/var/keri
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9823/health" ]
       <<: *healthcheck

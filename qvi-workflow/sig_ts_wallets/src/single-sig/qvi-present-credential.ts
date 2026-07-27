@@ -1,7 +1,7 @@
 import {TestEnvironmentPreset} from "../resolve-env.ts";
 import {createTimestamp, parseAidInfoSingleSig} from "../create-aid.ts";
 import {getOrCreateClient} from "../keystore-creation.ts";
-import {getReceivedCredBySchemaAndIssuer} from "../credentials.ts";
+import {getReceivedCredBySchemaAndIssuer} from "../credential-mutations.ts";
 import {Serder} from "signify-ts";
 import {
     requireOperationResponse,

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import type {SignifyClient} from 'signify-ts';
-
-import {assertQviEndRoles} from '../src/assertions.ts';
+import {
+    assertQviEndRoles,
+} from '../src/assertions.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 const QVI_PREFIX = 'EQviPrefix';
 const AGENT_EIDS = ['EAgentOne', 'EAgentTwo', 'EAgentThree'];
@@ -17,6 +18,10 @@ const AGENT_ENDPOINTS_BY_EID = [
     {eid: 'EAgentThree', url: 'http://keria3:3902/'},
     {eid: 'EAgentTwo', url: 'http://keria2:3902/'},
 ];
+const HISTORICAL_ENDPOINT = {
+    eid: 'EHistoricalAgent',
+    url: 'http://keria4:3902/',
+};
 
 interface AgentClientOptions {
     eid: string;
@@ -30,9 +35,8 @@ function agentClient({
     enumeratedOobis = [qualifiedOobi(AGENT_EIDS[0], 0)],
     authorizedEids = AGENT_EIDS,
     endpointOverrides = AGENT_ENDPOINTS,
-}: AgentClientOptions): SignifyClient {
-    return {
-        agent: {pre: eid},
+}: AgentClientOptions) {
+    return testSignifyClient({
         oobis: () => ({
             get: async () => ({oobis: enumeratedOobis}),
             endroles: async () =>
@@ -57,7 +61,7 @@ function agentClient({
                 rotation: [],
             }),
         }),
-    } as unknown as SignifyClient;
+    });
 }
 
 function qualifiedOobi(eid: string, index: number): string {
@@ -69,7 +73,7 @@ function qualifiedOobi(eid: string, index: number): string {
 
 /** Assert endpoint evidence with the deterministic test fixture. */
 async function assertOobi(
-    clients: SignifyClient[],
+    clients: ReturnType<typeof agentClient>[],
     expectedEndpoints = AGENT_ENDPOINTS_BY_EID
 ) {
     return await assertQviEndRoles(
@@ -140,6 +144,29 @@ describe('QVI multisig OOBI', () => {
             assertOobi(clients),
             /do not observe the exact authorized QVI agent EIDs/
         );
+    });
+
+    it('retains a historical authorization outside the signing roster', async () => {
+        const authorizedEids = [
+            ...AGENT_EIDS,
+            HISTORICAL_ENDPOINT.eid,
+        ];
+        const clients = AGENT_EIDS.map((eid) =>
+            agentClient({eid, authorizedEids})
+        );
+
+        const result = await assertQviEndRoles(
+            clients,
+            'qvi',
+            QVI_PREFIX,
+            AGENT_ENDPOINTS_BY_EID,
+            [...AGENT_ENDPOINTS_BY_EID, HISTORICAL_ENDPOINT]
+        );
+
+        assert.deepEqual(result.agentEndpoints, [
+            ...AGENT_ENDPOINTS_BY_EID,
+            HISTORICAL_ENDPOINT,
+        ]);
     });
 
     it('rejects divergent member endpoint observations', async () => {

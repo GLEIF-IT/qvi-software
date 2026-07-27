@@ -1,9 +1,9 @@
 import {createTimestamp} from '../create-aid.ts';
 import type {GroupMember} from '../client.ts';
 import {
-    admitCredential,
     waitForCredential,
-} from '../credentials.ts';
+} from '../credential-mutations.ts';
+import {admitCredential} from '../ipex.ts';
 import {credentialSnapshot} from '../credential-state.ts';
 
 /** Admit one credential through the final QVI roster. */

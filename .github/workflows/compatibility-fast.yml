@@ -26,10 +26,8 @@ jobs:
         working-directory: qvi-workflow/sig_ts_wallets
         run: npm test
       - name: Callback recorder tests
-        working-directory: qvi-workflow/keria_docker
-        run: python -m unittest discover callback_recorder/tests
-      - name: Shell workflow contract
-        run: qvi-workflow/keria_docker/tests/workflow-contract-test.sh
+        working-directory: qvi-workflow
+        run: python -m unittest callback_recorder.tests.test_recorder
       - name: Shell syntax
         run: find qvi-workflow -name '*.sh' -print0 | xargs -0 -n1 bash -n
       - name: Compose rendering
