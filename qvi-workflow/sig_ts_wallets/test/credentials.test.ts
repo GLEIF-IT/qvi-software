@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import type {Operation} from 'signify-ts';
+import type {
+    Operation,
+    SignifyClient,
+} from 'signify-ts';
 
-import {
-    admitSinglesig,
-    type SinglesigAdmissionClient,
-} from '../src/ipex.ts';
+import {admitSinglesig} from '../src/ipex.ts';
 import type {
     Exchange,
     Notification,
 } from '../src/notifications.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 const AID_NAME = 'person';
 const HOLDER_PREFIX = 'EHolder';
@@ -41,10 +42,6 @@ interface AdmissionTrace {
     credentialLookups: number;
 }
 
-interface AdmitEvent {
-    said: string;
-}
-
 interface TestCredential {
     sad: {
         d: string;
@@ -57,7 +54,7 @@ interface TestCredential {
 }
 
 interface AdmissionHarness {
-    client: SinglesigAdmissionClient<AdmitEvent, TestCredential>;
+    client: SignifyClient;
     credential: TestCredential;
     deliveryIds: string[];
     trace: AdmissionTrace;
@@ -146,10 +143,7 @@ function admissionHarness({
         },
     };
 
-    const client: SinglesigAdmissionClient<
-        AdmitEvent,
-        TestCredential
-    > = {
+    const client = testSignifyClient({
         identifiers: () => ({
             get: async () => ({
                 name: AID_NAME,
@@ -218,7 +212,7 @@ function admissionHarness({
                 return [];
             },
         }),
-    };
+    });
 
     return {
         client,

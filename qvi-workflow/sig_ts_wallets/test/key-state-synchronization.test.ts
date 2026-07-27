@@ -4,18 +4,16 @@ import {describe, it} from 'node:test';
 import type {
     CompletedOOBIOperation,
     Operation,
+    SignifyClient,
 } from 'signify-ts';
 
-import {
-    refreshSubjectsForObserver,
-    type KeyStateRefreshConfig,
-    type KeyStateRefreshWallet,
-} from '../src/sig-wallet.ts';
+import {refreshSubjectsForObserver} from '../src/sig-wallet.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 interface TestWallet {
     role: 'qar1' | 'qar2' | 'qar3';
-    aid: KeyStateRefreshWallet['aid'];
-    client: KeyStateRefreshWallet['client'];
+    aid: ReturnType<typeof aid>;
+    client: SignifyClient;
 }
 
 function aid(prefix: string, sequence = '0') {
@@ -33,17 +31,9 @@ function wallet(
     return {
         role,
         aid: aid(prefix),
-        client: {
+        client: testSignifyClient({
             oobis: () => ({resolve}),
-            operations: () => ({
-                get: async () => {
-                    throw new Error('unexpected operation lookup');
-                },
-                wait: async () => {
-                    throw new Error('unexpected operation wait');
-                },
-            }),
-        },
+        }),
     };
 }
 
@@ -78,7 +68,7 @@ function completedOperation(
 
 describe('observer key-state synchronization', () => {
     it('skips self, serializes each observer, overlaps observers, and counts exactly', async () => {
-        const config: KeyStateRefreshConfig = {
+        const config = {
             participants: {
                 qar1: {oobiUrl: 'http://127.0.0.1:3901'},
                 qar2: {oobiUrl: 'http://127.0.0.1:3902'},

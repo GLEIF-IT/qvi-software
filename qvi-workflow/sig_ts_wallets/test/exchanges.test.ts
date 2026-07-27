@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import type {HabState, Serder} from 'signify-ts';
+import type {
+    Dict,
+    HabState,
+    Serder,
+} from 'signify-ts';
 
-import {
-    sendExchangeToEachRecipient,
-    type ExchangeClient,
-} from '../src/exchanges.ts';
+import {sendExchangeToEachRecipient} from '../src/exchanges.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 function sender(): HabState {
     return {
@@ -19,14 +21,14 @@ describe('sendExchangeToEachRecipient', () => {
     it('creates and transmits one recipient-bound EXN per unique recipient', async () => {
         const created: string[] = [];
         const transmitted: string[][] = [];
-        const client: ExchangeClient = {
+        const client = testSignifyClient({
             exchanges: () => ({
                 createExchangeMessage: async (
-                    _sender,
-                    _route,
-                    _payload,
-                    _embeds,
-                    recipient
+                    _sender: HabState,
+                    _route: string,
+                    _payload: Dict<unknown>,
+                    _embeds: Dict<unknown>,
+                    recipient: string
                 ) => {
                     created.push(recipient);
                     return [
@@ -38,18 +40,18 @@ describe('sendExchangeToEachRecipient', () => {
                     ];
                 },
                 sendFromEvents: async (
-                    _name,
-                    _topic,
-                    _exn,
-                    _signatures,
-                    _attachment,
-                    recipients
+                    _name: string,
+                    _topic: string,
+                    _exn: Serder,
+                    _signatures: string[],
+                    _attachment: string,
+                    recipients: string[]
                 ) => {
                     transmitted.push(recipients);
                     return {};
                 },
             }),
-        };
+        });
 
         await sendExchangeToEachRecipient(client, {
             name: 'member',
@@ -66,11 +68,11 @@ describe('sendExchangeToEachRecipient', () => {
     });
 
     it('rejects an empty recipient set before creating an EXN', async () => {
-        const client = {
+        const client = testSignifyClient({
             exchanges: () => {
                 throw new Error('must not be called');
             },
-        } as ExchangeClient;
+        });
 
         await assert.rejects(
             sendExchangeToEachRecipient(client, {
@@ -87,26 +89,26 @@ describe('sendExchangeToEachRecipient', () => {
     });
 
     it('reports the exact recipient when fan-out partially fails', async () => {
-        const client: ExchangeClient = {
+        const client = testSignifyClient({
             exchanges: () => ({
                 createExchangeMessage: async (
-                    _sender,
-                    _route,
-                    _payload,
-                    _embeds,
-                    recipient
+                    _sender: HabState,
+                    _route: string,
+                    _payload: Dict<unknown>,
+                    _embeds: Dict<unknown>,
+                    recipient: string
                 ) => [
                     {said: `E${recipient}`} as Serder,
                     [],
                     '',
                 ],
                 sendFromEvents: async (
-                    _name,
-                    _topic,
-                    _exn,
-                    _signatures,
-                    _attachment,
-                    recipients
+                    _name: string,
+                    _topic: string,
+                    _exn: Serder,
+                    _signatures: string[],
+                    _attachment: string,
+                    recipients: string[]
                 ) => {
                     if (recipients[0] === 'E3') {
                         throw new Error('offline');
@@ -114,7 +116,7 @@ describe('sendExchangeToEachRecipient', () => {
                     return {};
                 },
             }),
-        };
+        });
 
         await assert.rejects(
             sendExchangeToEachRecipient(client, {

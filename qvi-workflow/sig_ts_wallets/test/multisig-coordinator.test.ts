@@ -11,20 +11,19 @@ import {
     coordinateMultisigOperation,
     memberContexts,
 } from '../src/multisig-coordinator.ts';
-import type {NotificationWriter} from '../src/notifications.ts';
-import type {OperationClient} from '../src/operations.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 function aid(prefix: string): HabState {
     return {prefix, name: prefix} as HabState;
 }
 
-function completionClient(): OperationClient & NotificationWriter {
+function completionClient() {
     const operation = {
         name: 'done',
         done: true,
         response: {},
     } as Operation;
-    return {
+    return testSignifyClient({
         operations: () => ({
             get: async () => operation,
             wait: async () => operation as CompletedOperation,
@@ -33,7 +32,7 @@ function completionClient(): OperationClient & NotificationWriter {
             mark: async (id: string) => id,
             delete: async () => {},
         }),
-    };
+    });
 }
 
 function members(prefixes: string[]) {

@@ -8,6 +8,7 @@ import {
     type Exchange,
     type Notification,
 } from '../src/notifications.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 interface ExchangeFixture {
     said: string;
@@ -98,9 +99,7 @@ function clientFor(
 ) {
     const marked: string[] = [];
     const deleted: string[] = [];
-    return {
-        marked,
-        deleted,
+    const client = testSignifyClient({
         notifications: () => ({
             list: async (start = 0, end = 24) => ({
                 start,
@@ -125,7 +124,8 @@ function clientFor(
                 return found;
             },
         }),
-    };
+    });
+    return Object.assign(client, {marked, deleted});
 }
 
 describe('notification correlation', () => {
@@ -137,7 +137,7 @@ describe('notification correlation', () => {
             embeddedDigest: 'ECurrentRev',
         });
         let listCalls = 0;
-        const client = {
+        const client = testSignifyClient({
             notifications: () => ({
                 list: async () => {
                     listCalls += 1;
@@ -157,7 +157,7 @@ describe('notification correlation', () => {
             exchanges: () => ({
                 get: async () => expectedExchange,
             }),
-        };
+        });
         const startedAt = performance.now();
 
         const matched = await waitForMatchingNotification(
@@ -519,7 +519,7 @@ describe('notification correlation', () => {
 
     it('does not delete evidence when marking fails', async () => {
         const deleted: string[] = [];
-        const client = {
+        const client = testSignifyClient({
             notifications: () => ({
                 list: async () => ({
                     start: 0,
@@ -539,7 +539,7 @@ describe('notification correlation', () => {
                     throw new Error('unused');
                 },
             }),
-        };
+        });
 
         await assert.rejects(
             consumeNotifications(client, ['N1', 'N2']),

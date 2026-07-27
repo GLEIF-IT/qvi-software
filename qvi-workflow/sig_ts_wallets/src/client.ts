@@ -5,14 +5,12 @@ import {
     type EventResult,
     type HabState,
     type KeyState,
-    type Operation,
     ready,
     SignifyClient,
     Tier,
 } from 'signify-ts';
 import {
     waitOperation,
-    type OperationClient,
 } from './operations.ts';
 
 export {waitOperation} from './operations.ts';
@@ -382,16 +380,9 @@ function isOobiAcknowledgement(
     return isRecord(value) && value.oobi === expectedOobi;
 }
 
-/** The exact OOBI and operation surface needed for resolution. */
-export interface OobiResolutionClient extends OperationClient {
-    oobis(): {
-        resolve(oobi: string, alias?: string): Promise<Operation>;
-    };
-}
-
 /** Submit and complete one validated OOBI resolution request. */
 async function resolveOobiResponse(
-    client: OobiResolutionClient,
+    client: SignifyClient,
     oobi: string,
     alias?: string
 ): Promise<OobiResponse> {
@@ -403,7 +394,7 @@ async function resolveOobiResponse(
 
 /** Resolve any OOBI and accept only KERIA's two documented response shapes. */
 export async function resolveOobi(
-    client: OobiResolutionClient,
+    client: SignifyClient,
     oobi: string,
     alias?: string
 ): Promise<void> {
@@ -418,7 +409,7 @@ export async function resolveOobi(
 
 /** Resolve an identifier OOBI and require the resulting key state. */
 export async function resolveAidOobi(
-    client: OobiResolutionClient,
+    client: SignifyClient,
     oobi: string,
     alias?: string
 ): Promise<KeyState> {

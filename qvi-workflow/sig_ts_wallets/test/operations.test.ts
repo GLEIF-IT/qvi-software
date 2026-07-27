@@ -13,8 +13,8 @@ import {
     isFailedOperation,
     isPendingOperation,
     waitOperation,
-    type OperationClient,
 } from '../src/operations.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 const pending: PendingExchangeOperation = {
     name: 'group.EEvent',
@@ -46,8 +46,8 @@ function client(options: {
             increaseFactor?: number;
         }
     ) => Promise<Operation>;
-}): OperationClient {
-    return {
+}) {
+    return testSignifyClient({
         operations: () => ({
             get:
                 options.get ??
@@ -60,7 +60,7 @@ function client(options: {
                     throw new Error('unexpected wait');
                 }),
         }),
-    };
+    });
 }
 
 describe('operation lifecycle', () => {

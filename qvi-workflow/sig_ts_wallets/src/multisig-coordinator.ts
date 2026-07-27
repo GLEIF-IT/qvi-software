@@ -4,25 +4,15 @@ import type {
     SignifyClient,
 } from 'signify-ts';
 
-import {
-    consumeNotifications,
-    type NotificationWriter,
-} from './notifications.ts';
-import {
-    waitOperation,
-    type OperationClient,
-} from './operations.ts';
+import {consumeNotifications} from './notifications.ts';
+import {waitOperation} from './operations.ts';
 
-export interface MultisigMember<
-    Client extends OperationClient & NotificationWriter = SignifyClient,
-> {
-    client: Client;
+export interface MultisigMember {
+    client: SignifyClient;
     aid: HabState;
 }
 
-export interface MultisigMemberContext<
-    Client extends OperationClient & NotificationWriter = SignifyClient,
-> extends MultisigMember<Client> {
+export interface MultisigMemberContext extends MultisigMember {
     otherMembers: HabState[];
     isInitiator: boolean;
     initiatorPrefix: string;
@@ -33,10 +23,8 @@ export interface MultisigResult {
     notificationIds: string[];
 }
 
-export type RunMemberOperation<
-    Client extends OperationClient & NotificationWriter = SignifyClient,
-> = (
-    context: MultisigMemberContext<Client>
+export type RunMemberOperation = (
+    context: MultisigMemberContext
 ) => Promise<MultisigResult>;
 
 export interface MemberSubmission {
@@ -46,10 +34,8 @@ export interface MemberSubmission {
 }
 
 /** Validate a concrete member set and its explicit operation initiator. */
-function requireMembers<
-    Client extends OperationClient & NotificationWriter,
->(
-    members: MultisigMember<Client>[],
+function requireMembers(
+    members: MultisigMember[],
     initiatorPrefix: string
 ): void {
     if (members.length === 0) {
@@ -69,12 +55,10 @@ function requireMembers<
 }
 
 /** Build member-local operation inputs around an explicit initiator. */
-export function memberContexts<
-    Client extends OperationClient & NotificationWriter,
->(
-    members: MultisigMember<Client>[],
+export function memberContexts(
+    members: MultisigMember[],
     initiatorPrefix: string
-): MultisigMemberContext<Client>[] {
+): MultisigMemberContext[] {
     requireMembers(members, initiatorPrefix);
     return members.map((member) => ({
         ...member,
@@ -87,7 +71,7 @@ export function memberContexts<
 }
 
 interface CompletedMember {
-    client: OperationClient & NotificationWriter;
+    client: SignifyClient;
     result: MultisigResult;
 }
 
@@ -115,12 +99,10 @@ export async function completeMultisigOperations(
  * Starts the proposal, overlaps independent follower contributions, and waits
  * for every member's local operation to complete.
  */
-export async function coordinateMultisigOperation<
-    Client extends OperationClient & NotificationWriter,
->(
-    members: MultisigMember<Client>[],
+export async function coordinateMultisigOperation(
+    members: MultisigMember[],
     initiatorPrefix: string,
-    runMember: RunMemberOperation<Client>
+    runMember: RunMemberOperation
 ): Promise<void> {
     const contexts = memberContexts(members, initiatorPrefix);
     const initiator = contexts.find(({isInitiator}) => isInitiator);

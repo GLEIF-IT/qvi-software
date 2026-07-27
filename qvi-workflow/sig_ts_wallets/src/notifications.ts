@@ -7,6 +7,7 @@ import {
     MULTISIG_ROT_ROUTE,
     MULTISIG_RPY_ROUTE,
     MULTISIG_VCP_ROUTE,
+    type SignifyClient,
 } from 'signify-ts';
 
 import {retry, type RetryOptions} from './retry.ts';
@@ -53,26 +54,6 @@ export interface Exchange {
         a?: unknown;
         e?: unknown;
     };
-}
-
-export interface NotificationReadApi {
-    list(start?: number, end?: number): Promise<NotificationPage>;
-}
-
-export interface NotificationMutationApi {
-    mark(said: string): Promise<string>;
-    delete(said: string): Promise<void>;
-}
-
-export interface NotificationReader {
-    notifications(): NotificationReadApi;
-    exchanges(): {
-        get(said: string): Promise<Exchange>;
-    };
-}
-
-export interface NotificationWriter {
-    notifications(): NotificationMutationApi;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -156,7 +137,7 @@ function exactRecipient(
 }
 
 export async function listAllNotifications(
-    client: NotificationReader,
+    client: SignifyClient,
     pageSize = 25
 ): Promise<Notification[]> {
     const pageSizeIsInvalid =
@@ -169,7 +150,7 @@ export async function listAllNotifications(
     let start = 0;
 
     while (true) {
-        const page = await client
+        const page: NotificationPage = await client
             .notifications()
             .list(start, start + pageSize - 1);
         notifications.push(...page.notes);
@@ -239,7 +220,7 @@ export function exchangeMatchesExpectation(
 }
 
 async function findMatchingNotifications(
-    client: NotificationReader,
+    client: SignifyClient,
     expectation: NotificationExpectation
 ): Promise<MatchedExchange[]> {
     const notes = await listAllNotifications(client);
@@ -307,7 +288,7 @@ async function findMatchingNotifications(
  * notification only after the dependent protocol action succeeds.
  */
 export async function waitForMatchingNotification(
-    client: NotificationReader,
+    client: SignifyClient,
     expectation: NotificationExpectation,
     options: RetryOptions = {}
 ): Promise<MatchedExchange> {
@@ -366,7 +347,7 @@ function validatedNotificationIds(
 }
 
 export async function consumeNotifications(
-    client: NotificationWriter,
+    client: SignifyClient,
     notificationIds: string[]
 ): Promise<void> {
     const validatedIds = validatedNotificationIds(notificationIds);

@@ -380,27 +380,16 @@ export function requireCredential(
     return credential;
 }
 
-interface CredentialReadApi<Credential> {
-    list(options: {
-        filter: Record<string, string>;
-    }): Promise<Credential[]>;
-}
-
-/** The exact credential-read surface used by workflow observations. */
-export interface CredentialReader<Credential = CredentialResult> {
-    credentials(): CredentialReadApi<Credential>;
-}
-
 /**
  * Returns a credential that has been received through an IPEX Admit by the client.
  * @param client SignifyClient for the recipient or for multisig the client of one of the recipients
  * @param credId SAID of the credential to retrieve
  * @returns the credential body
  */
-export async function getReceivedCredential<Credential = CredentialResult>(
-    client: CredentialReader<Credential>,
+export async function getReceivedCredential(
+    client: SignifyClient,
     credId: string
-): Promise<Credential | undefined> {
+): Promise<CredentialResult | undefined> {
     const credentialList = await client.credentials().list({
         filter: {
             '-d': credId,
@@ -415,13 +404,11 @@ export async function getReceivedCredential<Credential = CredentialResult>(
     return credentialList[0];
 }
 
-export async function getReceivedCredBySchemaAndIssuer<
-    Credential = CredentialResult,
->(
-    client: CredentialReader<Credential>,
+export async function getReceivedCredBySchemaAndIssuer(
+    client: SignifyClient,
     schemaSAID: string,
     issuerPrefix: string
-): Promise<Credential | undefined> {
+): Promise<CredentialResult | undefined> {
     const credentialList = await client.credentials().list({
         filter: {
             '-s': schemaSAID,
@@ -438,10 +425,10 @@ export async function getReceivedCredBySchemaAndIssuer<
 }
 
 /** Wait for one exact credential under the workflow's configured deadline. */
-export async function waitForCredential<Credential = CredentialResult>(
-    client: CredentialReader<Credential>,
+export async function waitForCredential(
+    client: SignifyClient,
     credSAID: string
-): Promise<Credential> {
+): Promise<CredentialResult> {
     return retry(async () => {
         const cred = await getReceivedCredential(client, credSAID);
         const credentialIsMissing = cred === undefined;

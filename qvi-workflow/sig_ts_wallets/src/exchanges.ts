@@ -1,7 +1,6 @@
 import type {
     Dict,
     HabState,
-    Serder,
     SignifyClient,
 } from 'signify-ts';
 
@@ -15,28 +14,6 @@ export interface SendExchangeOptions {
     recipients: string[];
 }
 
-interface ExchangeApi {
-    createExchangeMessage(
-        sender: HabState,
-        route: string,
-        payload: Dict<unknown>,
-        embeds: Dict<unknown>,
-        recipient: string
-    ): Promise<[Serder, string[], string]>;
-    sendFromEvents(
-        name: string,
-        topic: string,
-        exn: Serder,
-        signatures: string[],
-        attachment: string,
-        recipients: string[]
-    ): Promise<unknown>;
-}
-
-export interface ExchangeClient {
-    exchanges(): ExchangeApi;
-}
-
 /**
  * Creates a recipient-bound EXN for every recipient.
  *
@@ -46,7 +23,7 @@ export interface ExchangeClient {
  * agree with its sole transport recipient.
  */
 export async function sendExchangeToEachRecipient(
-    client: ExchangeClient | SignifyClient,
+    client: SignifyClient,
     options: SendExchangeOptions
 ): Promise<void> {
     // Compatibility adapter for https://github.com/WebOfTrust/signify-ts/issues/310.

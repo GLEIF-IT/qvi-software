@@ -44,26 +44,6 @@ export interface QviMultisigOobi {
     agentEndpoints: AgentEndpoint[];
 }
 
-interface EndRoleObservation {
-    cid: string;
-    role: string;
-    eid: string;
-}
-
-/** The exact KERIA observation surface needed for QVI endpoint proof. */
-export interface QviEndRoleClient {
-    oobis(): {
-        get(name: string, role: string): Promise<{oobis: string[]}>;
-        endroles(
-            prefix: string,
-            role: string
-        ): Promise<EndRoleObservation[]>;
-    };
-    identifiers(): {
-        members(name: string): Promise<unknown>;
-    };
-}
-
 /** Return whether a value is a non-null object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
@@ -147,7 +127,7 @@ function readAgentEndpoints(
 
 /** Require every observer to report the same member-agent endpoints. */
 export async function observeQviEndpoints(
-    clients: QviEndRoleClient[],
+    clients: SignifyClient[],
     groupName: string,
     expectedEids: string[]
 ): Promise<AgentEndpoint[]> {
@@ -174,7 +154,7 @@ export async function observeQviEndpoints(
 
 /** Require every observer to report the exact authorized agent EIDs. */
 async function exactAuthorizedEids(
-    clients: QviEndRoleClient[],
+    clients: SignifyClient[],
     qviPrefix: string,
     expectedEids: string[]
 ): Promise<void> {
@@ -230,7 +210,7 @@ function groupOobi(
 
 /** Assert the exact authorized endpoints and return the QVI OOBI. */
 export async function assertQviEndRoles(
-    clients: QviEndRoleClient[],
+    clients: SignifyClient[],
     groupName: string,
     qviPrefix: string,
     expectedMemberEndpoints: AgentEndpoint[],

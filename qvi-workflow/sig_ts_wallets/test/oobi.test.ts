@@ -3,8 +3,8 @@ import {describe, it} from 'node:test';
 
 import {
     assertQviEndRoles,
-    type QviEndRoleClient,
 } from '../src/assertions.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 const QVI_PREFIX = 'EQviPrefix';
 const AGENT_EIDS = ['EAgentOne', 'EAgentTwo', 'EAgentThree'];
@@ -35,8 +35,8 @@ function agentClient({
     enumeratedOobis = [qualifiedOobi(AGENT_EIDS[0], 0)],
     authorizedEids = AGENT_EIDS,
     endpointOverrides = AGENT_ENDPOINTS,
-}: AgentClientOptions): QviEndRoleClient {
-    return {
+}: AgentClientOptions) {
+    return testSignifyClient({
         oobis: () => ({
             get: async () => ({oobis: enumeratedOobis}),
             endroles: async () =>
@@ -61,7 +61,7 @@ function agentClient({
                 rotation: [],
             }),
         }),
-    };
+    });
 }
 
 function qualifiedOobi(eid: string, index: number): string {
@@ -73,7 +73,7 @@ function qualifiedOobi(eid: string, index: number): string {
 
 /** Assert endpoint evidence with the deterministic test fixture. */
 async function assertOobi(
-    clients: QviEndRoleClient[],
+    clients: ReturnType<typeof agentClient>[],
     expectedEndpoints = AGENT_ENDPOINTS_BY_EID
 ) {
     return await assertQviEndRoles(

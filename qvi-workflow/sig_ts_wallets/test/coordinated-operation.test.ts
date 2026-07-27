@@ -7,8 +7,7 @@ import type {
 } from 'signify-ts';
 
 import {completeMultisigOperations} from '../src/multisig-coordinator.ts';
-import type {NotificationWriter} from '../src/notifications.ts';
-import type {OperationClient} from '../src/operations.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
 interface MemberOptions {
     notificationCount?: number;
@@ -25,7 +24,7 @@ function member(
         name: `group.${name}`,
         done: false,
     } as Operation;
-    const client = {
+    const client = testSignifyClient({
         operations: () => ({
             get: async () => operation,
             wait: async (): Promise<CompletedOperation> => {
@@ -50,7 +49,7 @@ function member(
                 trace.push(`delete:${id}`);
             },
         }),
-    } satisfies OperationClient & NotificationWriter;
+    });
     return {
         client,
         result: {

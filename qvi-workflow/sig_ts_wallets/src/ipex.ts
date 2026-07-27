@@ -2,29 +2,19 @@ import signify, {
     type CredentialResult,
     type ExchangeOperation,
     type HabState,
-    type Operation,
     Serder,
     type SignifyClient,
 } from 'signify-ts';
 
 import type {GroupMember} from './client.ts';
-import {
-    waitForCredential,
-    type CredentialReader,
-} from './credential-mutations.ts';
+import {waitForCredential} from './credential-mutations.ts';
 import {sendExchangeToEachRecipient} from './exchanges.ts';
 import {coordinateMultisigOperation} from './multisig-coordinator.ts';
 import {
     consumeNotifications,
     waitForMatchingNotification,
-    type Exchange,
-    type NotificationMutationApi,
-    type NotificationReadApi,
 } from './notifications.ts';
-import {
-    waitOperation,
-    type OperationClient,
-} from './operations.ts';
+import {waitOperation} from './operations.ts';
 
 export interface GrantRequest {
     members: GroupMember[];
@@ -45,40 +35,6 @@ export interface AdmitRequest {
 export interface MultisigIpexResult {
     operation: ExchangeOperation;
     notificationIds: string[];
-}
-
-interface SinglesigIdentifierApi {
-    get(name: string): Promise<{prefix: string}>;
-}
-
-interface SinglesigAdmitApi<AdmitEvent> {
-    admit(options: {
-        senderName: string;
-        recipient: string;
-        message: string;
-        grantSaid: string;
-    }): Promise<[AdmitEvent, string[], string]>;
-    submitAdmit(
-        name: string,
-        admit: AdmitEvent,
-        signatures: string[],
-        attachment: string,
-        recipients: string[]
-    ): Promise<Operation>;
-}
-
-/** The exact client surface needed for one single-signature IPEX admit. */
-export interface SinglesigAdmissionClient<
-    AdmitEvent,
-    Credential,
-> extends OperationClient,
-        CredentialReader<Credential> {
-    identifiers(): SinglesigIdentifierApi;
-    ipex(): SinglesigAdmitApi<AdmitEvent>;
-    notifications(): NotificationReadApi & NotificationMutationApi;
-    exchanges(): {
-        get(said: string): Promise<Exchange>;
-    };
 }
 
 /** Grant one credential through concrete group members. */
@@ -225,12 +181,12 @@ export async function grantMultisig(
 }
 
 /** Admit one IPEX grant into a single-signature wallet. */
-export async function admitSinglesig<AdmitEvent, Credential>(
-    client: SinglesigAdmissionClient<AdmitEvent, Credential>,
+export async function admitSinglesig(
+    client: SignifyClient,
     aidName: string,
     issuerPrefix: string,
     credentialSaid: string
-): Promise<Credential> {
+): Promise<CredentialResult> {
     const aid = await client.identifiers().get(aidName);
     const grantNotification = await waitForMatchingNotification(
         client,

@@ -23,7 +23,6 @@ import {
     requireHttpUrl,
     resolveAidOobi,
     resolveOobi,
-    type OobiResolutionClient,
     type ParticipantEvidence,
     type GroupMember,
     type WorkflowConfig,
@@ -97,13 +96,13 @@ interface PreparedWallet extends ReadyWallet {
     evidence: ParticipantEvidence;
 }
 
-export interface KeyStateRefreshConfig {
+interface KeyStateRefreshConfig {
     participants: Record<ParticipantRole, {oobiUrl: string}>;
 }
 
-export interface KeyStateRefreshWallet {
+interface KeyStateRefreshWallet {
     role: ParticipantRole;
-    client: OobiResolutionClient;
+    client: SignifyClient;
     aid: {
         prefix: string;
         state: {
