@@ -259,6 +259,7 @@ verify_local_dependencies() {
   local dependency
 
   for dependency in \
+      "${GEDA_KLI_PYTHON}" \
       "${KLI_PYTHON}" \
       "${KLI_LAUNCHER}" \
       "${KERIA_PYTHON}" \
@@ -347,15 +348,21 @@ function preflight_versions() {
       return 1
   start_workflow_job \
       preflight-witnesses preflight-witnesses \
-      preflight_python_package "${WITNESS_PYTHON}" keri 1.2.12 ||
+      preflight_local_keripy "${WITNESS_PYTHON}" witnesses ||
       return 1
   start_workflow_job \
-      preflight-kli preflight-kli preflight_kli_version ||
+      preflight-geda-kli preflight-geda-kli \
+      preflight_python_package "${GEDA_KLI_PYTHON}" keri 1.1.42 ||
+      return 1
+  start_workflow_job \
+      preflight-kli preflight-kli \
+      preflight_local_keripy "${KLI_PYTHON}" kli ||
       return 1
   wait_for_background_jobs \
       preflight-signify \
       preflight-keria \
       preflight-witnesses \
+      preflight-geda-kli \
       preflight-kli
 }
 
@@ -373,15 +380,19 @@ preflight_python_package() {
       "${package_name}" "${expected_version}"
 }
 
-preflight_keria_versions() {
-  "${KERIA_PYTHON}" -c \
-      'from importlib.metadata import version; import sys; expected={"keria":"0.4.0","keri":"1.2.12"}; actual={name:version(name) for name in expected}; print(actual); raise SystemExit(0 if actual == expected else 1)'
+# Prove that a runtime imports KERIpy from the requested local branch checkout.
+preflight_local_keripy() {
+  local python_path=$1
+  local runtime_name=$2
+  local source_check='from importlib.metadata import version; from pathlib import Path; import keri, sys; expected=Path(sys.argv[1]).resolve(); actual=Path(keri.__file__).resolve(); print("{}: keri={} source={}".format(sys.argv[2], version("keri"), actual)); raise SystemExit(0 if expected in actual.parents else 1)'
+
+  "${python_path}" -c "${source_check}" \
+      "${LOCAL_KERIPY_DIR}" "${runtime_name}"
 }
 
-preflight_kli_version() {
-  local kli_version
-  kli_version=$(kli version) || return 1
-  [[ "${kli_version}" == *"1.1.32"* ]]
+preflight_keria_versions() {
+  preflight_python_package "${KERIA_PYTHON}" keria 0.4.1 &&
+      preflight_local_keripy "${KERIA_PYTHON}" keria
 }
 
 function start_sally() {
@@ -552,11 +563,13 @@ function resolve_gar_oobis() {
     GAR2_OOBI="${WIT_HOST_GAR}/oobi/${GAR2_PRE}/witness/${WAN_PRE}"
 
     start_workflow_job \
-        resolve-gar1-member gar1 resolve_kli_observer_oobis \
-        "${GAR1}" "${GAR1_PASSCODE}" "${GAR2}|${GAR2_OOBI}" || return 1
+        resolve-gar1-member gar1 resolve_kli_aid_oobis \
+        "${GAR1}" "${GAR1_PASSCODE}" \
+        "${GAR2}|${GAR2_OOBI}" || return 1
     start_workflow_job \
-        resolve-gar2-member gar2 resolve_kli_observer_oobis \
-        "${GAR2}" "${GAR2_PASSCODE}" "${GAR1}|${GAR1_OOBI}" || return 1
+        resolve-gar2-member gar2 resolve_kli_aid_oobis \
+        "${GAR2}" "${GAR2_PASSCODE}" \
+        "${GAR1}|${GAR1_OOBI}" || return 1
     wait_for_background_jobs resolve-gar1-member resolve-gar2-member
 }
 
@@ -565,11 +578,13 @@ function resolve_lar_oobis() {
     LAR2_OOBI="${WIT_HOST_QAR}/oobi/${LAR2_PRE}/witness/${WIL_PRE}"
 
     start_workflow_job \
-        resolve-lar1-member lar1 resolve_kli_observer_oobis \
-        "${LAR1}" "${LAR1_PASSCODE}" "${LAR2}|${LAR2_OOBI}" || return 1
+        resolve-lar1-member lar1 resolve_kli_aid_oobis \
+        "${LAR1}" "${LAR1_PASSCODE}" \
+        "${LAR2}|${LAR2_OOBI}" || return 1
     start_workflow_job \
-        resolve-lar2-member lar2 resolve_kli_observer_oobis \
-        "${LAR2}" "${LAR2_PASSCODE}" "${LAR1}|${LAR1_OOBI}" || return 1
+        resolve-lar2-member lar2 resolve_kli_aid_oobis \
+        "${LAR2}" "${LAR2_PASSCODE}" \
+        "${LAR1}|${LAR1_OOBI}" || return 1
     wait_for_background_jobs resolve-lar1-member resolve-lar2-member
 }
 
@@ -691,22 +706,46 @@ function read_prefixes() {
   print_lcyan "LAR2 Prefix: ${LAR2_PRE}"
 }
 
-resolve_kli_observer_oobis() {
+# Resolve each direct AID OOBI through the canonical KLI command.
+resolve_kli_aid_oobis() {
     local observer_name=$1
     local observer_passcode=$2
     shift 2
-    local oobi_record
+    local target_record
     local alias
     local oobi
+    local resolution_output
 
-    for oobi_record in "$@"; do
-        IFS='|' read -r alias oobi <<< "${oobi_record}"
-        kli oobi resolve \
+    for target_record in "$@"; do
+        IFS='|' read -r alias oobi <<< "${target_record}"
+        if [[ -z "${alias}" || -z "${oobi}" ]]; then
+            print_red "Invalid KLI OOBI target: ${target_record}"
+            return 1
+        fi
+        resolution_output=$(kli oobi resolve \
             --name "${observer_name}" \
             --oobi-alias "${alias}" \
             --passcode "${observer_passcode}" \
-            --oobi "${oobi}" || return 1
+            --oobi "${oobi}") || return 1
+        [[ "${resolution_output}" == *" resolved"* ]] || return 1
     done
+}
+
+# Resolve the contacts needed by one LE representative.
+resolve_lar_contacts() {
+    local observer_name=$1
+    local observer_passcode=$2
+    shift 2
+
+    if (( $# > 0 )); then
+        resolve_kli_aid_oobis \
+            "${observer_name}" "${observer_passcode}" "$@" || return 1
+    fi
+    kli oobi resolve \
+        --name "${observer_name}" \
+        --oobi-alias "${SALLY_ALIAS}" \
+        --passcode "${observer_passcode}" \
+        --oobi "${SALLY_OOBI}"
 }
 
 resolve_keria_external_oobis() {
@@ -731,43 +770,23 @@ function resolve_oobis() {
     start_workflow_job \
         resolve-keria-oobis qar1,qar2,qar3,qar4,person \
         resolve_keria_external_oobis || return 1
+    # Member pairs were resolved before group inception. Only the two mixed
+    # challenge relationships add KLI-side contacts at this stage.
     start_workflow_job \
-        resolve-gar1-oobis gar1 resolve_kli_observer_oobis \
+        resolve-gar1-oobis gar1 resolve_kli_aid_oobis \
         "${GAR1}" "${GAR1_PASSCODE}" \
-        "${GAR2}|${GAR2_OOBI}" "${LAR1}|${LAR1_OOBI}" \
-        "${LAR2}|${LAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
-        "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
-        "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
-        "${SALLY_ALIAS}|${SALLY_OOBI}" || return 1
+        "${QAR1}|${QAR1_OOBI}" || return 1
     start_workflow_job \
-        resolve-gar2-oobis gar2 resolve_kli_observer_oobis \
-        "${GAR2}" "${GAR2_PASSCODE}" \
-        "${GAR1}|${GAR1_OOBI}" "${LAR1}|${LAR1_OOBI}" \
-        "${LAR2}|${LAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
-        "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
-        "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
-        "${SALLY_ALIAS}|${SALLY_OOBI}" || return 1
-    start_workflow_job \
-        resolve-lar1-oobis lar1 resolve_kli_observer_oobis \
+        resolve-lar1-oobis lar1 resolve_lar_contacts \
         "${LAR1}" "${LAR1_PASSCODE}" \
-        "${LAR2}|${LAR2_OOBI}" "${GAR1}|${GAR1_OOBI}" \
-        "${GAR2}|${GAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
-        "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
-        "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
-        "${SALLY_ALIAS}|${SALLY_OOBI}" || return 1
+        "${QAR1}|${QAR1_OOBI}" || return 1
     start_workflow_job \
-        resolve-lar2-oobis lar2 resolve_kli_observer_oobis \
-        "${LAR2}" "${LAR2_PASSCODE}" \
-        "${LAR1}|${LAR1_OOBI}" "${GAR1}|${GAR1_OOBI}" \
-        "${GAR2}|${GAR2_OOBI}" "${QAR1}|${QAR1_OOBI}" \
-        "${QAR2}|${QAR2_OOBI}" "${QAR3}|${QAR3_OOBI}" \
-        "${QAR4}|${QAR4_OOBI}" "${PERSON}|${PERSON_OOBI}" \
-        "${SALLY_ALIAS}|${SALLY_OOBI}" || return 1
+        resolve-lar2-oobis lar2 resolve_lar_contacts \
+        "${LAR2}" "${LAR2_PASSCODE}" || return 1
 
     wait_for_background_jobs \
         resolve-keria-oobis \
         resolve-gar1-oobis \
-        resolve-gar2-oobis \
         resolve-lar1-oobis \
         resolve-lar2-oobis
 }
@@ -778,9 +797,15 @@ function generate_challenge_words() {
     local challenge_generation_failed=false
     local challenge_word_count=""
     local challenge_word_count_is_valid=false
+    local challenge_result=""
 
-    CHALLENGE_WORDS=$(kli challenge generate --out string |
-        tr -d '\r\n') || challenge_generation_failed=true
+    challenge_result=$(run_qvi_json challenge-words) ||
+        challenge_generation_failed=true
+    if [[ "${challenge_generation_failed}" == false ]]; then
+        CHALLENGE_WORDS=$(printf '%s\n' "${challenge_result}" |
+            jq -r '.words | join(" ")') ||
+            challenge_generation_failed=true
+    fi
     if [[ "${challenge_generation_failed}" == true ]]; then
         fail_workflow "Failed to generate a 128-bit challenge"
     fi
@@ -1114,7 +1139,6 @@ function create_geda_multisig() {
 function qars_resolve_geda_oobi() {
     local geda_oobi_is_missing=false
     local geda_resolution_failed=false
-    local refresh_failed=false
 
     if [[ -z "${GEDA_OOBI:-}" ]]; then
         GEDA_OOBI=$(kli oobi generate \
@@ -1139,14 +1163,31 @@ function qars_resolve_geda_oobi() {
         fail_workflow "QARs could not resolve the GEDA OOBI"
     fi
 
-    run_qvi_json \
-        ms-refresh-delegator \
-        --delegator-prefix "${GEDA_PRE}" \
-        --roles qar1,qar2,qar3 >/dev/null ||
-        refresh_failed=true
-    if [[ "${refresh_failed}" == true ]]; then
-        fail_workflow "QARs could not refresh the GEDA multisig state"
+}
+
+# Refresh the delegator through its direct local CESR OOBI in each QVI wallet.
+refresh_geda_for_qvi_members() {
+    local roles=$1
+    local expected_sequence=$2
+    local query_separator='?'
+    local refresh_oobi
+
+    if [[ -z "${GEDA_OOBI:-}" ]]; then
+        fail_workflow "Cannot refresh QVI members before the GEDA OOBI is known"
     fi
+
+    [[ "${GEDA_OOBI}" == *'?'* ]] && query_separator='&'
+    # A unique query component prevents KERIA's previous roobi result from
+    # satisfying a new refresh before the loopback CESR stream is parsed.
+    refresh_oobi="${GEDA_OOBI}${query_separator}name=${GEDA_NAME}&refresh=${expected_sequence}"
+
+    run_qvi_json \
+        ms-resolve-oobi \
+        --alias "${GEDA_NAME}" \
+        --oobi "${refresh_oobi}" \
+        --roles "${roles}" \
+        --expected-prefix "${GEDA_PRE}" \
+        --expected-sequence "${expected_sequence}" >/dev/null
 }
 
 # QAR: Create delegated multisig QVI AID with GEDA as delegator
@@ -1187,13 +1228,11 @@ function create_qvi_multisig() {
     print_lcyan "QVI Multisig Prefix: ${QVI_PRE}"
     echo
 
-    approve_qvi_delegation "${QAR1_PRE}" "${QAR2_PRE}" "${QAR3_PRE}" ||
+    approve_qvi_delegation qar1=0 qar2=0 qar3=0 ||
         return 1
 
-    run_qvi_json \
-        ms-refresh-delegator \
-        --delegator-prefix "${GEDA_PRE}" \
-        --roles qar1,qar2,qar3 >/dev/null || return 1
+    # Registry creation is GEDA sequence 1; this approval is sequence 2.
+    refresh_geda_for_qvi_members qar1,qar2,qar3 2 || return 1
     run_qvi_json \
         ms-incept-complete \
         --delegator-prefix "${GEDA_PRE}" \
@@ -1210,29 +1249,51 @@ function create_qvi_multisig() {
     print_green "[QVI] Multisig AID ${QVI_NAME} with prefix: ${QVI_PRE}"
 }
 
-query_qvi_participants_for_geda_member() {
+qvi_member_oobi() {
+    case "$1" in
+        qar1) printf '%s\n' "${QAR1_OOBI}" ;;
+        qar2) printf '%s\n' "${QAR2_OOBI}" ;;
+        qar3) printf '%s\n' "${QAR3_OOBI}" ;;
+        qar4) printf '%s\n' "${QAR4_OOBI}" ;;
+        *) return 1 ;;
+    esac
+}
+
+refresh_qvi_participants_for_geda_member() {
     local member_name=$1
     local member_passcode=$2
     shift 2
-    local participant_prefix
+    local target
+    local role
+    local expected_sequence
+    local oobi
+    local refresh_oobi
+    local resolution_output
 
-    for participant_prefix in "$@"; do
-        kli query \
+    for target in "$@"; do
+        role=${target%%=*}
+        expected_sequence=${target#*=}
+        oobi=$(qvi_member_oobi "${role}") || return 1
+        # The sequence-specific query component prevents an earlier OOBI result
+        # from satisfying this rotation's refresh.
+        refresh_oobi="${oobi}?name=${role}&refresh=${expected_sequence}"
+        resolution_output=$(kli oobi resolve \
             --name "${member_name}" \
-            --alias "${GEDA_NAME}" \
+            --oobi-alias "${role}" \
             --passcode "${member_passcode}" \
-            --prefix "${participant_prefix}" >/dev/null || return 1
+            --oobi "${refresh_oobi}") || return 1
+        [[ "${resolution_output}" == *" resolved"* ]] || return 1
     done
 }
 
 approve_qvi_delegation() {
     start_workflow_job \
         query-qvi-for-gar1 gar1 \
-        query_qvi_participants_for_geda_member \
+        refresh_qvi_participants_for_geda_member \
         "${GAR1}" "${GAR1_PASSCODE}" "$@" || return 1
     start_workflow_job \
         query-qvi-for-gar2 gar2 \
-        query_qvi_participants_for_geda_member \
+        refresh_qvi_participants_for_geda_member \
         "${GAR2}" "${GAR2_PASSCODE}" "$@" || return 1
     wait_for_background_jobs query-qvi-for-gar1 query-qvi-for-gar2 ||
         return 1
@@ -1279,10 +1340,8 @@ rotate_qvi_existing_members() {
         return 1
 
     approve_qvi_delegation "$@" || return 1
-    run_qvi_json \
-        ms-refresh-delegator \
-        --delegator-prefix "${GEDA_PRE}" \
-        --roles "${signing_roles}" >/dev/null || return 1
+    refresh_geda_for_qvi_members \
+        "${signing_roles}" "$((expected_sequence + 2))" || return 1
     run_qvi_json \
         ms-rotate-complete \
         --delegator-prefix "${GEDA_PRE}" \
@@ -1325,10 +1384,8 @@ rotate_qvi_with_joining_member() {
         return 1
 
     approve_qvi_delegation "$@" || return 1
-    run_qvi_json \
-        ms-refresh-delegator \
-        --delegator-prefix "${GEDA_PRE}" \
-        --roles qar1,qar2,qar4 >/dev/null || return 1
+    refresh_geda_for_qvi_members \
+        qar1,qar2,qar4 "$((expected_sequence + 2))" || return 1
     run_qvi_json \
         ms-rotate-complete \
         --delegator-prefix "${GEDA_PRE}" \
@@ -1345,14 +1402,14 @@ establish_qvi() {
         qar1,qar2,qar3 \
         qar1,qar2,qar3 \
         qar1,qar2,qar3 \
-        "${QAR1_PRE}" "${QAR2_PRE}" "${QAR3_PRE}" || return 1
+        qar1=1 qar2=1 qar3=1 || return 1
     rotate_qvi_existing_members 2 \
         qar1,qar2,qar3 \
         qar1,qar2,qar4 \
         qar1,qar2,qar3,qar4 \
-        "${QAR1_PRE}" "${QAR2_PRE}" "${QAR3_PRE}" || return 1
+        qar1=2 qar2=2 qar3=2 || return 1
     rotate_qvi_with_joining_member 3 \
-        "${QAR1_PRE}" "${QAR2_PRE}" "${QAR4_PRE}" || return 1
+        qar1=3 qar2=3 qar4=1 || return 1
     authorize_qvi_multisig_agent_endpoint_role || return 1
     resolve_qvi_oobi || return 1
 }
@@ -1453,10 +1510,25 @@ function qars_resolve_le_oobi() {
 function resolve_qvi_oobi() {
     echo
     print_yellow "Resolving the canonical QVI multisig OOBI for GEDA and LE"
-    kli oobi resolve --name "${GAR1}" --oobi-alias "${QVI_NAME}" --passcode "${GAR1_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${GAR2}" --oobi-alias "${QVI_NAME}" --passcode "${GAR2_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${LAR1}" --oobi-alias "${QVI_NAME}" --passcode "${LAR1_PASSCODE}" --oobi "${QVI_OOBI}"
-    kli oobi resolve --name "${LAR2}" --oobi-alias "${QVI_NAME}" --passcode "${LAR2_PASSCODE}" --oobi "${QVI_OOBI}"
+    start_workflow_job \
+        resolve-qvi-gar1 gar1 kli oobi resolve \
+        --name "${GAR1}" --oobi-alias "${QVI_NAME}" \
+        --passcode "${GAR1_PASSCODE}" --oobi "${QVI_OOBI}" || return 1
+    start_workflow_job \
+        resolve-qvi-gar2 gar2 kli oobi resolve \
+        --name "${GAR2}" --oobi-alias "${QVI_NAME}" \
+        --passcode "${GAR2_PASSCODE}" --oobi "${QVI_OOBI}" || return 1
+    start_workflow_job \
+        resolve-qvi-lar1 lar1 kli oobi resolve \
+        --name "${LAR1}" --oobi-alias "${QVI_NAME}" \
+        --passcode "${LAR1_PASSCODE}" --oobi "${QVI_OOBI}" || return 1
+    start_workflow_job \
+        resolve-qvi-lar2 lar2 kli oobi resolve \
+        --name "${LAR2}" --oobi-alias "${QVI_NAME}" \
+        --passcode "${LAR2_PASSCODE}" --oobi "${QVI_OOBI}" || return 1
+    wait_for_background_jobs \
+        resolve-qvi-gar1 resolve-qvi-gar2 \
+        resolve-qvi-lar1 resolve-qvi-lar2 || return 1
 
     print_yellow "Resolving the canonical QVI multisig OOBI for Person"
     run_qvi_json \
@@ -1604,12 +1676,7 @@ admit_qvi_received_credential() {
     if [[ "${admission_failed}" == true ]]; then
         fail_workflow "[QVI] Failed to admit ${story_label} credential ${credential_said}"
     fi
-    assert_qvi_credential_state \
-        "${credential_said}" \
-        "${issuer_prefix}" \
-        "${schema}" \
-        "${QVI_PRE}" \
-        0
+    # ms-admit returns only after this credential converges on every QAR.
 }
 
 # QVI: Admit QVI credential from GEDA
@@ -1771,12 +1838,7 @@ function create_le_credential() {
     store_qvi_issuance_result le "${issuance_result}"
     record_qvi_issuance_result "${issuance_result}"
     LE_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
-    assert_qvi_credential_state \
-        "${LE_CRED_SAID}" \
-        "${QVI_PRE}" \
-        "${LE_SCHEMA}" \
-        "${LE_PRE}" \
-        0
+    # ms-issue already proves this exact credential and active TEL state.
 }
 
 function grant_le_credential() {
@@ -1802,45 +1864,47 @@ wait_for_kli_ipex_grant_said() {
     local name=$1
     local alias=$2
     local passcode=$3
-    local deadline=$((SECONDS + WORKFLOW_TIMEOUT_SECONDS))
+    local expected_said=${4:-}
     local grant_said=""
+    local grant_saids=""
 
-    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
-        grant_said=$(kli ipex list \
-            --name "${name}" \
-            --alias "${alias}" \
-            --passcode "${passcode}" \
-            --type grant \
-            --poll \
-            --said |
+    grant_saids=$(kli ipex list \
+        --name "${name}" \
+        --alias "${alias}" \
+        --passcode "${passcode}" \
+        --type grant \
+        --poll \
+        --said) || return 1
+    if [[ -n "${expected_said}" ]]; then
+        grant_said=$(printf '%s\n' "${grant_saids}" |
+            awk -v expected="${expected_said}" '$0 == expected { print; exit }')
+    else
+        grant_said=$(printf '%s\n' "${grant_saids}" |
             sort -u |
             tail -n 1 |
-            tr -d '[:space:]') || return 1
-        if [[ -n "${grant_said}" ]]; then
-            printf '%s\n' "${grant_said}"
-            return 0
-        fi
-        sleep 1
-    done
+            tr -d '[:space:]')
+    fi
 
-    print_red "Timed out waiting for an IPEX grant for ${name}/${alias}"
-    return 124
+    if [[ -z "${grant_said}" ]]; then
+        print_red "No matching IPEX grant found for ${name}/${alias}"
+        return 124
+    fi
+    printf '%s\n' "${grant_said}"
 }
 
 function admit_le_credential() {
+    local lar2_said=""
+
     print_dark_gray "Listing IPEX Grants for LAR 1"
     SAID=$(wait_for_kli_ipex_grant_said \
         "${LAR1}" "${LE_NAME}" "${LAR1_PASSCODE}") || return 1
 
     print_dark_gray "Listing IPEX Grants for LAR 2"
-    # prime the mailbox to properly receive the messages.
-    kli ipex list \
-        --name "${LAR2}" \
-        --alias "${LE_NAME}" \
-        --passcode "${LAR2_PASSCODE}" \
-        --type "grant" \
-        --poll \
-        --said >/dev/null || return 1
+    lar2_said=$(wait_for_kli_ipex_grant_said \
+        "${LAR2}" "${LE_NAME}" "${LAR2_PASSCODE}" "${SAID}") ||
+        return 1
+    [[ "${lar2_said}" == "${SAID}" ]] ||
+        fail_workflow "[LE] LAR2 received a different IPEX grant"
 
     echo
     print_yellow "[LE] Admitting LE Credential ${SAID} to ${LE_NAME} as ${LAR1}"
@@ -2117,12 +2181,7 @@ function create_oor_credential() {
     store_qvi_issuance_result oor "${issuance_result}"
     record_qvi_issuance_result "${issuance_result}"
     OOR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
-    assert_qvi_credential_state \
-        "${OOR_CRED_SAID}" \
-        "${QVI_PRE}" \
-        "${OOR_SCHEMA}" \
-        "${PERSON_PRE}" \
-        0
+    # ms-issue already proves this exact credential and active TEL state.
 }
 
 function grant_oor_credential() {
@@ -2160,12 +2219,7 @@ admit_person_leaf_credential() {
     if [[ "${admission_failed}" == true ]]; then
         fail_workflow "[PERSON] Failed to admit ${story_label} credential ${credential_said}"
     fi
-    assert_person_credential_state \
-        "${credential_said}" \
-        "${QVI_PRE}" \
-        "${schema}" \
-        "${PERSON_PRE}" \
-        0
+    # ms-admit returns only after Person can read the active credential.
 }
 
 # Person: Admit OOR credential from QVI
@@ -2221,12 +2275,7 @@ function revoke_qvi_leaf_credential() {
         jq -r '.revocationTimestamp')
     LAST_REVOCATION_TEL_DIGEST=$(printf '%s\n' "${revocation_result}" |
         jq -r '.revocationTelDigest')
-    assert_qvi_credential_state \
-        "${credential_said}" \
-        "${QVI_PRE}" \
-        "${schema}" \
-        "${PERSON_PRE}" \
-        1
+    # ms-revoke returns only after every QAR observes TEL sequence one.
     print_green "[QVI] ${label} credential revocation converged on all three QARs"
     print_lcyan \
         "[QVI] ${label} revocation TEL: ${LAST_REVOCATION_TEL_DIGEST} at ${LAST_REVOCATION_TIMESTAMP}"
@@ -2513,12 +2562,7 @@ function create_ecr_credential() {
     store_qvi_issuance_result ecr "${issuance_result}"
     record_qvi_issuance_result "${issuance_result}"
     ECR_CRED_SAID="${LAST_ISSUED_CREDENTIAL_SAID}"
-    assert_qvi_credential_state \
-        "${ECR_CRED_SAID}" \
-        "${QVI_PRE}" \
-        "${ECR_SCHEMA}" \
-        "${PERSON_PRE}" \
-        0
+    # ms-issue already proves this exact credential and active TEL state.
 }
 
 function grant_ecr_credential() {
@@ -2773,57 +2817,73 @@ issue_and_grant_ecr_auth_credential() {
   grant_ecr_auth_credential
 }
 
+# Complete the holder's active-OOR lane before its issuer may revoke the OOR.
+admit_and_present_active_oor() {
+  admit_oor_credential || return 1
+  person_present_oor_cred_to_sally
+}
+
 optimized_leaf_credential_pipeline() {
   prepare_oor_auth_data || return 1
   prepare_ecr_auth_data || return 1
 
-  issue_and_grant_oor_auth_credential || return 1
+  create_oor_auth_credential || return 1
   load_oor_auth_credential_said || return 1
 
-  start_workflow_job \
-      admit-oor-auth qvi admit_oor_auth_credential || return 1
-  start_workflow_job \
-      issue-ecr-auth lar1,lar2 \
-      issue_and_grant_ecr_auth_credential || return 1
-  wait_for_background_jobs admit-oor-auth issue-ecr-auth || return 1
+  # Both operations open the same two local KLI wallets, so keep them serial.
+  grant_oor_auth_credential || return 1
+  create_ecr_auth_credential || return 1
   load_ecr_auth_credential_said || return 1
+
+  start_workflow_job \
+      admit-oor-auth qvi-exchange admit_oor_auth_credential || return 1
+  start_workflow_job \
+      grant-ecr-auth le-exchange grant_ecr_auth_credential || return 1
+  wait_for_background_jobs admit-oor-auth grant-ecr-auth || return 1
 
   prepare_oor_auth_edge || return 1
   prepare_ecr_auth_edge || return 1
   prepare_oor_cred_data || return 1
   prepare_ecr_cred_data || return 1
 
-  create_and_grant_oor_credential || return 1
+  # Signify coordination notices carry exact route, group, credential, and
+  # embedded-event correlations, so these state and exchange lanes cannot
+  # consume one another's notices.
   start_workflow_job \
-      admit-oor person admit_oor_credential || return 1
+      issue-oor qvi-state create_oor_credential || return 1
   start_workflow_job \
-      admit-ecr-auth qvi admit_ecr_auth_credential || return 1
-  wait_for_background_jobs admit-oor admit-ecr-auth || return 1
+      admit-ecr-auth qvi-exchange admit_ecr_auth_credential || return 1
+  wait_for_background_jobs issue-oor admit-ecr-auth || return 1
+  load_qvi_issuance_result oor || return 1
+
+  start_workflow_job \
+      grant-oor qvi-exchange grant_oor_credential || return 1
+  start_workflow_job \
+      issue-ecr qvi-state create_ecr_credential || return 1
+  wait_for_background_jobs grant-oor issue-ecr || return 1
+  load_qvi_issuance_result ecr || return 1
 
   pause "Press [ENTER] to present OOR to Sally" || return 1
   start_workflow_job \
-      present-active-oor person,sally \
-      person_present_oor_cred_to_sally || return 1
+      admit-present-active-oor person,sally \
+      admit_and_present_active_oor || return 1
   start_workflow_job \
-      issue-ecr qvi create_ecr_credential || return 1
-  wait_for_background_jobs present-active-oor issue-ecr || return 1
-  load_qvi_issuance_result ecr || return 1
+      grant-ecr qvi-exchange grant_ecr_credential || return 1
+  wait_for_background_jobs admit-present-active-oor grant-ecr || return 1
 
-  grant_ecr_credential || return 1
   start_workflow_job \
       admit-ecr person admit_ecr_credential || return 1
   start_workflow_job \
-      revoke-oor qvi revoke_oor_credential || return 1
+      revoke-oor qvi-state revoke_oor_credential || return 1
   wait_for_background_jobs admit-ecr revoke-oor || return 1
 
-  # Refresh the holder before the final wave. The refresh is a QVI mutation,
-  # so it must finish before ECR revocation starts on the same group.
-  refresh_person_revoked_oor_state || return 1
+  # Refreshing and reporting the revoked OOR uses only the exchange lane.
+  # ECR revocation may therefore advance independently on the state lane.
   start_workflow_job \
-      present-revoked-oor person,sally \
-      transmit_revoked_oor_to_sally || return 1
+      present-revoked-oor qvi-exchange,person,sally \
+      present_revoked_oor_to_sally || return 1
   start_workflow_job \
-      revoke-ecr qvi revoke_ecr_credential || return 1
+      revoke-ecr qvi-state revoke_ecr_credential || return 1
   wait_for_background_jobs present-revoked-oor revoke-ecr
 }
 

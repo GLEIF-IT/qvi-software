@@ -14,12 +14,48 @@ kli_uses_state() {
     esac
 }
 
-# Run KLI with signal handling restored and workflow-owned state selected later.
-run_local_kli() {
+# Run KLI Python with isolated state and localhost scheduler cadences.
+run_local_kli_python() {
     run_interruptible_process \
         env \
+        "${LOCAL_KERI_TOCK_ENV[@]}" \
+        "${LOCAL_KLI_TOCK_ENV[@]}" \
         QVI_KERI_HEAD_DIR="${KLI_HEAD_DIR}" \
-        "${KLI_PYTHON}" "${KLI_LAUNCHER}" "$@"
+        "$@"
+}
+
+# Return the wallet name from a KLI-style argument list, when one is present.
+kli_wallet_name() {
+    while (( $# > 0 )); do
+        if [[ "$1" == "--name" ]]; then
+            [[ $# -ge 2 ]] || return 1
+            printf '%s\n' "$2"
+            return 0
+        fi
+        shift
+    done
+}
+
+# Select the legacy GEDA runtime without hiding the choice in call sites.
+kli_python_for_wallet() {
+    local wallet_name=$1
+
+    if [[ -n "${GAR1:-}" && "${wallet_name}" == "${GAR1}" ]] ||
+       [[ -n "${GAR2:-}" && "${wallet_name}" == "${GAR2}" ]]; then
+        printf '%s\n' "${GEDA_KLI_PYTHON}"
+        return
+    fi
+    printf '%s\n' "${KLI_PYTHON}"
+}
+
+# Run one canonical KLI command in a normal short-lived process.
+run_local_kli() {
+    local wallet_name
+    local python_path
+
+    wallet_name=$(kli_wallet_name "$@" || true)
+    python_path=$(kli_python_for_wallet "${wallet_name}") || return 1
+    run_local_kli_python "${python_path}" "${KLI_LAUNCHER}" "$@"
 }
 
 # Run one KLI command with the correct isolated-state policy.

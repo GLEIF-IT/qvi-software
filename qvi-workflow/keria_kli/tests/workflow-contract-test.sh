@@ -9,6 +9,8 @@ WORKFLOW_DIR=$(cd "${TEST_DIR}/.." && pwd -P)
 
 # shellcheck source=../vlei-workflow.sh
 source "${WORKFLOW_DIR}/vlei-workflow.sh"
+# shellcheck source=../kli-commands.sh
+source "${WORKFLOW_DIR}/kli-commands.sh"
 
 # Fail immediately with one readable assertion message.
 fail_test() {
@@ -45,29 +47,71 @@ test_challenge_matrix_contract() {
         fail_test 'challenge completion contract is not 16 directions'
 }
 
-# Keep the holder's rejected presentation independent of QVI revocation.
-test_final_revocation_wave_is_actor_disjoint() {
-    local optimized_source
-    local transmit_source
-    local refresh_line
-    local presentation_line
+# Require the leaf pipeline to overlap only state and exchange lanes.
+test_leaf_pipeline_state_exchange_waves() {
+    local jobs=""
+    local waves=""
 
-    optimized_source=$(declare -f optimized_leaf_credential_pipeline)
-    transmit_source=$(declare -f transmit_revoked_oor_to_sally)
-    refresh_line=$(printf '%s\n' "${optimized_source}" |
-        grep -n 'refresh_person_revoked_oor_state' |
-        tail -n 1 |
-        cut -d: -f1)
-    presentation_line=$(printf '%s\n' "${optimized_source}" |
-        grep -n 'present-revoked-oor person,sally' |
-        tail -n 1 |
-        cut -d: -f1)
+    prepare_oor_auth_data() { return 0; }
+    prepare_ecr_auth_data() { return 0; }
+    create_oor_auth_credential() { return 0; }
+    grant_oor_auth_credential() { return 0; }
+    create_ecr_auth_credential() { return 0; }
+    load_oor_auth_credential_said() { OOR_AUTH_SAID=E-OOR-AUTH; }
+    load_ecr_auth_credential_said() { ECR_AUTH_SAID=E-ECR-AUTH; }
+    prepare_oor_auth_edge() { return 0; }
+    prepare_ecr_auth_edge() { return 0; }
+    prepare_oor_cred_data() { return 0; }
+    prepare_ecr_cred_data() { return 0; }
+    load_qvi_issuance_result() {
+        case "$1" in
+            oor) OOR_CRED_SAID=E-OOR ;;
+            ecr) ECR_CRED_SAID=E-ECR ;;
+            *) return 1 ;;
+        esac
+    }
+    pause() { return 0; }
+    start_workflow_job() {
+        jobs+="$1:$2:$3"$'\n'
+    }
+    wait_for_background_jobs() {
+        waves+="$*"$'\n'
+    }
 
-    [[ -n "${refresh_line}" && -n "${presentation_line}" &&
-       "${refresh_line}" -lt "${presentation_line}" ]] ||
-        fail_test 'holder refresh is not complete before the final revocation wave'
-    [[ "${transmit_source}" != *"--actor qvi"* ]] ||
-        fail_test 'revoked-OOR presentation still mutates the QVI in the ECR revocation wave'
+    optimized_leaf_credential_pipeline ||
+        fail_test 'optimized leaf pipeline did not construct its job waves'
+
+    local expected_jobs=$(
+        cat <<'EOF'
+admit-oor-auth:qvi-exchange:admit_oor_auth_credential
+grant-ecr-auth:le-exchange:grant_ecr_auth_credential
+issue-oor:qvi-state:create_oor_credential
+admit-ecr-auth:qvi-exchange:admit_ecr_auth_credential
+grant-oor:qvi-exchange:grant_oor_credential
+issue-ecr:qvi-state:create_ecr_credential
+admit-present-active-oor:person,sally:admit_and_present_active_oor
+grant-ecr:qvi-exchange:grant_ecr_credential
+admit-ecr:person:admit_ecr_credential
+revoke-oor:qvi-state:revoke_oor_credential
+present-revoked-oor:qvi-exchange,person,sally:present_revoked_oor_to_sally
+revoke-ecr:qvi-state:revoke_ecr_credential
+EOF
+    )
+    [[ "${jobs%$'\n'}" == "${expected_jobs}" ]] ||
+        fail_test 'leaf jobs do not preserve the state/exchange lane boundary'
+
+    local expected_waves=$(
+        cat <<'EOF'
+admit-oor-auth grant-ecr-auth
+issue-oor admit-ecr-auth
+grant-oor issue-ecr
+admit-present-active-oor grant-ecr
+admit-ecr revoke-oor
+present-revoked-oor revoke-ecr
+EOF
+    )
+    [[ "${waves%$'\n'}" == "${expected_waves}" ]] ||
+        fail_test 'leaf state/exchange jobs do not share the intended deadlines'
 }
 
 # Ensure a failed intermediate rotation prevents credential issuance.
@@ -82,6 +126,7 @@ test_rotation_failure_reaches_main_flow() {
         GEDA_PRE=E-GEDA
         create_qvi_multisig() { return 0; }
         approve_qvi_delegation() { return 0; }
+        refresh_geda_for_qvi_members() { return 0; }
         run_qvi_json() {
             local action=$1
             shift
@@ -211,10 +256,32 @@ test_sally_startup_contract() {
     fi
 }
 
+# Keep the legacy GEDA CLI isolated from every v1.2.x wallet.
+test_kli_runtime_selection() {
+    local original_gar1=${GAR1}
+    local original_gar2=${GAR2}
+
+    GEDA_KLI_PYTHON=/runtime/geda-kli/python
+    KLI_PYTHON=/runtime/kli/python
+    GAR1=gar-one
+    GAR2=gar-two
+
+    [[ "$(kli_python_for_wallet "${GAR1}")" == "${GEDA_KLI_PYTHON}" ]] ||
+        fail_test 'GAR1 did not select the GEDA KLI runtime'
+    [[ "$(kli_python_for_wallet "${GAR2}")" == "${GEDA_KLI_PYTHON}" ]] ||
+        fail_test 'GAR2 did not select the GEDA KLI runtime'
+    [[ "$(kli_python_for_wallet lar-one)" == "${KLI_PYTHON}" ]] ||
+        fail_test 'a non-GEDA wallet selected the legacy KLI runtime'
+
+    GAR1=${original_gar1}
+    GAR2=${original_gar2}
+}
+
 test_rotation_failure_reaches_main_flow
 test_every_mode_uses_shared_qvi_lifecycle
 test_sally_startup_contract
 test_challenge_matrix_contract
-test_final_revocation_wave_is_actor_disjoint
+test_leaf_pipeline_state_exchange_waves
 test_delegation_queries_are_actor_disjoint
+test_kli_runtime_selection
 printf 'workflow contract passed\n'

@@ -4,6 +4,7 @@ import {describe, it} from 'node:test';
 import type {HabState, SignifyClient} from 'signify-ts';
 
 import {refreshSubjectsForObserver} from '../src/sig-wallet.ts';
+import type {WorkflowConfig} from '../src/client.ts';
 
 interface TestWallet {
     role: 'qar1' | 'qar2' | 'qar3';
@@ -15,43 +16,56 @@ function aid(prefix: string, sequence = '0'): HabState {
     return {
         name: prefix,
         prefix,
-        state: {s: sequence},
+        state: {i: prefix, s: sequence, d: `${prefix}-${sequence}`},
     } as HabState;
 }
 
 function wallet(
     role: TestWallet['role'],
     prefix: string,
-    query: (prefix: string, sequence?: string) => Promise<unknown>
+    resolve: (oobi: string) => Promise<unknown>
 ): TestWallet {
     return {
         role,
         aid: aid(prefix),
         client: {
-            keyStates: () => ({query}),
+            oobis: () => ({resolve}),
         } as unknown as SignifyClient,
     };
 }
 
-function completedOperation(name: string) {
+function completedOperation(name: string, prefix: string) {
     return {
         name,
         done: true,
         error: null,
-        response: {},
+        response: {
+            i: prefix,
+            s: '0',
+            d: `${prefix}-0`,
+        },
     };
 }
 
 describe('observer key-state synchronization', () => {
     it('skips self, serializes each observer, overlaps observers, and counts exactly', async () => {
+        const config = {
+            participants: {
+                qar1: {oobiUrl: 'http://127.0.0.1:3901'},
+                qar2: {oobiUrl: 'http://127.0.0.1:3902'},
+                qar3: {oobiUrl: 'http://127.0.0.1:3903'},
+            },
+        } as WorkflowConfig;
         let globallyActive = 0;
         let maximumGloballyActive = 0;
         const activeByObserver = new Map<string, number>();
         const maximumByObserver = new Map<string, number>();
         const queried = new Map<string, string[]>();
 
-        function queryFor(observer: string) {
-            return async (subject: string) => {
+        function resolveFor(observer: string) {
+            return async (oobi: string) => {
+                const subject = new URL(oobi).pathname.split('/').at(-1);
+                assert.ok(subject);
                 const observerActive =
                     (activeByObserver.get(observer) ?? 0) + 1;
                 activeByObserver.set(observer, observerActive);
@@ -76,20 +90,23 @@ describe('observer key-state synchronization', () => {
 
                 activeByObserver.set(observer, observerActive - 1);
                 globallyActive -= 1;
-                return completedOperation(`${observer}-${subject}`);
+                return completedOperation(
+                    `${observer}-${subject}`,
+                    subject
+                );
             };
         }
 
-        const qar1 = wallet('qar1', 'E-qar1', queryFor('E-qar1'));
-        const qar2 = wallet('qar2', 'E-qar2', queryFor('E-qar2'));
+        const qar1 = wallet('qar1', 'E-qar1', resolveFor('E-qar1'));
+        const qar2 = wallet('qar2', 'E-qar2', resolveFor('E-qar2'));
         const qar3 = wallet('qar3', 'E-qar3', async () => {
             throw new Error('subject clients are not queried');
         });
         const subjects = [qar1, qar2, qar3];
 
         const counts = await Promise.all([
-            refreshSubjectsForObserver(qar1, subjects),
-            refreshSubjectsForObserver(qar2, subjects),
+            refreshSubjectsForObserver(config, qar1, subjects),
+            refreshSubjectsForObserver(config, qar2, subjects),
         ]);
 
         assert.deepEqual(counts, [2, 2]);

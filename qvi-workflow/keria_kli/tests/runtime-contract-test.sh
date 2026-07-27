@@ -59,6 +59,8 @@ wait_for_fixture_ready() {
 test_background_job_contract() {
     local test_runtime
     local elapsed
+    local finished_milliseconds
+    local started_milliseconds
     local started_at
 
     test_runtime=$(mktemp -d)
@@ -90,6 +92,18 @@ test_background_job_contract() {
     load_workflow_job_result timed-a |
         jq -e '.name == "timed-a" and .status == 0' >/dev/null ||
         fail_test 'completed background job result could not be loaded'
+
+    reset_job_registry
+    fast_job() { sleep 0.05; }
+    started_milliseconds=$(python3 -c \
+        'import time; print(round(time.monotonic() * 1000))')
+    start_workflow_job fast actor-fast fast_job
+    wait_for_background_jobs fast
+    finished_milliseconds=$(python3 -c \
+        'import time; print(round(time.monotonic() * 1000))')
+    elapsed=$((finished_milliseconds - started_milliseconds))
+    [[ "${elapsed}" -lt 500 ]] ||
+        fail_test 'short background job completion was quantized to one second'
 
     reset_job_registry
     start_workflow_job conflict-a shared timed_job

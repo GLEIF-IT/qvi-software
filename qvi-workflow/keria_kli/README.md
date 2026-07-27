@@ -21,12 +21,20 @@ cd qvi-workflow/keria_kli
 
 The local toolchain uses:
 
-- KERIA 0.4.0;
-- KERIpy 1.2.12 for KERIA and witnesses;
-- HIO 0.6.19;
-- KERIpy 1.1.32 for the current GAR/LAR KLI compatibility lane; and
+- local KERIA main at `86e21cbd` (package version 0.4.1);
+- GLEIF KERIpy 1.1.42 for the GEDA KLI wallets;
+- the local KERIpy `v1.2.14` branch for KERIA, witnesses, Sally, and the
+  remaining KLI wallets;
 - Sally 1.0.5 from PyPI;
+- HIO 0.6.19;
 - SignifyTS 0.4.0.
+
+The `v1.2.14` branch currently reports package version 1.2.13. Bootstrap and
+preflight therefore verify its source checkout, not that stale metadata value.
+The bootstrap expects the standard multi-repository layout rooted four
+directories above this workflow. Override `KERI_WORKSPACE_DIR` or the
+individual `GEDA_KERIPY_DIR`, `LOCAL_KERIPY_DIR`, and `LOCAL_KERIA_DIR`
+variables when the source checkouts use another layout.
 
 The host needs Node.js, npm, pyenv, uv, Git, curl, jq, and standard macOS
 command-line tools. Python 3.12.6 must be available through pyenv.
@@ -34,12 +42,12 @@ command-line tools. Python 3.12.6 must be available through pyenv.
 ## Run the complete proof
 
 ```bash
-./vlei-workflow.sh --timeout 45
+./vlei-workflow.sh --timeout 8
 ```
 
-The 45-second operation deadline is a temporary reliability ceiling for the
-working baseline, not an accepted performance target. The default remains 30
-seconds while the local workflow is optimized toward a sub-180-second total.
+The eight-second operation deadline intentionally exposes local paths that
+miss the expected low-latency envelope. It is not increased merely to hide a
+slow poll, replay, or escrow path.
 
 The canonical run proves:
 

@@ -7,17 +7,19 @@ set -Eeuo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 VENV_DIR="${SCRIPT_DIR}/.venvs"
 DEPENDENCY_DIR="${SCRIPT_DIR}/.deps"
+KERI_WORKSPACE_DIR=${KERI_WORKSPACE_DIR:-$(cd "${SCRIPT_DIR}/../../../.." && pwd -P)}
 
 PYTHON_VERSION=${PYTHON_VERSION:-3.12.6}
 # GEDA remains on the GLEIF 1.1.x compatibility line in a maintained worktree.
 GEDA_KERIPY_VERSION=1.1.42
 GEDA_KERIPY_BRANCH=perf/configurable-command-tocks-1.1.42
-GEDA_KERIPY_DIR=${GEDA_KERIPY_DIR:-/Users/kbull/enc/keri/worktrees/keripy/configurable-command-tocks-1.1.42}
+GEDA_KERIPY_DIR=${GEDA_KERIPY_DIR:-\
+"${KERI_WORKSPACE_DIR}/worktrees/keripy/configurable-command-tocks-1.1.42"}
 # Every other local Python process uses the actively tuned 1.2.x source tree.
 LOCAL_KERIPY_BRANCH=v1.2.14
-LOCAL_KERIPY_DIR=${LOCAL_KERIPY_DIR:-/Users/kbull/enc/keri/core/python/keripy}
+LOCAL_KERIPY_DIR=${LOCAL_KERIPY_DIR:-"${KERI_WORKSPACE_DIR}/core/python/keripy"}
 LOCAL_KERIA_COMMIT=86e21cbdf98dcc75817e16708879c3c5a9b41cb8
-LOCAL_KERIA_DIR=${LOCAL_KERIA_DIR:-/Users/kbull/enc/keri/core/python/keria}
+LOCAL_KERIA_DIR=${LOCAL_KERIA_DIR:-"${KERI_WORKSPACE_DIR}/core/python/keria"}
 KERIA_VERSION=0.4.1
 SALLY_VERSION=1.0.5
 HIO_VERSION=0.6.19

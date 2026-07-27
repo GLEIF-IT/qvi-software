@@ -689,6 +689,34 @@ async function challenge(
     return {status: 'verified'};
 }
 
+/** Require one exact 12-word challenge at the KERIA response boundary. */
+export function requireChallengeWords(value: unknown): string[] {
+    const words = isRecord(value) ? value.words : undefined;
+    if (
+        Array.isArray(words) === false ||
+        words.length !== 12 ||
+        words.some(
+            (word) =>
+                typeof word !== 'string' || word.length === 0
+        )
+    ) {
+        throw new Error(
+            'KERIA returned an incompatible 128-bit challenge'
+        );
+    }
+    return [...words] as string[];
+}
+
+/** Generate one fresh 128-bit BIP39 challenge through a connected agency. */
+async function challengeWords(config: WorkflowConfig) {
+    const client = await connectClient(config.participants.qar1);
+    const challenge = await client.challenges().generate(128);
+    return {
+        status: 'generated',
+        words: requireChallengeWords(challenge),
+    };
+}
+
 /** Resolve an explicit external OOBI list from every generated participant. */
 async function resolveExternalOobis(
     config: WorkflowConfig,
@@ -737,19 +765,29 @@ async function bootSetupWallets(
     );
 }
 
-/** Resolve all configured witness AIDs in each fresh wallet. */
+/** Select the one witness used by a participant's inception event. */
+function setupWitnessForRole(
+    config: WorkflowConfig,
+    role: ParticipantRole
+) {
+    return role === 'person'
+        ? config.services.witnesses[2]
+        : config.services.witnesses[1];
+}
+
+/** Resolve only the witness used by each fresh wallet. */
 async function resolveSetupWitnesses(
     config: WorkflowConfig,
     wallets: SetupWallet[]
 ): Promise<void> {
-    const oobis = config.services.witnesses.map(
-        ({id, url}, index) =>
-            `${url}/oobi/${id}/controller?name=Witness${index + 1}&tag=witness`
-    );
     await Promise.all(
-        wallets.flatMap(({client}) =>
-            oobis.map((oobi) => resolveAidOobi(client, oobi))
-        )
+        wallets.map(({role, client}) => {
+            const witness = setupWitnessForRole(config, role);
+            const oobi =
+                `${witness.url}/oobi/${witness.id}` +
+                `/controller?name=${witness.id}&tag=witness`;
+            return resolveAidOobi(client, oobi);
+        })
     );
 }
 
@@ -761,10 +799,7 @@ async function createSetupAids(
     return await Promise.all(
         wallets.map(async (wallet) => {
             const participant = config.participants[wallet.role];
-            const witness =
-                wallet.role === 'person'
-                    ? config.services.witnesses[2]
-                    : config.services.witnesses[1];
+            const witness = setupWitnessForRole(config, wallet.role);
             const aid = await inceptAid(
                 wallet.client,
                 participant.name,
@@ -871,7 +906,7 @@ async function resolveOobiAction(
 ) {
     const roles = parseRoles(args.roles, 'Resolution roles');
     const wallets = await connectWallets(config, roles);
-    await Promise.all(
+    const states = await Promise.all(
         wallets.map(({client}) =>
             resolveAidOobi(
                 client,
@@ -880,25 +915,29 @@ async function resolveOobiAction(
             )
         )
     );
+    const expectedPrefix = args['expected-prefix'];
+    const expectedSequence = args['expected-sequence'];
+    if (
+        (expectedPrefix === undefined) !==
+        (expectedSequence === undefined)
+    ) {
+        throw new UsageError(
+            'Expected prefix and sequence must be provided together'
+        );
+    }
+    if (
+        expectedPrefix !== undefined &&
+        states.some(
+            ({i, s}) =>
+                i !== expectedPrefix || s !== expectedSequence
+        )
+    ) {
+        throw new Error(
+            `OOBI did not resolve ${expectedPrefix} at sequence ` +
+            expectedSequence
+        );
+    }
     return {status: 'resolved', roles};
-}
-
-/** Refresh one delegator state from the exact participant roles named by Bash. */
-async function refreshDelegatorAction(
-    config: WorkflowConfig,
-    args: Record<string, string>
-) {
-    const roles = parseRoles(args.roles, 'Refresh roles');
-    const wallets = await connectWallets(config, roles);
-    await Promise.all(
-        wallets.map(async ({client}) => {
-            await waitOperation(
-                client,
-                await client.keyStates().query(args['delegator-prefix'])
-            );
-        })
-    );
-    return {status: 'refreshed', roles};
 }
 
 /** Rotate the exact member AIDs selected by the outer workflow. */
@@ -936,26 +975,53 @@ async function rotateMembersAction(
     };
 }
 
+/** Build a cache-safe direct OOBI for one participant's current event. */
+function participantStateOobi(
+    config: WorkflowConfig,
+    subject: ReadyWallet
+): string {
+    const oobi = new URL(
+        `/oobi/${subject.aid.prefix}`,
+        config.participants[subject.role].oobiUrl
+    );
+
+    // The event digest changes on every rotation, so an older completed roobi
+    // operation cannot satisfy a refresh for a newer event.
+    oobi.searchParams.set('refresh', subject.aid.state.d);
+    return oobi.toString();
+}
+
 /** Serially refresh exact subject key states in one observer's KERIA store. */
 export async function refreshSubjectsForObserver(
+    config: WorkflowConfig,
     observer: ReadyWallet,
     subjects: readonly ReadyWallet[]
 ): Promise<number> {
-    let queryCount = 0;
+    let refreshCount = 0;
 
     for (const subject of subjects) {
         if (subject.aid.prefix === observer.aid.prefix) {
             continue;
         }
 
-        const operation = await observer.client
-            .keyStates()
-            .query(subject.aid.prefix, subject.aid.state.s);
-        await waitOperation(observer.client, operation);
-        queryCount += 1;
+        const state = await resolveAidOobi(
+            observer.client,
+            participantStateOobi(config, subject)
+        );
+        if (
+            state.i !== subject.aid.prefix ||
+            state.s !== subject.aid.state.s ||
+            state.d !== subject.aid.state.d
+        ) {
+            throw new Error(
+                `${observer.role} did not resolve the current ` +
+                `${subject.role} key state`
+            );
+        }
+        refreshCount += 1;
     }
 
-    return queryCount;
+    return refreshCount;
 }
 
 /** Synchronize subject key states across independent observer stores. */
@@ -977,14 +1043,14 @@ async function synchronizeKeyStatesAction(
     const wallets = await loadWallets(config, rolesToLoad);
     const observers = selectWallets(wallets, observerRoles);
     const subjects = selectWallets(wallets, subjectRoles);
-    const queryCounts = await Promise.all(
+    const refreshCounts = await Promise.all(
         observers.map((observer) =>
-            refreshSubjectsForObserver(observer, subjects)
+            refreshSubjectsForObserver(config, observer, subjects)
         )
     );
     return {
         status: 'synchronized',
-        queryCount: queryCounts.reduce(
+        refreshCount: refreshCounts.reduce(
             (total, count) => total + count,
             0
         ),
@@ -1037,16 +1103,13 @@ async function prepareJoiningMemberAction(
     );
     if (
         resolved.i !== group.prefix ||
-        resolved.s !== args['expected-sequence']
+        resolved.s !== args['expected-sequence'] ||
+        resolved.d !== group.state.d
     ) {
         throw new Error(
             'Joining wallet did not resolve the expected group state'
         );
     }
-    await waitOperation(
-        joining.client,
-        await joining.client.keyStates().query(group.prefix)
-    );
     return {
         status: 'prepared',
         joiningRole: joining.role,
@@ -1785,26 +1848,19 @@ export async function run(
             );
         }
         case 'ms-resolve-oobi': {
-            args = parseExactArguments(
+            args = parseArguments(
                 values,
-                'config',
-                'alias',
-                'oobi',
-                'roles'
+                [
+                    'config',
+                    'alias',
+                    'oobi',
+                    'roles',
+                    'expected-prefix',
+                    'expected-sequence',
+                ],
+                ['config', 'alias', 'oobi', 'roles']
             );
             return await resolveOobiAction(
-                readWorkflowConfig(args.config),
-                args
-            );
-        }
-        case 'ms-refresh-delegator': {
-            args = parseExactArguments(
-                values,
-                'config',
-                'delegator-prefix',
-                'roles'
-            );
-            return await refreshDelegatorAction(
                 readWorkflowConfig(args.config),
                 args
             );
@@ -1854,6 +1910,12 @@ export async function run(
             return await challenge(
                 readWorkflowConfig(args.config),
                 args
+            );
+        }
+        case 'challenge-words': {
+            args = parseExactArguments(values, 'config');
+            return await challengeWords(
+                readWorkflowConfig(args.config)
             );
         }
         case 'ms-incept-submit': {

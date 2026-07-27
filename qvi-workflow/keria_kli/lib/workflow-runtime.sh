@@ -16,10 +16,16 @@ WORKFLOW_PROCESS_NAMES=("")
 WORKFLOW_PROCESS_PIDS=("")
 WORKFLOW_PROCESS_LOGS=("")
 WORKFLOW_CLEANUP_SIGNAL=""
+# Local predicates and child-process checks are cheap. Observe them often
+# enough that the harness does not hide sub-second protocol completion.
+WORKFLOW_POLL_INTERVAL_SECONDS=0.01
 
 # Resolve the workflow-owned local executables once for every driver command.
 VENV_DIR="${SCRIPT_DIR}/.venvs"
 DEPENDENCY_DIR="${SCRIPT_DIR}/.deps"
+KERI_WORKSPACE_DIR=${KERI_WORKSPACE_DIR:-$(cd "${SCRIPT_DIR}/../../../.." && pwd -P)}
+LOCAL_KERIPY_DIR=${LOCAL_KERIPY_DIR:-"${KERI_WORKSPACE_DIR}/core/python/keripy"}
+GEDA_KLI_PYTHON="${VENV_DIR}/geda-kli/bin/python"
 KLI_PYTHON="${VENV_DIR}/kli/bin/python"
 KLI_LAUNCHER="${SCRIPT_DIR}/local-kli.py"
 KERIA_PYTHON="${VENV_DIR}/keria/bin/python"
@@ -32,9 +38,42 @@ TSX_BIN="${SCRIPT_DIR}/../sig_ts_wallets/node_modules/.bin/tsx"
 WALLET_SERVER="${SCRIPT_DIR}/../sig_ts_wallets/src/wallet-server.ts"
 SIGNAL_RESET_LAUNCHER="${SCRIPT_DIR}/run-with-signals.py"
 
-export KLI_PYTHON KLI_LAUNCHER KERIA_PYTHON KERIA_LAUNCHER WITNESS_PYTHON
+export GEDA_KLI_PYTHON KLI_PYTHON KLI_LAUNCHER
+export KERIA_PYTHON KERIA_LAUNCHER WITNESS_PYTHON
 export SALLY_PYTHON SALLY_LAUNCHER VLEI_BIN TSX_BIN WALLET_SERVER
-export SIGNAL_RESET_LAUNCHER
+export SIGNAL_RESET_LAUNCHER KERI_WORKSPACE_DIR LOCAL_KERIPY_DIR
+
+# Run every configurable v1.2.x KERI doer at one 1/32-second scheduler tick.
+LOCAL_KERI_TOCK_ENV=(
+    KERI_WITNESS_MSG_TOCK=0.03125
+    KERI_WITNESS_ESCROW_TOCK=0.03125
+    KERI_WITNESS_CUE_TOCK=0.03125
+    KERI_INDIRECTOR_MSG_TOCK=0.03125
+    KERI_INDIRECTOR_CUE_TOCK=0.03125
+    KERI_INDIRECTOR_ESCROW_TOCK=0.03125
+    KERI_MAILBOX_POLL_TOCK=0.03125
+    KERI_MAILBOX_MSG_TOCK=0.03125
+    KERI_MAILBOX_ESCROW_TOCK=0.03125
+    KERI_POLLER_EVENT_TOCK=0.03125
+    KERI_RECEIPT_INTERCEPT_TOCK=0.03125
+    KERI_REACTOR_MSG_TOCK=0.03125
+    KERI_REACTOR_CUE_TOCK=0.03125
+    KERI_REACTOR_ESCROW_TOCK=0.03125
+    KERI_REACTANT_MSG_TOCK=0.03125
+    KERI_REACTANT_CUE_TOCK=0.03125
+    KERI_REACTANT_ESCROW_TOCK=0.03125
+    KERI_RESPONDANT_CUE_TOCK=0.03125
+    KERI_WITNESS_RECEIPTOR_TOCK=0.03125
+    KERI_WITNESS_INQUISITOR_TOCK=0.03125
+    KERI_WITNESS_PUBLISHER_TOCK=0.03125
+)
+
+# KLI command counselors are short-lived and process one event. Keeping this
+# cadence out of LOCAL_KERI_TOCK_ENV avoids burdening always-on KERIA agents.
+LOCAL_KLI_TOCK_ENV=(
+    KERI_COUNSELOR_ESCROW_TOCK=0.03125
+    KERI_VDR_ESCROW_TOCK=0.03125
+)
 
 # Report whether a PID still represents a running, non-zombie process.
 workflow_process_is_running() {
@@ -147,7 +186,8 @@ create_workflow_runtime() {
     export LOCAL_QVI_DATA_DIR KEYSTORE_DIR WORKFLOW_LOG_DIR WORKFLOW_RESULT_DIR
     export WORKFLOW_PID_DIR KERI_HEAD_DIR KLI_HEAD_DIR KLI_BASE
     export WITNESS_BASE SALLY_BASE
-    export SALLY_CALLBACK_FILE SALLY_LOG_FILE
+    export SALLY_CALLBACK_FILE
+    export SALLY_LOG_FILE
 
     # A retained --keep-runtime run is intentionally replaced by the next run.
     stop_retained_local_processes
@@ -281,10 +321,10 @@ write_local_keria_config() {
                 dt: "2024-12-31T14:06:30.123456+00:00",
                 curls: [$curl]
             },
-            iurls: [
-                "http://127.0.0.1:5643/oobi/BLskRTInXnMxWaGqcpSyMgo0nYbalW99cGZESrz3zapM/controller?name=Wil&tag=witness&tag=sample",
-                "http://127.0.0.1:5644/oobi/BIKKuvBwpmDVA4Ds-EpL5bt9OqPzWPja2LigFYZN2YfX/controller?name=Wes&tag=witness&tag=sample"
-            ]
+            # Wallet setup introduces the one witness each participant uses.
+            # Keeping agency bootstrap empty avoids resolving both witnesses
+            # independently in all five KERIA stores.
+            iurls: []
         }' > "${config_file}"
 }
 
@@ -394,6 +434,7 @@ start_local_keria() {
     start_managed_process \
         "keria-${role}" \
         env \
+        "${LOCAL_KERI_TOCK_ENV[@]}" \
         KERI_AGENT_CORS=True \
         KERIA_RELEASER_TIMEOUT=3600 \
         PYTHONUNBUFFERED=1 \
@@ -422,7 +463,9 @@ assert_local_ports_available() {
         6901 6902 6903 \
         7901 7902 7903 \
         5642 5643 5644 \
-        7723 8923 9823 9923; do
+        7723 \
+        8923 \
+        9823 9923; do
         listener=$(lsof -nP -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
         if [[ -n "${listener}" ]]; then
             printf 'Local workflow port %s is already used by PID %s\n' \
@@ -454,7 +497,10 @@ start_local_foundation_services() {
         "${SCRIPT_DIR}/../callback_recorder/recorder.py"
     start_managed_process \
         witnesses \
-        env PYTHONUNBUFFERED=1 PYTHONWARNINGS=ignore::SyntaxWarning \
+        env \
+        "${LOCAL_KERI_TOCK_ENV[@]}" \
+        PYTHONUNBUFFERED=1 \
+        PYTHONWARNINGS=ignore::SyntaxWarning \
         "${WITNESS_PYTHON}" \
         "${SCRIPT_DIR}/local-witnesses.py" \
         --head-dir "${WORKFLOW_RUN_DIR}/state" \
@@ -466,6 +512,14 @@ start_local_foundation_services() {
         QVI_OPERATION_TIMEOUT_SECONDS="${WORKFLOW_TIMEOUT_SECONDS}" \
         QVI_WALLET_PORT=8923 \
         "${TSX_BIN}" "${WALLET_SERVER}"
+
+    # KERIA startup does not require the other local HTTP services to be ready.
+    # Start all agencies now so their Python imports overlap the readiness waits.
+    start_local_keria qar1 keria-qar1 3901 3902 3903 || return 1
+    start_local_keria qar2 keria-qar2 4901 4902 4903 || return 1
+    start_local_keria qar3 keria-qar3 5901 5902 5903 || return 1
+    start_local_keria qar4 keria-qar4 6901 6902 6903 || return 1
+    start_local_keria person keria-person 7901 7902 7903 || return 1
 
     wait_for_managed_process \
         vlei-server \
@@ -483,12 +537,6 @@ start_local_foundation_services() {
     wait_for_managed_process \
         signify-wallet http://127.0.0.1:8923/health ||
         return 1
-
-    start_local_keria qar1 keria-qar1 3901 3902 3903 || return 1
-    start_local_keria qar2 keria-qar2 4901 4902 4903 || return 1
-    start_local_keria qar3 keria-qar3 5901 5902 5903 || return 1
-    start_local_keria qar4 keria-qar4 6901 6902 6903 || return 1
-    start_local_keria person keria-person 7901 7902 7903 || return 1
 
     wait_for_managed_process \
         keria-qar1 http://127.0.0.1:3902/spec.yaml || return 1
@@ -509,6 +557,7 @@ start_local_sally() {
     start_managed_process \
         sally \
         env \
+        "${LOCAL_KERI_TOCK_ENV[@]}" \
         PYTHONUNBUFFERED=1 \
         PYTHONWARNINGS=ignore::SyntaxWarning \
         QVI_KERI_HEAD_DIR="${KERI_HEAD_DIR}" \
@@ -525,6 +574,7 @@ start_local_sally() {
         --incept-file sally-incept-no-wits.json \
         --web-hook "${WEBHOOK_HOST}" \
         --auth "${geda_prefix}" \
+        --retry-delay 1 \
         --loglevel INFO
     wait_for_managed_process sally http://127.0.0.1:9823/health
 }
@@ -728,7 +778,7 @@ poll_until() {
             break
         fi
 
-        sleep 1
+        sleep "${WORKFLOW_POLL_INTERVAL_SECONDS}"
     done
 
     printf 'Timed out after %ss waiting for %s. Last observation: %s\n' \
@@ -1041,6 +1091,9 @@ wait_for_background_jobs() {
             cancel_all_workflow_jobs
             return 124
         fi
-        [[ "${made_progress}" == true ]] || sleep 1
+        # Bash 3.2 has no wait -n. A short PID poll keeps sub-second local
+        # commands from being rounded up by a one-second completion sleep.
+        [[ "${made_progress}" == true ]] ||
+        sleep "${WORKFLOW_POLL_INTERVAL_SECONDS}"
     done
 }
