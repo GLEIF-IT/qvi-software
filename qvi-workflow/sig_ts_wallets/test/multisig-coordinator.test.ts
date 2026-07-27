@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import {memberContexts} from '../src/multisig-coordinator.ts';
+import {
+    coordinateMultisigOperation,
+    memberContexts,
+} from '../src/multisig-coordinator.ts';
 
 describe('multisig coordinator', () => {
     it('assigns one initiator and one explicit coordinator', () => {
@@ -89,5 +92,51 @@ describe('multisig coordinator', () => {
                 ),
             /is not a member/
         );
+    });
+
+    it('finishes the initiator before overlapping independent followers', async () => {
+        const members = ['E1', 'E2', 'E3'].map((prefix) => ({
+            aid: {prefix, name: prefix} as never,
+            client: {} as never,
+        }));
+        let initiatorFinished = false;
+        let activeFollowers = 0;
+        let maximumActiveFollowers = 0;
+
+        await coordinateMultisigOperation(
+            members,
+            'E2',
+            async ({aid, isInitiator}) => {
+                if (isInitiator) {
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, 10)
+                    );
+                    initiatorFinished = true;
+                } else {
+                    assert.equal(initiatorFinished, true);
+                    activeFollowers += 1;
+                    maximumActiveFollowers = Math.max(
+                        maximumActiveFollowers,
+                        activeFollowers
+                    );
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, 10)
+                    );
+                    activeFollowers -= 1;
+                }
+
+                return {
+                    operation: {
+                        name: `done.${aid.prefix}`,
+                        done: true,
+                        error: null,
+                        response: {},
+                    } as never,
+                    coordination: [],
+                };
+            }
+        );
+
+        assert.equal(maximumActiveFollowers, 2);
     });
 });

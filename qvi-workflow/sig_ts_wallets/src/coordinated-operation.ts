@@ -28,6 +28,30 @@ interface SavedMemberResult {
     result: SavedMultisigResult;
 }
 
+/** Consume one member's notices in their required local order. */
+async function consumeMemberNotifications({
+    client,
+    result,
+}: MemberResult): Promise<void> {
+    for (const notification of result.coordination) {
+        await consumeNotification(client, notification);
+    }
+}
+
+/** Consume one restored member's saved notification reference. */
+async function consumeSavedMemberNotifications({
+    client,
+    result,
+}: SavedMemberResult): Promise<void> {
+    if (result.notificationIds.length === 0) {
+        return;
+    }
+    const reference: NotificationReference = {
+        notificationIds: result.notificationIds,
+    };
+    await consumeNotificationReference(client, reference);
+}
+
 /**
  * Waits for every member operation before consuming any coordination notice.
  *
@@ -44,11 +68,9 @@ export async function completeMultisigOps(
         )
     );
 
-    for (const {client, result} of members) {
-        for (const notification of result.coordination) {
-            await consumeNotification(client, notification);
-        }
-    }
+    // Each KERIA member owns a separate store, so members may clean up in
+    // parallel. The helper keeps notice mutations serial within one store.
+    await Promise.all(members.map(consumeMemberNotifications));
 }
 
 /**
@@ -63,13 +85,5 @@ export async function completeSavedMultisigOps(
         )
     );
 
-    for (const {client, result} of members) {
-        if (result.notificationIds.length === 0) {
-            continue;
-        }
-        const reference: NotificationReference = {
-            notificationIds: result.notificationIds,
-        };
-        await consumeNotificationReference(client, reference);
-    }
+    await Promise.all(members.map(consumeSavedMemberNotifications));
 }

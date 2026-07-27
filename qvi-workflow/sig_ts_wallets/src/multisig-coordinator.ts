@@ -69,24 +69,37 @@ export function memberContexts(
 }
 
 /**
- * Runs a member-scoped multisig action in protocol order and completes it.
+ * Starts the proposal, overlaps independent follower contributions, and waits
+ * for every member's local operation to complete.
  */
 export async function coordinateMultisigOperation(
     members: MultisigMember[],
     initiatorPrefix: string,
     runMember: RunMemberOperation
 ): Promise<void> {
-    const completedMembers: Array<{
-        client: SignifyClient;
-        result: MultisigResult;
-    }> = [];
-
-    for (const context of memberContexts(members, initiatorPrefix)) {
-        const result = await runMember(context);
-        completedMembers.push({client: context.client, result});
+    const contexts = memberContexts(members, initiatorPrefix);
+    const initiator = contexts.find(({isInitiator}) => isInitiator);
+    if (initiator === undefined) {
+        throw new Error('Multisig initiator context is missing');
     }
 
-    await completeMultisigOps(completedMembers);
+    // Followers need the initiator's proposal, but they use separate KERIA
+    // stores and do not depend on one another.
+    const initiatorResult = await runMember(initiator);
+    const followers = contexts.filter(
+        (context) => context !== initiator
+    );
+    const followerResults = await Promise.all(
+        followers.map((context) => runMember(context))
+    );
+
+    await completeMultisigOps([
+        {client: initiator.client, result: initiatorResult},
+        ...followers.map((context, index) => ({
+            client: context.client,
+            result: followerResults[index],
+        })),
+    ]);
 }
 
 export function operationFrom(

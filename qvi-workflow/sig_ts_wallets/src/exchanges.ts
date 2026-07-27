@@ -63,6 +63,9 @@ export async function sendExchangeToEachRecipient(
     }
 
     const exchangeApi = client.exchanges();
+    // One KERIA agency serializes requests from its Signify controller.
+    // Sending these in parallel only makes both requests contend and take
+    // longer, so keep each sender's recipient deliveries serial.
     for (const recipient of uniqueRecipients) {
         try {
             const [exn, signatures, attachment] =
