@@ -33,9 +33,8 @@ The `keria_docker` workflow demonstrates:
 - Sally's revoked-OOR rejection and revocation callback.
 
 The QVI revokes only credentials it issued. The LE-issued OOR-Auth and
-ECR-Auth credentials remain active. Sally 1.0.2 does not support ECR
-reporting, so the ECR branch ends after Person admission and converged
-revocation.
+ECR-Auth credentials remain active. Sally does not support ECR reporting, so
+the ECR branch ends after Person admission and converged revocation.
 
 See [`keria_docker/README.md`](keria_docker/README.md) for the tutorial,
 configuration, runtime layout, and commands.

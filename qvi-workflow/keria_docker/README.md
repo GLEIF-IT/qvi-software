@@ -17,7 +17,7 @@ distinguish working interoperability from a command that merely exited zero.
 
 - `weboftrust/keria:0.4.0`
 - `signify-ts@0.4.0`
-- `gleif/sally:1.0.2`
+- `gleif/sally:1.0.5`
 - `weboftrust/keri:1.1.32` and `gleif/keri:1.2.9` for the KLI lanes
 
 The Signify image installs the locked Node dependencies with `npm ci`. A host
@@ -111,7 +111,7 @@ The next invocation clears the retained stack and runtime automatically.
    revokes ECR. All QARs must observe status sequence `1` and the same TEL
    digest for both leaves.
 
-Sally 1.0.2 does not support the ECR reporting story, so this workflow does not
+Sally does not support the ECR reporting story, so this workflow does not
 present ECR. It simply ends that branch after admission and converged
 revocation. OOR-Auth and ECR-Auth remain active because the QVI did not issue
 them.

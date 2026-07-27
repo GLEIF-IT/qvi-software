@@ -23,8 +23,9 @@ The local toolchain uses:
 
 - KERIA 0.4.0;
 - KERIpy 1.2.12 for KERIA and witnesses;
-- HIO 0.6.14;
+- HIO 0.6.19;
 - KERIpy 1.1.32 for the current GAR/LAR KLI compatibility lane; and
+- Sally 1.0.5 from PyPI;
 - SignifyTS 0.4.0.
 
 The host needs Node.js, npm, pyenv, uv, Git, curl, jq, and standard macOS

@@ -18,9 +18,9 @@ LOCAL_KERIPY_BRANCH=v1.2.14
 LOCAL_KERIPY_DIR=${LOCAL_KERIPY_DIR:-/Users/kbull/enc/keri/core/python/keripy}
 LOCAL_KERIA_COMMIT=86e21cbdf98dcc75817e16708879c3c5a9b41cb8
 LOCAL_KERIA_DIR=${LOCAL_KERIA_DIR:-/Users/kbull/enc/keri/core/python/keria}
-LOCAL_SALLY_DIR=${LOCAL_SALLY_DIR:-/Users/kbull/enc/keri/verifier/apps/sally}
 KERIA_VERSION=0.4.1
-HIO_VERSION=0.6.14
+SALLY_VERSION=1.0.5
+HIO_VERSION=0.6.19
 LMDB_VERSION=1.6.2
 VLEI_COMMIT=c12e208f566478e6a256b6af6ddb1990e66a6d91
 
@@ -136,13 +136,6 @@ main() {
             "${LOCAL_KERIA_COMMIT}" "${LOCAL_KERIA_DIR}" >&2
         return 1
     fi
-    if [[ ! -f "${LOCAL_SALLY_DIR}/pyproject.toml" &&
-          ! -f "${LOCAL_SALLY_DIR}/setup.py" ]]; then
-        printf 'Local Sally checkout not found at %s\n' \
-            "${LOCAL_SALLY_DIR}" >&2
-        return 1
-    fi
-
     ensure_checkout \
         vlei git@github.com:WebOfTrust/vLEI.git "${VLEI_COMMIT}"
 
@@ -166,7 +159,7 @@ main() {
     install_local_keripy witnesses
 
     ensure_venv sally "${python_path}" \
-        --editable "${LOCAL_SALLY_DIR}"
+        "sally==${SALLY_VERSION}"
     install_local_keripy sally
 
     ensure_venv vlei "${python_path}" \
@@ -186,8 +179,8 @@ main() {
     printf '  KERIA:     %s (local source at %s)\n' \
         "${VENV_DIR}/keria" "${LOCAL_KERIA_DIR}"
     printf '  witnesses: %s\n' "${VENV_DIR}/witnesses"
-    printf '  Sally:     %s (local source at %s)\n' \
-        "${VENV_DIR}/sally" "${LOCAL_SALLY_DIR}"
+    printf '  Sally:     %s (PyPI version %s)\n' \
+        "${VENV_DIR}/sally" "${SALLY_VERSION}"
     printf '  vLEI:      %s\n' "${VENV_DIR}/vlei"
 }
 

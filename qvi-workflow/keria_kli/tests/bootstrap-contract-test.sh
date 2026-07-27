@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Contract tests for the local workflow's source-based dependency bootstrap.
+# Contract tests for the local workflow's dependency bootstrap.
 
 set -Eeuo pipefail
 
@@ -25,19 +25,19 @@ test_geda_keripy_install_source() {
         fail_test 'GEDA KLI still installs a disposable .deps checkout'
 }
 
-# Accept either packaging format used by maintained local Sally checkouts.
-test_sally_source_layouts() {
+# Require the published Sally release instead of an arbitrary local checkout.
+test_sally_release_pin() {
     local bootstrap_source
 
     bootstrap_source=$(<"${BOOTSTRAP_FILE}")
-    [[ "${bootstrap_source}" == \
-       *'! -f "${LOCAL_SALLY_DIR}/pyproject.toml" &&'* ]] ||
-        fail_test 'bootstrap does not recognize a Sally pyproject'
-    [[ "${bootstrap_source}" == \
-       *'! -f "${LOCAL_SALLY_DIR}/setup.py"'* ]] ||
-        fail_test 'bootstrap does not recognize a Sally setup.py project'
+    [[ "${bootstrap_source}" == *'SALLY_VERSION=1.0.5'* ]] ||
+        fail_test 'bootstrap does not pin Sally 1.0.5'
+    [[ "${bootstrap_source}" == *'"sally==${SALLY_VERSION}"'* ]] ||
+        fail_test 'bootstrap does not install Sally from PyPI'
+    [[ "${bootstrap_source}" != *'LOCAL_SALLY_DIR'* ]] ||
+        fail_test 'bootstrap still depends on a local Sally checkout'
 }
 
 test_geda_keripy_install_source
-test_sally_source_layouts
+test_sally_release_pin
 printf 'bootstrap contract passed\n'
