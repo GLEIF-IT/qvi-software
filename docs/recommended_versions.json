@@ -51,11 +51,11 @@
       "qvi-witnesses": {
         "name": "Witness version",
         "package": "KERIpy",
-        "version": "1.2.15rc1",
-        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.15rc1",
+        "version": "1.2.14",
+        "release": "https://github.com/WebOfTrust/keripy/tree/1.2.14",
         "container": {
-          "image": "gleif/keri:1.2.15rc1",
-          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.15rc1/sha256:782c8221947c7312f90bef71375345bae1842b9f17a81be114b1e7e5a0807fff"
+          "image": "gleif/keri:1.2.14",
+          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.14/sha256:0d48184e58792ed4bdba8ece7e3eebdc4aad079dd25a77bd6d80e06664072990"
         }
       }
     }
