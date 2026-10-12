@@ -6,21 +6,21 @@
       "gar-software": {
         "name": "GAR software",
         "package": "KERIpy",
-        "version": "1.1.42",
-        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.1.42",
+        "version": "1.2.15rc1",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.15rc1",
         "container": {
-          "image": "gleif/keri:1.1.42",
-          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.1.42/sha256-3fde403149e2f57419e79cfc7c64796f26f45f81d826742b23a1617e18618a3b"
+          "image": "gleif/keri:1.2.15rc1",
+          "url": "https://hub.docker.com/layers/gleif/keri/1.2.15rc1/images/sha256-724c2ed5f2813027e87ac9614f0ab8353571fd606a48bcd403c11707db11cc61"
         }
       },
       "gleif-witnesses": {
         "name": "Witness version",
         "package": "KERIpy",
-        "version": "1.2.9",
-        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9",
+        "version": "1.2.15rc1",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.15rc1",
         "container": {
-          "image": "gleif/keri:1.2.9",
-          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5"
+          "image": "gleif/keri:1.2.15rc1",
+          "url": "https://hub.docker.com/layers/gleif/keri/1.2.15rc1/images/sha256-724c2ed5f2813027e87ac9614f0ab8353571fd606a48bcd403c11707db11cc61"
         }
       }
     }
@@ -31,31 +31,31 @@
       "qvi-keria": {
         "name": "KERIA",
         "package": "KERIA",
-        "version": "0.3.0",
-        "release": "https://github.com/GLEIF-IT/keria/releases/tag/0.3.0",
+        "version": "0.4.1",
+        "release": "https://github.com/GLEIF-IT/keria/releases/tag/0.4.1",
         "container": {
-          "image": "gleif/keria:0.3.0",
-          "url": "https://hub.docker.com/repository/docker/gleif/keria/tags/0.3.0/sha256:d20a25561db41c6820e6dcb2173291805aabfe92d92cec808f678901144320c4"
+          "image": "gleif/keria:0.4.1",
+          "url": "https://hub.docker.com/layers/gleif/keria/0.4.1/images/sha256-5be5c2cf95abea20004b7742b74f16aaa6596dc7def8ff0fc0e725d8082d1004"
         }
       },
       "qvi-signify-ts": {
         "name": "Signify-TS",
         "package": "SignifyTS",
-        "version": "0.3.0-rc2",
-        "release": "https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc2",
+        "version": "0.4.1",
+        "release": "https://github.com/WebOfTrust/signify-ts/tree/0.4.1",
         "npm": {
-          "package": "signify-ts@0.3.0-rc2",
-          "url": "https://www.npmjs.com/package/signify-ts/v/0.3.0-rc2"
+          "package": "signify-ts@0.4.1",
+          "url": "https://www.npmjs.com/package/signify-ts/v/0.4.1"
         }
       },
       "qvi-witnesses": {
         "name": "Witness version",
         "package": "KERIpy",
-        "version": "1.2.9",
-        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9",
+        "version": "1.2.15rc1",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.15rc1",
         "container": {
-          "image": "gleif/keri:1.2.9",
-          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5"
+          "image": "gleif/keri:1.2.15rc1",
+          "url": "https://hub.docker.com/layers/gleif/keri/1.2.15rc1/images/sha256-724c2ed5f2813027e87ac9614f0ab8353571fd606a48bcd403c11707db11cc61"
         }
       }
     }
