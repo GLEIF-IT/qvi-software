@@ -16,11 +16,11 @@
       "gleif-witnesses": {
         "name": "Witness version",
         "package": "KERIpy",
-        "version": "1.2.15rc1",
-        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.15rc1",
+        "version": "1.2.15",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.15",
         "container": {
-          "image": "gleif/keri:1.2.15rc1",
-          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.15rc1/sha256:782c8221947c7312f90bef71375345bae1842b9f17a81be114b1e7e5a0807fff"
+          "image": "gleif/keri:1.2.15",
+          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.15/sha256:b4dcb636d224465dd186463d8b4c37a453ae343c374eb1a069a7e011189723bd"
         }
       }
     }
@@ -31,11 +31,11 @@
       "qvi-keria": {
         "name": "KERIA",
         "package": "KERIA",
-        "version": "0.4.1",
-        "release": "https://github.com/GLEIF-IT/keria/releases/tag/0.4.1",
+        "version": "0.4.2",
+        "release": "https://github.com/GLEIF-IT/keria/releases/tag/0.4.2",
         "container": {
-          "image": "gleif/keria:0.4.1",
-          "url": "https://hub.docker.com/repository/docker/gleif/keria/tags/0.4.1/sha256:932fdab6ae2b446bfa934f8efd2850a6a35ceb1b8bda11e2b8fbc177089d7951"
+          "image": "gleif/keria:0.4.2",
+          "url": "https://hub.docker.com/repository/docker/gleif/keria/tags/0.4.2/sha256:cc7f7f1689cf72a766a3df13b0778f13ef8b6c81eaaff3531604954f7b9cfa57"
         }
       },
       "qvi-signify-ts": {
@@ -51,11 +51,11 @@
       "qvi-witnesses": {
         "name": "Witness version",
         "package": "KERIpy",
-        "version": "1.2.14",
-        "release": "https://github.com/WebOfTrust/keripy/tree/1.2.14",
+        "version": "1.2.15",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.15",
         "container": {
-          "image": "gleif/keri:1.2.14",
-          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.14/sha256:0d48184e58792ed4bdba8ece7e3eebdc4aad079dd25a77bd6d80e06664072990"
+          "image": "gleif/keri:1.2.15",
+          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.15/sha256:b4dcb636d224465dd186463d8b4c37a453ae343c374eb1a069a7e011189723bd"
         }
       }
     }
