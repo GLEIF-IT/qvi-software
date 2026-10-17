@@ -16,11 +16,11 @@
       "gleif-witnesses": {
         "name": "Witness version",
         "package": "KERIpy",
-        "version": "1.2.9",
-        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9",
+        "version": "1.2.17",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.17",
         "container": {
-          "image": "gleif/keri:1.2.9",
-          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5"
+          "image": "gleif/keri:1.2.17",
+          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.17/sha256:a0828c0f056a4abedfb9b475e95fe35fd16fceee2afb7f5f8dffc87a0a776ff2"
         }
       }
     }
@@ -31,31 +31,31 @@
       "qvi-keria": {
         "name": "KERIA",
         "package": "KERIA",
-        "version": "0.3.0",
-        "release": "https://github.com/GLEIF-IT/keria/releases/tag/0.3.0",
+        "version": "0.4.4",
+        "release": "https://github.com/GLEIF-IT/keria/releases/tag/0.4.4",
         "container": {
-          "image": "gleif/keria:0.3.0",
-          "url": "https://hub.docker.com/repository/docker/gleif/keria/tags/0.3.0/sha256:d20a25561db41c6820e6dcb2173291805aabfe92d92cec808f678901144320c4"
+          "image": "gleif/keria:0.4.4",
+          "url": "https://hub.docker.com/repository/docker/gleif/keria/tags/0.4.4/sha256:96b7924de5401f1e3a4dc308ed326ca0c90059911040810e5d2cf20f421aaf55"
         }
       },
       "qvi-signify-ts": {
         "name": "Signify-TS",
         "package": "SignifyTS",
-        "version": "0.3.0-rc2",
-        "release": "https://github.com/GLEIF-IT/signify-ts/releases/tag/0.3.0-rc2",
+        "version": "0.4.1",
+        "release": "https://github.com/WebOfTrust/signify-ts/tree/0.4.1",
         "npm": {
-          "package": "signify-ts@0.3.0-rc2",
-          "url": "https://www.npmjs.com/package/signify-ts/v/0.3.0-rc2"
+          "package": "signify-ts@0.4.1",
+          "url": "https://www.npmjs.com/package/signify-ts/v/0.4.1"
         }
       },
       "qvi-witnesses": {
         "name": "Witness version",
         "package": "KERIpy",
-        "version": "1.2.9",
-        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/1.2.9",
+        "version": "1.2.17",
+        "release": "https://github.com/GLEIF-IT/keripy/releases/tag/v1.2.17",
         "container": {
-          "image": "gleif/keri:1.2.9",
-          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.9/sha256:15b9e410ddc4cd947c4c8c306a82862e349dc5915082553560599a486d3b28d5"
+          "image": "gleif/keri:1.2.17",
+          "url": "https://hub.docker.com/repository/docker/gleif/keri/tags/1.2.17/sha256:a0828c0f056a4abedfb9b475e95fe35fd16fceee2afb7f5f8dffc87a0a776ff2"
         }
       }
     }
