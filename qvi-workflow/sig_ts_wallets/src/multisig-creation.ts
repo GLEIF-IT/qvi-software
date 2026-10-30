@@ -94,7 +94,7 @@ export async function createAIDMultisig(
         notificationIds,
         groupPrefix: serder.pre,
         eventSaid: serder.said,
-        eventSequence: String(serder.sn),
+        eventSequence: serder.sn.toString(16),
     };
 }
 
