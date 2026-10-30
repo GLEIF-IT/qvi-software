@@ -20,6 +20,7 @@ import {
 export interface GroupEventSubmission {
     groupPrefix: string;
     eventSaid: string;
+    /** Hexadecimal KERI sequence, matching event.s and key-state.s. */
     eventSequence: string;
     signingMembers: string[];
     rotationMembers: string[];
@@ -141,7 +142,7 @@ export async function submitRotation(
         },
         groupPrefix: serder.pre,
         eventSaid: serder.said,
-        eventSequence: String(serder.sn),
+        eventSequence: serder.sn.toString(16),
     };
 }
 
@@ -315,7 +316,7 @@ export async function joinRotation(
     const serder = new Serder(exn.e.rot);
     if (
         serder.said !== request.event.eventSaid ||
-        String(serder.sn) !== request.event.eventSequence
+        serder.sn.toString(16) !== request.event.eventSequence
     ) {
         throw new Error('Joining member received the wrong rotation event');
     }
