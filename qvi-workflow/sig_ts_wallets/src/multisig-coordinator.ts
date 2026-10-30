@@ -4,11 +4,8 @@ import type {
     SignifyClient,
 } from 'signify-ts';
 
-import {
-    completeMultisigOps,
-    type MultisigResult,
-} from './coordinated-operation.ts';
-import type {MatchedNotification} from './notifications.ts';
+import {consumeNotifications} from './notifications.ts';
+import {waitOperation} from './operations.ts';
 
 export interface MultisigMember {
     client: SignifyClient;
@@ -18,7 +15,12 @@ export interface MultisigMember {
 export interface MultisigMemberContext extends MultisigMember {
     otherMembers: HabState[];
     isInitiator: boolean;
-    coordinatorPrefix: string;
+    initiatorPrefix: string;
+}
+
+export interface MultisigResult {
+    operation: Operation | string;
+    notificationIds: string[];
 }
 
 export type RunMemberOperation = (
@@ -28,7 +30,7 @@ export type RunMemberOperation = (
 export interface MemberSubmission {
     memberPrefix: string;
     operation: Operation | string;
-    notifications: MatchedNotification[];
+    notificationIds: string[];
 }
 
 /** Validate a concrete member set and its explicit operation initiator. */
@@ -64,34 +66,65 @@ export function memberContexts(
             .filter((candidate) => candidate !== member)
             .map(({aid}) => aid),
         isInitiator: member.aid.prefix === initiatorPrefix,
-        coordinatorPrefix: initiatorPrefix,
+        initiatorPrefix,
     }));
 }
 
+interface CompletedMember {
+    client: SignifyClient;
+    result: MultisigResult;
+}
+
 /**
- * Runs a member-scoped multisig action in protocol order and completes it.
+ * Wait for the shared success barrier, then consume each member's local
+ * notification records in deterministic member order.
+ */
+export async function completeMultisigOperations(
+    members: CompletedMember[]
+): Promise<void> {
+    await Promise.all(
+        members.map(({client, result}) =>
+            waitOperation(client, result.operation)
+        )
+    );
+
+    for (const {client, result} of members) {
+        if (result.notificationIds.length > 0) {
+            await consumeNotifications(client, result.notificationIds);
+        }
+    }
+}
+
+/**
+ * Starts the proposal, overlaps independent follower contributions, and waits
+ * for every member's local operation to complete.
  */
 export async function coordinateMultisigOperation(
     members: MultisigMember[],
     initiatorPrefix: string,
     runMember: RunMemberOperation
 ): Promise<void> {
-    const completedMembers: Array<{
-        client: SignifyClient;
-        result: MultisigResult;
-    }> = [];
-
-    for (const context of memberContexts(members, initiatorPrefix)) {
-        const result = await runMember(context);
-        completedMembers.push({client: context.client, result});
+    const contexts = memberContexts(members, initiatorPrefix);
+    const initiator = contexts.find(({isInitiator}) => isInitiator);
+    if (initiator === undefined) {
+        throw new Error('Multisig initiator context is missing');
     }
 
-    await completeMultisigOps(completedMembers);
-}
+    // Followers need the initiator's proposal, but they use separate KERIA
+    // stores and do not depend on one another.
+    const initiatorResult = await runMember(initiator);
+    const followers = contexts.filter(
+        (context) => context !== initiator
+    );
+    const followerResults = await Promise.all(
+        followers.map((context) => runMember(context))
+    );
 
-export function operationFrom(
-    operation: Operation,
-    coordination: MatchedNotification[]
-): MultisigResult {
-    return {operation, coordination};
+    await completeMultisigOperations([
+        {client: initiator.client, result: initiatorResult},
+        ...followers.map((context, index) => ({
+            client: context.client,
+            result: followerResults[index],
+        })),
+    ]);
 }

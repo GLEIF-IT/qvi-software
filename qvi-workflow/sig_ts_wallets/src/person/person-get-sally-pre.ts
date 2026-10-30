@@ -18,7 +18,7 @@ export function parseOobiInfo(oobiInfo: string) {
         return {position, oobi};
     });
 
-    const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'direct-sally') as OobiInfo;
+    const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'sally') as OobiInfo;
     return {SALLY};
 }
 

@@ -10,10 +10,8 @@ import {coordinateMultisigOperation} from './multisig-coordinator.ts';
 import {
     sendExchangeToEachRecipient,
 } from './exchanges.ts';
-import {requireCoordinatedEventDigest} from './multisig-coordination.ts';
 import {
     waitForMatchingNotification,
-    type MatchedNotification,
 } from './notifications.ts';
 
 /**
@@ -29,13 +27,8 @@ import {
  * @param otherMembersAIDs The other delegate member AIDs participating in the multisig group
  * @param groupName The name label of the multisig group. Should be the same across all multisig participants.
  * @param kargs The arguments for creating the identifier
- * @param options coordination role and designated initiator
+ * @param initiatorPrefix member prefix that submits the proposal
  */
-export interface MultisigCoordinationOptions {
-    isInitiator?: boolean;
-    coordinator?: string;
-}
-
 export interface EndRoleRequest {
     members: GroupMember[];
     initiatorPrefix: string;
@@ -45,29 +38,10 @@ export interface EndRoleRequest {
 
 export interface MultisigEventResult {
     operation: Operation;
-    coordination: MatchedNotification[];
+    notificationIds: string[];
     groupPrefix: string;
     eventSaid: string;
     eventSequence: string;
-}
-
-function requireCoordinator(
-    options: MultisigCoordinationOptions,
-    participantIsFollower: boolean,
-    route: string
-): string | undefined {
-    if (participantIsFollower === false) {
-        return undefined;
-    }
-    const coordinatorIsMissing =
-        typeof options.coordinator !== 'string' ||
-        options.coordinator.length === 0;
-    if (coordinatorIsMissing) {
-        throw new Error(
-            `${route} follower requires an explicit coordinator prefix`
-        );
-    }
-    return options.coordinator;
 }
 
 export async function createAIDMultisig(
@@ -76,14 +50,9 @@ export async function createAIDMultisig(
     otherMembersAIDs: HabState[],
     groupName: string,
     kargs: CreateIdentiferArgs,
-    options: MultisigCoordinationOptions
+    initiatorPrefix: string
 ): Promise<MultisigEventResult> {
-    const participantIsFollower = options.isInitiator !== true;
-    const coordinator = requireCoordinator(
-        options,
-        participantIsFollower,
-        '/multisig/icp'
-    );
+    const participantIsFollower = aid.prefix !== initiatorPrefix;
     const icpResult = await client.identifiers().create(groupName, kargs);
     const op = await icpResult.op();
 
@@ -98,24 +67,16 @@ export async function createAIDMultisig(
     const smids = kargs.states?.map((state) => state['i']);
     const recp = otherMembersAIDs.map((aid) => aid.prefix);
 
-    let coordination: MatchedNotification | undefined;
+    let notificationIds: string[] = [];
     if (participantIsFollower) {
-        coordination = await waitForMatchingNotification(client, {
-            notificationRoute: '/multisig/icp',
+        const notification = await waitForMatchingNotification(client, {
             exchangeRoute: '/multisig/icp',
-            sender: coordinator,
+            sender: initiatorPrefix,
             recipient: aid.prefix,
             groupPrefix: serder.pre,
             embeddedDigest: serder.said,
         });
-    }
-
-    if (coordination !== undefined) {
-        requireCoordinatedEventDigest(
-            coordination.exchange,
-            '/multisig/icp',
-            serder.said
-        );
+        notificationIds = notification.notificationIds;
     }
 
     await sendExchangeToEachRecipient(client, {
@@ -130,8 +91,7 @@ export async function createAIDMultisig(
 
     return {
         operation: op,
-        coordination:
-            coordination === undefined ? [] : [coordination],
+        notificationIds,
         groupPrefix: serder.pre,
         eventSaid: serder.said,
         eventSequence: String(serder.sn),
@@ -145,17 +105,12 @@ export async function addEndRoleMultisig(
     multisigAID: HabState,
     eid: string,
     timestamp: string,
-    options: MultisigCoordinationOptions
+    initiatorPrefix: string
 ): Promise<{
     operation: Operation;
-    coordination: MatchedNotification[];
+    notificationIds: string[];
 }> {
-    const participantIsFollower = options.isInitiator !== true;
-    const coordinator = requireCoordinator(
-        options,
-        participantIsFollower,
-        '/multisig/rpy'
-    );
+    const participantIsFollower = aid.prefix !== initiatorPrefix;
 
     const endRoleResult = await client
         .identifiers()
@@ -183,24 +138,17 @@ export async function addEndRoleMultisig(
         rpy: [rpy, atc],
     };
     const recp = otherMembersAIDs.map((member) => member.prefix);
-    let coordination: MatchedNotification | undefined;
+    let notificationIds: string[] = [];
     if (participantIsFollower) {
-        coordination = await waitForMatchingNotification(client, {
-            notificationRoute: '/multisig/rpy',
+        const notification = await waitForMatchingNotification(client, {
             exchangeRoute: '/multisig/rpy',
-            sender: coordinator,
+            sender: initiatorPrefix,
             recipient: aid.prefix,
             groupPrefix: multisigAID.prefix,
             payloadFields: {eid},
             embeddedDigest: rpy.said,
         });
-    }
-    if (coordination !== undefined) {
-        requireCoordinatedEventDigest(
-            coordination.exchange,
-            '/multisig/rpy',
-            rpy.said
-        );
+        notificationIds = notification.notificationIds;
     }
     await sendExchangeToEachRecipient(client, {
         name: aid.name,
@@ -213,8 +161,7 @@ export async function addEndRoleMultisig(
     });
     return {
         operation: op,
-        coordination:
-            coordination === undefined ? [] : [coordination],
+        notificationIds,
     };
 }
 
@@ -245,10 +192,7 @@ export async function authorizeEndRole(
                 member.groupAid,
                 request.eid,
                 request.timestamp,
-                {
-                    isInitiator: context.isInitiator,
-                    coordinator: context.coordinatorPrefix,
-                }
+                context.initiatorPrefix
             );
         }
     );

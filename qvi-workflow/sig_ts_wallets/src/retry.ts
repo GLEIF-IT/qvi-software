@@ -2,6 +2,17 @@ import { setTimeout } from 'timers/promises';
 
 const DEFAULT_WORKFLOW_TIMEOUT_MS = 120_000;
 
+/**
+ * Poll local KERIA often enough to observe completed work without busy loops.
+ *
+ * The minimum deliberately stays above HIO's 1/32-second scheduler tick.
+ */
+export const LOCAL_OPERATION_POLLING = {
+    minSleep: 32,
+    maxSleep: 32,
+    increaseFactor: 32,
+} as const;
+
 export function workflowTimeoutMs(): number {
     const configured =
         process.env.QVI_OPERATION_TIMEOUT_SECONDS;
@@ -35,13 +46,13 @@ export async function retry<T>(
     options: RetryOptions = {}
 ): Promise<T> {
     const {
-        maxSleep = 1000,
-        minSleep = 10,
+        maxSleep = 32,
+        minSleep = 32,
         maxRetries,
         timeout = workflowTimeoutMs(),
     } = options;
 
-    const increaseFactor = 50;
+    const increaseFactor = 32;
 
     let retries = 0;
     let cause: Error | null = null;
@@ -53,8 +64,7 @@ export async function retry<T>(
         (maxRetries === undefined || retries < maxRetries)
     ) {
         try {
-            const result = await fn();
-            return result;
+            return await fn();
         } catch (err) {
             cause = err as Error;
             const delay = Math.max(

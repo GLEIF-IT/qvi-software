@@ -9,17 +9,13 @@ x-keri_1_1-image: &keri_1_1-image
 # Witness Images
 x-gar-witness-image: &gar-witness-image
   image: gleif/keri:1.2.9
-x-qar-witness-image: &qar-witness-image
-  image: gleif/keri:1.2.9
-x-person-witness-image: &person-witness-image
-  image: gleif/keri:1.2.9
 
 x-keria-image: &keria-image
   image: weboftrust/keria:0.4.0
 x-vlei-image: &vlei-image
   image: gleif/vlei:1.0.0
-x-direct-sally-image: &direct-sally-image
-  image: gleif/sally:1.0.2
+x-sally-image: &sally-image
+  image: gleif/sally:1.0.5
 
 x-healthcheck: &healthcheck
   interval: 3s
@@ -32,10 +28,11 @@ x-witness-env: &witness-env
   PYTHONWARNINGS: ignore::SyntaxWarning # Ignore regular expression syntax warning
 
 volumes:
-  gar-wit-vol:
-  qar-wit-vol:
-  person-wit-vol:
-  direct-sally-vol:
+  witnesses-vol:
+  # Keep KLI LMDB files inside the Linux VM. VirtioFS bind mounts retain
+  # macOS file descriptors and vnodes after their containers exit.
+  kli-vol:
+  sally-vol:
   keria1-vol:
   keria2-vol:
   keria3-vol:
@@ -55,8 +52,8 @@ services:
       test: [ "CMD", "curl", "-f", "http://127.0.0.1:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao" ]
       <<: *healthcheck
 
-  # GARs use one of the six demo witnesses, wan
-  gar-witnesses:
+  # One demo process hosts Wan, Wil, and the remaining standard witnesses.
+  witnesses:
     stop_grace_period: 1s
     <<: *gar-witness-image
     environment:
@@ -67,42 +64,8 @@ services:
       <<: *healthcheck
     command: witness demo --loglevel INFO
     volumes:
-      - ./runtime/config/witnesses-gar:/keripy/scripts/keri/cf/main
-      - gar-wit-vol:/usr/local/var/keri
-    depends_on:
-      vlei-server:
-        condition: service_healthy
-
-  # GARs use one of the six demo witnesses, wan
-  qar-witnesses:
-    stop_grace_period: 1s
-    <<: *qar-witness-image
-    environment:
-      <<: *witness-env
-    healthcheck:
-      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5643/oobi" ]
-      <<: *healthcheck
-    command: witness demo --loglevel INFO
-    volumes:
-      - ./runtime/config/witnesses-qar:/keripy/scripts/keri/cf/main
-      - qar-wit-vol:/usr/local/var/keri
-    depends_on:
-      vlei-server:
-        condition: service_healthy
-
-  # GARs use one of the six demo witnesses, wan
-  person-witnesses:
-    stop_grace_period: 1s
-    <<: *person-witness-image
-    environment:
-      <<: *witness-env
-    healthcheck:
-      test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:5644/oobi" ]
-      <<: *healthcheck
-    command: witness demo --loglevel INFO
-    volumes:
-      - ./runtime/config/witnesses-person:/keripy/scripts/keri/cf/main
-      - person-wit-vol:/usr/local/var/keri
+      - ./runtime/config/witnesses:/keripy/scripts/keri/cf/main
+      - witnesses-vol:/usr/local/var/keri
     depends_on:
       vlei-server:
         condition: service_healthy
@@ -126,9 +89,7 @@ services:
     depends_on:
       vlei-server:
         condition: service_healthy
-      qar-witnesses:
-        condition: service_healthy
-      person-witnesses:
+      witnesses:
         condition: service_healthy
 
   keria2:
@@ -150,9 +111,7 @@ services:
     depends_on:
       vlei-server:
         condition: service_healthy
-      qar-witnesses:
-        condition: service_healthy
-      person-witnesses:
+      witnesses:
         condition: service_healthy
 
   keria3:
@@ -174,9 +133,7 @@ services:
     depends_on:
       vlei-server:
         condition: service_healthy
-      qar-witnesses:
-        condition: service_healthy
-      person-witnesses:
+      witnesses:
         condition: service_healthy
 
   keria4:
@@ -198,9 +155,7 @@ services:
     depends_on:
       vlei-server:
         condition: service_healthy
-      qar-witnesses:
-        condition: service_healthy
-      person-witnesses:
+      witnesses:
         condition: service_healthy
 
   # Small source-owned recorder for the callbacks emitted by Sally.
@@ -208,7 +163,7 @@ services:
     stop_grace_period: 1s
     image: qvi-workflow-callback-recorder:local
     build:
-      context: ./callback_recorder
+      context: ../callback_recorder
     environment:
       PYTHONUNBUFFERED: "1"
       QVI_CALLBACKS_PATH: /runtime/sally-callbacks.jsonl
@@ -218,26 +173,28 @@ services:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9923/health" ]
       <<: *healthcheck
     
-  # Direct mode Sally Verifier (runs own mailbox, no witnesses or witness mailbox)
-  direct-sally:
+  # Sally verifier (runs its own direct-mode mailbox)
+  sally:
     stop_grace_period: 1s
-    <<: *direct-sally-image
+    <<: *sally-image
+    ports:
+      - "127.0.0.1:9823:9823"
     environment:
       - PYTHONUNBUFFERED=1 # Ensure output is logged in real-time
       - PYTHONIOENCODING=UTF-8 # Ensure consistent logging encoding
-      - SALLY_KS_NAME=${DIRECT_SALLY_KS_NAME}
-      - SALLY_ALIAS=${DIRECT_SALLY_ALIAS}
-      - SALLY_SALT=${DIRECT_SALLY_SALT}
-      - SALLY_PASSCODE=${DIRECT_SALLY_PASSCODE}
+      - SALLY_KS_NAME=${SALLY_KS_NAME}
+      - SALLY_ALIAS=${SALLY_ALIAS}
+      - SALLY_SALT=${SALLY_SALT}
+      - SALLY_PASSCODE=${SALLY_PASSCODE}
       - WEBHOOK_HOST=${WEBHOOK_HOST}
       - GEDA_PRE=${GEDA_PRE:-}
       - PYTHONWARNINGS=ignore::SyntaxWarning
       - SALLY_PORT=9823
     volumes:
-      - ./runtime/config/direct-sally/keri/cf/direct-sally.json:/sally/conf/keri/cf/direct-sally.json
-      - ./runtime/config/direct-sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json:ro
-      - ./direct-sally/entry-point.sh:/sally/entry-point.sh:ro
-      - direct-sally-vol:/usr/local/var/keri
+      - ./runtime/config/sally/keri/cf/sally.json:/sally/conf/keri/cf/sally.json
+      - ./runtime/config/sally/sally-incept-no-wits.json:/sally/conf/sally-incept-no-wits.json:ro
+      - ./sally/entry-point.sh:/sally/entry-point.sh:ro
+      - sally-vol:/usr/local/var/keri
     healthcheck:
       test: [ "CMD", "wget", "--spider", "--tries=1", "--no-verbose", "http://127.0.0.1:9823/health" ]
       <<: *healthcheck
@@ -259,7 +216,7 @@ services:
     environment:
       PYTHONWARNINGS: ignore::SyntaxWarning
     volumes:
-      - ./runtime/keystores:/usr/local/var/keri
+      - kli-vol:/usr/local/var/keri
       - ./runtime/config:/config
       - ./runtime/acdc-info:/acdc-info
 

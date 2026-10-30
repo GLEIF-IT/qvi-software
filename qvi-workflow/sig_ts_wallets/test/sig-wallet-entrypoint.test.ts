@@ -7,6 +7,7 @@ import {describe, it} from 'node:test';
 import {requireHttpUrl} from '../src/client.ts';
 import {
     readPendingWorkflowEvent,
+    requireChallengeWords,
     run,
     UsageError,
 } from '../src/sig-wallet.ts';
@@ -21,17 +22,17 @@ const PENDING_EVENT = {
     members: [
         {
             memberPrefix: 'E-qar1',
-            operationName: 'op-1',
+            operation: 'op-1',
             notificationIds: [],
         },
         {
             memberPrefix: 'E-qar2',
-            operationName: 'op-2',
+            operation: 'op-2',
             notificationIds: ['note-2'],
         },
         {
             memberPrefix: 'E-qar3',
-            operationName: 'op-3',
+            operation: 'op-3',
             notificationIds: ['note-3'],
         },
     ],
@@ -96,6 +97,25 @@ describe('Signify wallet entrypoint boundary', () => {
         assert.throws(
             () => requireHttpUrl('not a URL', 'admin'),
             /malformed/
+        );
+    });
+
+    it('requires an exact 12-word challenge response', () => {
+        const words = Array.from(
+            {length: 12},
+            (_, index) => `word-${index}`
+        );
+        assert.deepEqual(requireChallengeWords({words}), words);
+        assert.throws(
+            () => requireChallengeWords({words: words.slice(1)}),
+            /incompatible 128-bit challenge/
+        );
+        assert.throws(
+            () =>
+                requireChallengeWords({
+                    words: [...words.slice(0, 11), ''],
+                }),
+            /incompatible 128-bit challenge/
         );
     });
 

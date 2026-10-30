@@ -13,10 +13,8 @@ import {
     type MemberSubmission,
     type MultisigMember,
 } from './multisig-coordinator.ts';
-import {requireCoordinatedEventDigest} from './multisig-coordination.ts';
 import {
     waitForMatchingNotification,
-    type MatchedNotification,
 } from './notifications.ts';
 
 export interface GroupEventSubmission {
@@ -106,12 +104,11 @@ export async function submitRotation(
     );
     const message = signify.d(signify.messagize(serder, sigers));
     const attachment = eventAttachment(serder, result.sigs, message);
-    let coordination: MatchedNotification[] = [];
+    let notificationIds: string[] = [];
     if (member.aid.prefix !== request.initiatorPrefix) {
         const notification = await waitForMatchingNotification(
             member.client,
             {
-                notificationRoute: '/multisig/rot',
                 exchangeRoute: '/multisig/rot',
                 sender: request.initiatorPrefix,
                 recipient: member.aid.prefix,
@@ -119,12 +116,7 @@ export async function submitRotation(
                 embeddedDigest: serder.said,
             }
         );
-        requireCoordinatedEventDigest(
-            notification.exchange,
-            '/multisig/rot',
-            serder.said
-        );
-        coordination = [notification];
+        notificationIds = notification.notificationIds;
     }
     await sendExchangeToEachRecipient(member.client, {
         name: member.aid.name,
@@ -145,7 +137,7 @@ export async function submitRotation(
         member: {
             memberPrefix: member.aid.prefix,
             operation,
-            notifications: coordination,
+            notificationIds,
         },
         groupPrefix: serder.pre,
         eventSaid: serder.said,
@@ -175,8 +167,8 @@ function commonEvent(
 
 /** Combine matching member contributions into one group event result. */
 export function buildGroupEvent(
-    signingMembers: HabState[],
-    rotationMembers: HabState[],
+    signingMembers: readonly {prefix: string}[],
+    rotationMembers: readonly {prefix: string}[],
     events: GroupMemberEvent[]
 ): GroupEventSubmission {
     const event = commonEvent(events);
@@ -216,16 +208,13 @@ export async function submitGroupInception(
             context.otherMembers,
             request.groupName,
             {...createArgs, mhab: context.aid},
-            {
-                isInitiator: context.isInitiator,
-                coordinator: context.coordinatorPrefix,
-            }
+            context.initiatorPrefix
         );
         events.push({
             member: {
                 memberPrefix: context.aid.prefix,
                 operation: result.operation,
-                notifications: result.coordination,
+                notificationIds: result.notificationIds,
             },
             groupPrefix: result.groupPrefix,
             eventSaid: result.eventSaid,
@@ -288,7 +277,6 @@ export async function joinRotation(
     const notification = await waitForMatchingNotification(
         joining.client,
         {
-            notificationRoute: '/multisig/rot',
             exchangeRoute: '/multisig/rot',
             sender: request.initiatorPrefix,
             recipient: joining.aid.prefix,
@@ -298,13 +286,13 @@ export async function joinRotation(
     );
     const requests = await joining.client
         .groups()
-        .getRequest(notification.exchangeSaid);
+        .getRequest(notification.said);
     const matchingRequests = requests.filter(
-        ({exn}) => exn.d === notification.exchangeSaid
+        ({exn}) => exn.d === notification.said
     );
     if (matchingRequests.length !== 1) {
         throw new Error(
-            `Joining member expected one request for ${notification.exchangeSaid}; received ${matchingRequests.length} among ${requests.length}`
+            `Joining member expected one request for ${notification.said}; received ${matchingRequests.length} among ${requests.length}`
         );
     }
     const rotationRequest = assertMultisigRot(matchingRequests[0]);
@@ -391,7 +379,7 @@ export async function joinRotation(
         member: {
             memberPrefix: joining.aid.prefix,
             operation: joinOperation,
-            notifications: [notification],
+            notificationIds: notification.notificationIds,
         },
         groupPrefix: request.groupPrefix,
         eventSaid: request.event.eventSaid,

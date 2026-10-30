@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
-import type {CredentialResult} from 'signify-ts';
-
-import {credentialSnapshot} from '../src/credential-state.ts';
+import {
+    credentialSnapshot,
+    type CredentialObservation,
+} from '../src/credential-state.ts';
 import {assertCredentialConvergence} from '../src/workflow-assertions.ts';
 
 const observers = ['EQar1', 'EQar2', 'EQar3'];
@@ -11,7 +12,7 @@ const observers = ['EQar1', 'EQar2', 'EQar3'];
 function credential(
     sequence: '0' | '1',
     digest: string
-): CredentialResult {
+): CredentialObservation {
     return {
         sad: {
             d: 'ECredential',
@@ -25,7 +26,7 @@ function credential(
             d: digest,
             ri: 'ERegistry',
         },
-    } as unknown as CredentialResult;
+    };
 }
 
 function expected(sequence: string) {

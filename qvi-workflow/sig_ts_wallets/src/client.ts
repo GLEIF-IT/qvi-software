@@ -1,17 +1,19 @@
 import {readFileSync} from 'node:fs';
 
 import {
-    type CompletedOperation,
     type CreateIdentiferArgs,
     type EventResult,
-    type FailedOperation,
     type HabState,
     type KeyState,
-    type Operation,
     ready,
     SignifyClient,
     Tier,
 } from 'signify-ts';
+import {
+    waitOperation,
+} from './operations.ts';
+
+export {waitOperation} from './operations.ts';
 
 export type ParticipantRole =
     | 'qar1'
@@ -62,6 +64,7 @@ const PARTICIPANT_ROLES: readonly ParticipantRole[] = [
 ];
 const EXPECTED_SIGNIFY_VERSION = '0.4.0';
 let readyPromise: Promise<void> | undefined;
+const connectedClients = new Map<string, SignifyClient>();
 
 /** Return whether a value is a non-null object with string keys. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -227,13 +230,22 @@ export function readWorkflowConfig(path: string): WorkflowConfig {
         'qvi.finalMembers'
     );
     const expectedInitial = ['qar1', 'qar2', 'qar3'];
-    const expectedFinal = ['qar1', 'qar2', 'qar4'];
+    const replacementMembers = ['qar1', 'qar2', 'qar4'];
+    const finalRosterIsInitial = finalMembers.every(
+        (member, index) => member === expectedInitial[index]
+    );
+    const finalRosterIsReplacement = finalMembers.every(
+        (member, index) => member === replacementMembers[index]
+    );
     if (
-        initialMembers.some((member, index) => member !== expectedInitial[index]) ||
-        finalMembers.some((member, index) => member !== expectedFinal[index])
+        initialMembers.some(
+            (member, index) => member !== expectedInitial[index]
+        ) ||
+        (finalRosterIsInitial === false &&
+            finalRosterIsReplacement === false)
     ) {
         throw new Error(
-            'QVI membership must rotate qar3 out and qar4 in at position 2'
+            'QVI membership must either retain qar3 or replace it with qar4'
         );
     }
 
@@ -294,6 +306,15 @@ function createClient(participant: Participant): SignifyClient {
     );
 }
 
+/** Identify one participant cache entry by its concrete local endpoints. */
+function clientCacheKey(participant: Participant): string {
+    return [
+        participant.name,
+        participant.adminUrl,
+        participant.bootUrl,
+    ].join('|');
+}
+
 /** Require a connected client to expose its controller and agent identities. */
 function requireConnectedAgent(client: SignifyClient): void {
     if (
@@ -319,6 +340,7 @@ export async function bootClient(
     }
     await client.connect();
     requireConnectedAgent(client);
+    connectedClients.set(clientCacheKey(participant), client);
     return client;
 }
 
@@ -326,67 +348,18 @@ export async function bootClient(
 export async function connectClient(
     participant: Participant
 ): Promise<SignifyClient> {
+    const cacheKey = clientCacheKey(participant);
+    const cached = connectedClients.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
     await initializeSignify();
     const client = createClient(participant);
     await client.connect();
     requireConnectedAgent(client);
+    connectedClients.set(cacheKey, client);
     return client;
-}
-
-/** Convert a failed Signify operation into a contextual workflow error. */
-function failedOperationError(operation: FailedOperation): Error {
-    const details =
-        operation.error.details === undefined ||
-        operation.error.details === null
-            ? ''
-            : ` Details: ${JSON.stringify(operation.error.details)}`;
-    return new Error(
-        `Operation '${operation.name}' failed [Code ${operation.error.code}]: ${operation.error.message}${details}`
-    );
-}
-
-/** Narrow an operation response to a completed, non-failed operation. */
-function requireCompletedOperation(
-    operation: Operation
-): CompletedOperation {
-    if (
-        operation.done === true &&
-        'error' in operation &&
-        operation.error !== null
-    ) {
-        throw failedOperationError(operation as FailedOperation);
-    }
-    if (operation.done !== true || 'response' in operation === false) {
-        throw new Error(
-            `Operation '${operation.name}' did not reach a completed state`
-        );
-    }
-    return operation as CompletedOperation;
-}
-
-/** Wait for an operation with the job deadline and preserve failure details. */
-export async function waitOperation(
-    client: SignifyClient,
-    operation: Operation | string,
-    signal?: AbortSignal
-): Promise<CompletedOperation> {
-    const current =
-        typeof operation === 'string'
-            ? await client.operations().get(operation)
-            : operation;
-    if (current.done === true) {
-        return requireCompletedOperation(current);
-    }
-    const waitSignal =
-        signal ??
-        AbortSignal.timeout(
-            Number(process.env.QVI_OPERATION_TIMEOUT_SECONDS ?? '120') * 1000
-        );
-    waitSignal.throwIfAborted();
-    const completed = await client
-        .operations()
-        .wait(current, {signal: waitSignal});
-    return requireCompletedOperation(completed);
 }
 
 /** Narrow an OOBI response to the key-state shape the workflow consumes. */

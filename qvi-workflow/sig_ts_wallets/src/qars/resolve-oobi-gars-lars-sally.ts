@@ -13,7 +13,7 @@ import {
 
 // parse the OOBIs for the GEDA, GIDA, and Sally needed for initial setup
 export function parseOobiInfo(oobiInfoArg: string) {
-    const oobiInfos = oobiInfoArg.split(','); // expect format: "gar1|OOBI,gar2|OOBI,lar1|OOBI,lar2|OOBI,direct-sally|OOBI"
+    const oobiInfos = oobiInfoArg.split(','); // expect format: "gar1|OOBI,gar2|OOBI,lar1|OOBI,lar2|OOBI,sally|OOBI"
     const oobiObjs: OobiInfo[] = oobiInfos.map((aidInfo) => {
         const [position, oobi] = aidInfo.split('|'); // expect format: "gar1|OOBI"
         return {position, oobi};
@@ -23,7 +23,7 @@ export function parseOobiInfo(oobiInfoArg: string) {
     const GAR2 = oobiObjs.find((oobiInfo) => oobiInfo.position === 'gar2') as OobiInfo;
     const LAR1 = oobiObjs.find((oobiInfo) => oobiInfo.position === 'lar1') as OobiInfo;
     const LAR2 = oobiObjs.find((oobiInfo) => oobiInfo.position === 'lar2') as OobiInfo;
-    const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'direct-sally') as OobiInfo;
+    const SALLY = oobiObjs.find((oobiInfo) => oobiInfo.position === 'sally') as OobiInfo;
     return {GAR1, GAR2, LAR1, LAR2, SALLY: SALLY};
 }
 

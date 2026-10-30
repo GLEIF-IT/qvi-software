@@ -1,7 +1,7 @@
 import {parseAidInfoSingleSig} from "../create-aid.ts";
 import {getOrCreateClient} from "../keystore-creation.ts";
 import {TestEnvironmentPreset} from "../resolve-env.ts";
-import {getReceivedCredential} from "../credentials.ts";
+import {getReceivedCredential} from "../credential-mutations.ts";
 
 /**
  * Checks to see if the QVI credential exists for the QAR

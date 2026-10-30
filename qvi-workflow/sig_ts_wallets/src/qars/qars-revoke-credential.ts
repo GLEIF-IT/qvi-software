@@ -5,7 +5,7 @@ import {
     getCredential,
     type CredentialSnapshot,
 } from '../credential-state.ts';
-import {revokeCredential} from '../credentials.ts';
+import {revokeCredential} from '../credential-mutations.ts';
 
 export interface RevokeCredentialOptions {
     members: GroupMember[];

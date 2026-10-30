@@ -6,7 +6,10 @@ import type {
     PendingOperation,
     SignifyClient,
 } from 'signify-ts';
-import {workflowTimeoutMs} from './retry.ts';
+import {
+    LOCAL_OPERATION_POLLING,
+    workflowTimeoutMs,
+} from './retry.ts';
 
 export function isPendingOperation(
     operation: Operation
@@ -106,7 +109,10 @@ export async function waitOperation(
 
     const completed = await client
         .operations()
-        .wait(resolvedOperation, {signal: waitSignal});
+        .wait(resolvedOperation, {
+            signal: waitSignal,
+            ...LOCAL_OPERATION_POLLING,
+        });
     return requireCompletedOperation(completed);
 }
 

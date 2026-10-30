@@ -13,7 +13,7 @@ import {
 
 // Resolve OOBIs between the QARs and the person and the GEDA, GIDA, and Sally based on script arguments
 // aidInfoArg format: "qar|Alice|salt,person|David|salt"
-// oobiStrArg format: "gar|OOBI,lar|OOBI,direct-sally|OOBI"
+// oobiStrArg format: "gar|OOBI,lar|OOBI,sally|OOBI"
 export async function resolveOobis(
     aidStrArg: string,
     oobiStrArg: string,

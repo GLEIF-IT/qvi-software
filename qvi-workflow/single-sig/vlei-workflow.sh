@@ -59,7 +59,7 @@ function cleanup() {
 }
 
 function clear_containers() {
-    container_names=("gar" "lar" "qar" "person" "direct-sally")
+    container_names=("gar" "lar" "qar" "person" "sally")
 
     for name in "${container_names[@]}"; do
     if docker ps -a | grep -q "$name"; then
@@ -135,13 +135,13 @@ WEBHOOK_HOST_LOCAL=http://127.0.0.1:9923
 # exporting so available for child docker compose processes
 export WEBHOOK_HOST=http://hook:9923
 
-# Direct mode Sally
-export DIRECT_SALLY_HOST=http://direct-sally:9823
-export DIRECT_SALLY=direct-sally
-export DIRECT_SALLY_ALIAS=direct-sally
-export DIRECT_SALLY_PASSCODE=4TBjjhmKu9oeDp49J7Xdy
-export DIRECT_SALLY_SALT=0ABVqAtad0CBkhDhCEPd514T
-export DIRECT_SALLY_PRE=ECLwKe5b33BaV20x7HZWYi_KUXgY91S41fRL2uCaf4WQ # Different here because of direct mode sally with no witnesses and a new passcode and salt
+# Sally defaults to direct mode.
+export SALLY_HOST=http://sally:9823
+export SALLY_KS_NAME=sally
+export SALLY_ALIAS=sally
+export SALLY_PASSCODE=4TBjjhmKu9oeDp49J7Xdy
+export SALLY_SALT=0ABVqAtad0CBkhDhCEPd514T
+export SALLY_PRE=ECLwKe5b33BaV20x7HZWYi_KUXgY91S41fRL2uCaf4WQ
 
 # Registries
 GEDA_REGISTRY=vLEI-external
@@ -171,9 +171,9 @@ LAR=$LAR
 LAR_SALT=$LAR_SALT
 LAR_PASSCODE=$LAR_PASSCODE
 
-# Direct Sally AID
-DIRECT_SALLY_ALIAS=$DIRECT_SALLY_ALIAS
-DIRECT_SALLY_PRE=$DIRECT_SALLY_PRE
+# Sally AID
+SALLY_ALIAS=$SALLY_ALIAS
+SALLY_PRE=$SALLY_PRE
 
 # Credential Schemas
 QVI_REGISTRY=vLEI-qvi
@@ -361,12 +361,12 @@ function resolve_oobis() {
         return
     fi
 
-    export DIRECT_SALLY_OOBI="${DIRECT_SALLY_HOST}/oobi"
+    export SALLY_OOBI="${SALLY_HOST}/oobi"
     export GAR_OOBI="${WIT_HOST_GAR}/oobi/${GAR_PRE}/witness/${WAN_PRE}"
     export LAR_OOBI="${WIT_HOST_QAR}/oobi/${LAR_PRE}/witness/${WIL_PRE}"
-    export OOBIS_FOR_KERIA="gar|$GAR_OOBI,lar|$LAR_OOBI,direct-sally|$DIRECT_SALLY_OOBI"
+    export OOBIS_FOR_KERIA="gar|$GAR_OOBI,lar|$LAR_OOBI,sally|$SALLY_OOBI"
 
-    print_green "DIRECT SALLY OOBI: ${DIRECT_SALLY_OOBI}"
+    print_green "SALLY OOBI: ${SALLY_OOBI}"
 
     sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/resolve-oobis-lar-gar-sally.ts" \
       --config "${PARTICIPANT_CONFIG}" \
@@ -379,13 +379,13 @@ function resolve_oobis() {
     kli oobi resolve --name "${GAR}" --oobi-alias "${LAR}"    --passcode "${GAR_PASSCODE}" --oobi "${LAR_OOBI}"
     kli oobi resolve --name "${GAR}" --oobi-alias "${QAR}"    --passcode "${GAR_PASSCODE}" --oobi "${QAR_OOBI}"
     kli oobi resolve --name "${GAR}" --oobi-alias "${PERSON}" --passcode "${GAR_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${GAR}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${GAR_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${GAR}" --oobi-alias "${SALLY_ALIAS}" --passcode "${GAR_PASSCODE}" --oobi "${SALLY_OOBI}"
 
     print_yellow "Resolving OOBIs for LAR 1"
     kli oobi resolve --name "${LAR}" --oobi-alias "${GAR}"    --passcode "${LAR_PASSCODE}" --oobi "${GAR_OOBI}"
     kli oobi resolve --name "${LAR}" --oobi-alias "${QAR}"    --passcode "${LAR_PASSCODE}" --oobi "${QAR_OOBI}"
     kli oobi resolve --name "${LAR}" --oobi-alias "${PERSON}" --passcode "${LAR_PASSCODE}" --oobi "${PERSON_OOBI}"
-    kli oobi resolve --name "${LAR}" --oobi-alias "${DIRECT_SALLY_ALIAS}" --passcode "${LAR_PASSCODE}" --oobi "${DIRECT_SALLY_OOBI}"
+    kli oobi resolve --name "${LAR}" --oobi-alias "${SALLY_ALIAS}" --passcode "${LAR_PASSCODE}" --oobi "${SALLY_OOBI}"
 
     echo
 }
@@ -419,10 +419,10 @@ function create_gar_reg() {
 }
 
 function recreate_sally_container() {
-  # Recreate direct Sally with the new GEDA prefix.
+  # Recreate Sally with the new GEDA prefix.
   export GEDA_PRE=${GAR_PRE}
-  print_yellow "Recreating direct Sally with new GEDA prefix ${GEDA_PRE}"
-  docker compose -f $DOCKER_COMPOSE_FILE up -d direct-sally --wait
+  print_yellow "Recreating Sally with new GEDA prefix ${GEDA_PRE}"
+  docker compose -f $DOCKER_COMPOSE_FILE up -d sally --wait
 }
 
 function create_qvi_delegate() {
@@ -615,14 +615,14 @@ function present_qvi_cred_to_sally_signify() {
 #  print_lcyan "QVI_SCHEMA: ${QVI_SCHEMA}"
 #  print_lcyan "GAR_PRE: ${GAR_PRE}"
 #  print_lcyan "QVI_PRE: ${QVI_PRE}"
-#  print_lcyan "DIRECT_SALLY_PRE: ${DIRECT_SALLY_PRE}"
+#  print_lcyan "SALLY_PRE: ${SALLY_PRE}"
 
   sig_tsx "${QVI_SIGNIFY_DIR}/single-sig/qvi-present-credential.ts" \
     --config "${PARTICIPANT_CONFIG}" \
     --schema-said "${QVI_SCHEMA}" \
     --issuer-prefix "${GAR_PRE}" \
     --issuee-prefix "${QVI_PRE}" \
-    --recipient-prefix "${DIRECT_SALLY_PRE}"
+    --recipient-prefix "${SALLY_PRE}"
 
   start=$(date +%s)
   present_result=0

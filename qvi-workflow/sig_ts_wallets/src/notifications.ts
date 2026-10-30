@@ -1,19 +1,15 @@
 import {
-    assertIpexGrant,
-    assertMultisigIss,
-    assertMultisigRev,
     IPEX_GRANT_ROUTE,
+    MULTISIG_EXN_ROUTE,
+    MULTISIG_ICP_ROUTE,
     MULTISIG_ISS_ROUTE,
     MULTISIG_REV_ROUTE,
-    ExchangeResourceV1,
-    SignifyClient,
+    MULTISIG_ROT_ROUTE,
+    MULTISIG_RPY_ROUTE,
+    MULTISIG_VCP_ROUTE,
+    type SignifyClient,
 } from 'signify-ts';
 
-import {
-    coordinatedEventDigest,
-    type CoordinatedEventRoute,
-} from './multisig-coordination.ts';
-import {waitOperation} from './operations.ts';
 import {retry, type RetryOptions} from './retry.ts';
 
 export interface Notification {
@@ -31,10 +27,9 @@ interface NotificationPage {
 }
 
 export interface NotificationExpectation {
-    notificationRoute: string;
     exchangeRoute: string;
-    sender?: string;
-    allowedSenders?: string[];
+    notificationRoute?: string;
+    sender: string;
     recipient?: string;
     groupPrefix?: string;
     payloadFields?: Record<string, string>;
@@ -42,33 +37,22 @@ export interface NotificationExpectation {
     embeddedDigest?: string;
 }
 
-export interface MatchedNotification {
-    /**
-     * The first delivery record, retained for concise caller diagnostics.
-     */
-    note: Notification;
-    /**
-     * Every unread delivery record that names this exact EXN SAID.
-     */
-    deliveryNotes: Notification[];
-    exchangeSaid: string;
-    exchange: ExchangeResourceV1;
-}
-
-export interface NotificationReference {
+export interface MatchedExchange {
+    said: string;
+    exchange: Exchange;
     notificationIds: string[];
 }
 
-interface NotificationApi {
-    list(start?: number, end?: number): Promise<NotificationPage>;
-    mark(said: string): Promise<string>;
-    delete(said: string): Promise<void>;
-}
-
-interface NotificationClient {
-    notifications(): NotificationApi;
-    exchanges(): {
-        get(said: string): Promise<ExchangeResourceV1>;
+export interface Exchange {
+    [key: string]: unknown;
+    exn: {
+        [key: string]: unknown;
+        d: string;
+        i: string;
+        r: string;
+        rp?: unknown;
+        a?: unknown;
+        e?: unknown;
     };
 }
 
@@ -76,63 +60,61 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
 }
 
-function isExnV1(
-    exchange: ExchangeResourceV1
-): exchange is ExchangeResourceV1 & {
-    exn: ExchangeResourceV1['exn'] & {
-        rp: string;
-        e: Record<string, unknown>;
-    };
-} {
-    return 'rp' in exchange.exn && 'e' in exchange.exn;
+function nestedString(
+    value: unknown,
+    ...path: string[]
+): string | undefined {
+    let current = value;
+    for (const key of path) {
+        if (isRecord(current) === false) {
+            return undefined;
+        }
+        current = current[key];
+    }
+    return typeof current === 'string' ? current : undefined;
 }
 
 function exactCredentialSaid(
-    exchange: ExchangeResourceV1,
+    exchange: Exchange,
     payload: Record<string, unknown>
 ): string | undefined {
-    try {
-        switch (exchange.exn.r) {
-            case MULTISIG_ISS_ROUTE:
-                return assertMultisigIss(exchange).exn.e.acdc.d;
-            case MULTISIG_REV_ROUTE:
-                return assertMultisigRev(exchange).exn.e.rev.i;
-            case IPEX_GRANT_ROUTE:
-                return assertIpexGrant(exchange).exn.e.acdc.d;
-            default:
-                return typeof payload.credentialSaid === 'string'
-                    ? payload.credentialSaid
-                    : typeof payload.said === 'string'
-                      ? payload.said
-                      : undefined;
-        }
-    } catch {
-        return undefined;
+    switch (exchange.exn.r) {
+        case MULTISIG_ISS_ROUTE:
+        case IPEX_GRANT_ROUTE:
+            return nestedString(exchange.exn.e, 'acdc', 'd');
+        case MULTISIG_REV_ROUTE:
+            return nestedString(exchange.exn.e, 'rev', 'i');
+        default:
+            return typeof payload.credentialSaid === 'string'
+                ? payload.credentialSaid
+                : typeof payload.said === 'string'
+                  ? payload.said
+                  : undefined;
     }
 }
 
 function exactEmbeddedDigest(
-    exchange: ExchangeResourceV1
+    exchange: Exchange
 ): string | undefined {
-    try {
-        return coordinatedEventDigest(
-            exchange,
-            exchange.exn.r as CoordinatedEventRoute
-        );
-    } catch {
+    const embeddedKey = {
+        [MULTISIG_ICP_ROUTE]: 'icp',
+        [MULTISIG_ROT_ROUTE]: 'rot',
+        [MULTISIG_RPY_ROUTE]: 'rpy',
+        [MULTISIG_VCP_ROUTE]: 'vcp',
+        [MULTISIG_ISS_ROUTE]: 'iss',
+        [MULTISIG_REV_ROUTE]: 'rev',
+        [MULTISIG_EXN_ROUTE]: 'exn',
+    }[exchange.exn.r];
+    if (embeddedKey === undefined) {
         return undefined;
     }
+    return nestedString(exchange.exn.e, embeddedKey, 'd');
 }
 
 function exactRecipient(
-    exchange: ExchangeResourceV1,
+    exchange: Exchange,
     payload: Record<string, unknown>
 ): string | undefined {
-    const exchangeIsV1 = isExnV1(exchange);
-    if (exchangeIsV1 === false) {
-        return undefined;
-    }
-
     const routedRecipient = exchange.exn.rp;
     const routedRecipientIsPresent =
         typeof routedRecipient === 'string' &&
@@ -155,7 +137,7 @@ function exactRecipient(
 }
 
 export async function listAllNotifications(
-    client: NotificationClient | SignifyClient,
+    client: SignifyClient,
     pageSize = 25
 ): Promise<Notification[]> {
     const pageSizeIsInvalid =
@@ -168,7 +150,7 @@ export async function listAllNotifications(
     let start = 0;
 
     while (true) {
-        const page = await client
+        const page: NotificationPage = await client
             .notifications()
             .list(start, start + pageSize - 1);
         notifications.push(...page.notes);
@@ -185,7 +167,7 @@ export async function listAllNotifications(
 }
 
 export function exchangeMatchesExpectation(
-    exchange: ExchangeResourceV1,
+    exchange: Exchange,
     expectation: NotificationExpectation
 ): boolean {
     const routeMatches = exchange.exn.r === expectation.exchangeRoute;
@@ -193,26 +175,8 @@ export function exchangeMatchesExpectation(
         return false;
     }
 
-    const senderMatches =
-        expectation.sender === undefined ||
-        exchange.exn.i === expectation.sender;
+    const senderMatches = exchange.exn.i === expectation.sender;
     if (senderMatches === false) {
-        return false;
-    }
-
-    const allowedSenderMatches =
-        expectation.allowedSenders === undefined ||
-        expectation.allowedSenders.includes(exchange.exn.i);
-    if (allowedSenderMatches === false) {
-        return false;
-    }
-
-    const requiresV1Fields =
-        expectation.recipient !== undefined ||
-        expectation.credentialSaid !== undefined ||
-        expectation.embeddedDigest !== undefined;
-    const exchangeIsV1 = isExnV1(exchange);
-    if (requiresV1Fields && exchangeIsV1 === false) {
         return false;
     }
 
@@ -242,31 +206,30 @@ export function exchangeMatchesExpectation(
 
     const credentialMatches =
         expectation.credentialSaid === undefined ||
-        (exchangeIsV1 &&
-            exactCredentialSaid(exchange, payload) ===
-                expectation.credentialSaid);
+        exactCredentialSaid(exchange, payload) ===
+            expectation.credentialSaid;
     if (credentialMatches === false) {
         return false;
     }
 
     const embeddedDigestMatches =
         expectation.embeddedDigest === undefined ||
-        (exchangeIsV1 &&
-            exactEmbeddedDigest(exchange) ===
-                expectation.embeddedDigest);
+        exactEmbeddedDigest(exchange) === expectation.embeddedDigest;
 
     return embeddedDigestMatches;
 }
 
 async function findMatchingNotifications(
-    client: NotificationClient | SignifyClient,
+    client: SignifyClient,
     expectation: NotificationExpectation
-): Promise<MatchedNotification[]> {
+): Promise<MatchedExchange[]> {
     const notes = await listAllNotifications(client);
+    const notificationRoute =
+        expectation.notificationRoute ?? expectation.exchangeRoute;
     const candidates = notes.filter(
         (note) =>
             note.r === false &&
-            note.a.r === expectation.notificationRoute
+            note.a.r === notificationRoute
     );
 
     // A multisig group member may deliver the same recipient-bound EXN more
@@ -281,7 +244,7 @@ async function findMatchingNotifications(
             exchangeSaid.length === 0;
         if (exchangeSaidIsMissing) {
             throw new Error(
-                `Notification ${note.i} for ${expectation.notificationRoute} has no exchange SAID`
+                `Notification ${note.i} for ${notificationRoute} has no exchange SAID`
             );
         }
         const existingDeliveries =
@@ -290,7 +253,7 @@ async function findMatchingNotifications(
         candidateDeliveries.set(exchangeSaid, existingDeliveries);
     }
 
-    const matches: MatchedNotification[] = [];
+    const matches: MatchedExchange[] = [];
     for (const [exchangeSaid, deliveryNotes] of candidateDeliveries) {
         const exchange = await client.exchanges().get(exchangeSaid);
         const fetchedExchangeMatchesSaid =
@@ -305,11 +268,12 @@ async function findMatchingNotifications(
             expectation
         );
         if (exchangeMatches) {
+            const notificationIds = deliveryNotes.map((note) => note.i);
+            validatedNotificationIds(notificationIds);
             matches.push({
-                note: deliveryNotes[0],
-                deliveryNotes,
-                exchangeSaid,
+                said: exchangeSaid,
                 exchange,
+                notificationIds,
             });
         }
     }
@@ -324,25 +288,19 @@ async function findMatchingNotifications(
  * notification only after the dependent protocol action succeeds.
  */
 export async function waitForMatchingNotification(
-    client: NotificationClient | SignifyClient,
+    client: SignifyClient,
     expectation: NotificationExpectation,
     options: RetryOptions = {}
-): Promise<MatchedNotification> {
-    const hasCorrelation =
-        expectation.sender !== undefined ||
-        expectation.allowedSenders !== undefined ||
-        expectation.recipient !== undefined ||
-        expectation.groupPrefix !== undefined ||
-        expectation.payloadFields !== undefined ||
-        expectation.credentialSaid !== undefined ||
-        expectation.embeddedDigest !== undefined;
-    if (hasCorrelation === false) {
+): Promise<MatchedExchange> {
+    const notificationRoute =
+        expectation.notificationRoute ?? expectation.exchangeRoute;
+    if (expectation.sender.length === 0) {
         throw new Error(
-            `Notification ${expectation.notificationRoute} requires an identity or event correlation field`
+            `Notification ${notificationRoute} requires an exact sender`
         );
     }
 
-    return retry(async () => {
+    return await retry(async () => {
         const matches = await findMatchingNotifications(
             client,
             expectation
@@ -350,44 +308,28 @@ export async function waitForMatchingNotification(
         const matchWasNotFound = matches.length === 0;
         if (matchWasNotFound) {
             throw new Error(
-                `No correlated notification for ${expectation.notificationRoute}`
+                `No correlated notification for ${notificationRoute}`
             );
         }
 
         const matchIsAmbiguous = matches.length > 1;
         if (matchIsAmbiguous) {
             throw new Error(
-                `Found ${matches.length} correlated notifications for ${expectation.notificationRoute}; expected exactly one`
+                `Found ${matches.length} correlated notifications for ${notificationRoute}; expected exactly one`
             );
         }
         return matches[0];
-    }, options);
-}
-
-export async function consumeNotification(
-    client: NotificationClient | SignifyClient,
-    matched: MatchedNotification
-): Promise<void> {
-    await consumeNotificationReference(
-        client,
-        notificationReference(matched)
-    );
-}
-
-export function notificationReference(
-    matched: MatchedNotification
-): NotificationReference {
-    const reference = {
-        notificationIds: matched.deliveryNotes.map((note) => note.i),
-    };
-    validatedNotificationIds(reference);
-    return reference;
+    }, {
+        minSleep: 32,
+        maxSleep: 32,
+        ...options,
+    });
 }
 
 function validatedNotificationIds(
-    reference: NotificationReference
+    notificationIds: string[]
 ): string[] {
-    const ids = reference.notificationIds;
+    const ids = notificationIds;
     const idsAreInvalid =
         Array.isArray(ids) === false ||
         ids.length === 0 ||
@@ -404,24 +346,15 @@ function validatedNotificationIds(
     return ids;
 }
 
-export async function consumeNotificationReference(
-    client: NotificationClient | SignifyClient,
-    reference: NotificationReference
+export async function consumeNotifications(
+    client: SignifyClient,
+    notificationIds: string[]
 ): Promise<void> {
-    const notificationIds = validatedNotificationIds(reference);
-    for (const notificationId of notificationIds) {
+    const validatedIds = validatedNotificationIds(notificationIds);
+    for (const notificationId of validatedIds) {
         await client.notifications().mark(notificationId);
     }
-    for (const notificationId of notificationIds) {
+    for (const notificationId of validatedIds) {
         await client.notifications().delete(notificationId);
     }
-}
-
-export async function resolveOobi(
-    client: SignifyClient,
-    oobi: string,
-    alias?: string
-): Promise<void> {
-    const op = await client.oobis().resolve(oobi, alias);
-    await waitOperation(client, op);
 }

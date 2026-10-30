@@ -20,16 +20,13 @@ jobs:
         working-directory: qvi-workflow/sig_ts_wallets
         run: npm ci
       - name: Run canonical workflow
-        working-directory: qvi-workflow/keria_docker
-        run: timeout 1800 ./vlei-workflow.sh --timeout 300 --keep-runtime
-      - name: Capture Compose evidence
-        if: always()
-        working-directory: qvi-workflow/keria_docker
-        run: |
-          mkdir -p runtime/evidence
-          docker compose --env-file keria-signify-docker.env -f docker-compose-keria_signify_qvi.yaml ps -a > runtime/evidence/compose-ps.txt
-          docker compose --env-file keria-signify-docker.env -f docker-compose-keria_signify_qvi.yaml logs --no-color > runtime/evidence/compose.log 2>&1 || true
-          docker compose --env-file keria-signify-docker.env -f docker-compose-keria_signify_qvi.yaml images --format json > runtime/evidence/images.json || true
+        working-directory: qvi-workflow
+        run: >-
+          timeout 1800
+          ./vlei-workflow.sh
+          --backend docker
+          --timeout 300
+          --keep-artifacts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -41,6 +38,8 @@ jobs:
         working-directory: qvi-workflow/keria_docker
         run: >-
           docker compose
+          --project-name qvi-workflow-keria-docker
+          --project-directory .
           --env-file keria-signify-docker.env
           -f docker-compose-keria_signify_qvi.yaml
           down -v --remove-orphans

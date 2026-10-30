@@ -2,10 +2,10 @@ import {parseAidInfoSingleSig} from "../create-aid";
 import {getOrCreateClient} from "../keystore-creation";
 import {TestEnvironmentPreset} from "../resolve-env";
 import {
-    admitSinglesig,
     getReceivedCredential,
     requireCredential,
-} from "../credentials";
+} from "../credential-mutations.ts";
+import {admitSinglesig} from "../ipex.ts";
 import {credentialSnapshot} from '../credential-state.ts';
 import {
     isMainModule,

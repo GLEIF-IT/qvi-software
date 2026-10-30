@@ -2,11 +2,10 @@ import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 
 import type {
-    CompletedDoneOperation,
-    FailedDoneOperation,
+    CompletedExchangeOperation,
+    FailedExchangeOperation,
     Operation,
-    PendingDoneOperation,
-    SignifyClient,
+    PendingExchangeOperation,
 } from 'signify-ts';
 
 import {
@@ -15,17 +14,18 @@ import {
     isPendingOperation,
     waitOperation,
 } from '../src/operations.ts';
+import {testSignifyClient} from './test-signify-client.ts';
 
-const pending: PendingDoneOperation = {
+const pending: PendingExchangeOperation = {
     name: 'group.EEvent',
     done: false,
 };
-const completed = {
+const completed: CompletedExchangeOperation = {
     name: pending.name,
     done: true,
-    response: {d: 'EEvent'},
-} as CompletedDoneOperation;
-const failed: FailedDoneOperation = {
+    response: {said: 'EEvent'},
+};
+const failed: FailedExchangeOperation = {
     name: pending.name,
     done: true,
     error: {
@@ -39,10 +39,15 @@ function client(options: {
     get?: (name: string) => Promise<Operation>;
     wait?: (
         operation: Operation,
-        options?: {signal?: AbortSignal}
-    ) => Promise<CompletedDoneOperation>;
-}): SignifyClient {
-    return {
+        options?: {
+            signal?: AbortSignal;
+            minSleep?: number;
+            maxSleep?: number;
+            increaseFactor?: number;
+        }
+    ) => Promise<Operation>;
+}) {
+    return testSignifyClient({
         operations: () => ({
             get:
                 options.get ??
@@ -55,7 +60,7 @@ function client(options: {
                     throw new Error('unexpected wait');
                 }),
         }),
-    } as unknown as SignifyClient;
+    });
 }
 
 describe('operation lifecycle', () => {
@@ -76,6 +81,18 @@ describe('operation lifecycle', () => {
                 wait: async (operation, options) => {
                     calls.push(`wait:${operation.name}`);
                     assert.ok(options?.signal);
+                    assert.deepEqual(
+                        {
+                            minSleep: options?.minSleep,
+                            maxSleep: options?.maxSleep,
+                            increaseFactor: options?.increaseFactor,
+                        },
+                        {
+                            minSleep: 32,
+                            maxSleep: 32,
+                            increaseFactor: 32,
+                        }
+                    );
                     return completed;
                 },
             }),

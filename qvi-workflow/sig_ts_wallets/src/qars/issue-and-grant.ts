@@ -6,9 +6,9 @@ import type {
 import type {GroupMember} from '../client.ts';
 import {createTimestamp} from '../create-aid.ts';
 import {
-    grantCredential,
     issueCredential,
-} from '../credentials.ts';
+} from '../credential-mutations.ts';
+import {grantCredential} from '../ipex.ts';
 import {
     credentialSnapshot,
     type CredentialSnapshot,
