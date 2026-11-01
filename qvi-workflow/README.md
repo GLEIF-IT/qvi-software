@@ -88,6 +88,14 @@ always stops them. It has no staging, production, or baked-in remote target.
 The older `kli_only`, `kli_docker`, and `single-sig` examples are independent
 historical demonstrations. They are not alternate backends for this driver.
 
+For the local backend, scheduler timing is centralized in
+`keria_kli/config/tocks.json`. Direct KERIpy keys are materialized into KLI,
+witness, and Sally configs; KERIA configs also receive `tocks.signify`.
+Configuration accepts finite non-negative numbers, including exact `0.0` and
+sub-`1/32` values, and environment variables take precedence. See the local
+adapter README for defaults, the exercised environment override, and the
+coarse/flat compatibility removal timeline.
+
 ## Checks
 
 ```bash

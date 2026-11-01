@@ -33,36 +33,17 @@ export KERIA_PYTHON KERIA_LAUNCHER WITNESS_PYTHON
 export SALLY_PYTHON SALLY_LAUNCHER VLEI_BIN TSX_BIN WALLET_SERVER
 export SIGNAL_RESET_LAUNCHER KERI_WORKSPACE_DIR LOCAL_KERIPY_DIR
 
-# Run every configurable v1.2.x KERI doer at one 1/32-second scheduler tick.
-LOCAL_KERI_TOCK_ENV=(
-    KERI_WITNESS_MSG_TOCK=0.03125
-    KERI_WITNESS_ESCROW_TOCK=0.03125
-    KERI_WITNESS_CUE_TOCK=0.03125
-    KERI_INDIRECTOR_MSG_TOCK=0.03125
-    KERI_INDIRECTOR_CUE_TOCK=0.03125
-    KERI_INDIRECTOR_ESCROW_TOCK=0.03125
-    KERI_MAILBOX_POLL_TOCK=0.03125
-    KERI_MAILBOX_MSG_TOCK=0.03125
-    KERI_MAILBOX_ESCROW_TOCK=0.03125
+# KERIpy 1.1.42 owns these names as its only configurable command cadences.
+# They are passed only to the intentionally retained GEDA compatibility runtime.
+GEDA_KLI_TOCK_ENV=(
     KERI_POLLER_EVENT_TOCK=0.03125
-    KERI_RECEIPT_INTERCEPT_TOCK=0.03125
-    KERI_REACTOR_MSG_TOCK=0.03125
-    KERI_REACTOR_CUE_TOCK=0.03125
-    KERI_REACTOR_ESCROW_TOCK=0.03125
-    KERI_REACTANT_MSG_TOCK=0.03125
-    KERI_REACTANT_CUE_TOCK=0.03125
-    KERI_REACTANT_ESCROW_TOCK=0.03125
-    KERI_RESPONDANT_CUE_TOCK=0.03125
-    KERI_WITNESS_RECEIPTOR_TOCK=0.03125
-    KERI_WITNESS_INQUISITOR_TOCK=0.03125
-    KERI_WITNESS_PUBLISHER_TOCK=0.03125
-)
-
-# KLI command counselors are short-lived and process one event. Keeping this
-# cadence out of LOCAL_KERI_TOCK_ENV avoids burdening always-on KERIA agents.
-LOCAL_KLI_TOCK_ENV=(
     KERI_COUNSELOR_ESCROW_TOCK=0.03125
     KERI_VDR_ESCROW_TOCK=0.03125
+)
+
+# Keep one current environment override as an end-to-end precedence proof.
+KERIA_TOCK_OVERRIDE_ENV=(
+    KERIA_ESCROWER_TOCK=0.0
 )
 
 # Report whether a PID still represents a running, non-zombie process.
@@ -205,11 +186,22 @@ create_workflow_runtime() {
     cp "${SCRIPT_DIR}"/config/witnesses/*.json \
         "${WORKFLOW_CONFIG_DIR}/witnesses/keri/cf/"
 
+    local config_file
+    for config_file in \
+        "${WORKFLOW_CONFIG_DIR}"/keri/cf/*.json \
+        "${WORKFLOW_CONFIG_DIR}"/witnesses/keri/cf/*.json; do
+        apply_direct_tocks "${config_file}" || return 1
+    done
+    create_local_kli_tock_configs
+
     mkdir -p \
         "${WORKFLOW_CONFIG_DIR}/sally/keri/cf/${SALLY_BASE}"
     cp \
         "${SCRIPT_DIR}/sally/keri/cf/sally.json" \
         "${WORKFLOW_CONFIG_DIR}/sally/keri/cf/${SALLY_BASE}/sally.json"
+    apply_direct_tocks \
+        "${WORKFLOW_CONFIG_DIR}/sally/keri/cf/${SALLY_BASE}/sally.json" ||
+        return 1
     cp \
         "${SCRIPT_DIR}/sally/sally-incept-no-wits.json" \
         "${WORKFLOW_CONFIG_DIR}/sally/sally-incept-no-wits.json"
@@ -296,6 +288,31 @@ create_workflow_runtime() {
     : > "${SALLY_CALLBACK_FILE}"
 }
 
+# Merge the centralized direct KERIpy snapshot into one generated config.
+apply_direct_tocks() {
+    local config_file=$1
+    local temporary_file="${config_file}.tmp"
+
+    jq --slurpfile scheduler "${WORKFLOW_CONFIG_DIR}/tocks.json" \
+        '. + {tocks: ($scheduler[0].tocks | del(.signify))}' \
+        "${config_file}" > "${temporary_file}" || return 1
+    mv "${temporary_file}" "${config_file}"
+}
+
+# Persist scheduler-only configs where every short-lived KLI command reopens
+# its Habery. `kli init --config-file` does not retain the source config path.
+create_local_kli_tock_configs() {
+    local config_dir="${KLI_HEAD_DIR}/keri/cf/${KLI_BASE}"
+    local wallet_name
+
+    mkdir -p "${config_dir}"
+    for wallet_name in "${GAR1}" "${GAR2}" "${LAR1}" "${LAR2}"; do
+        jq -n --slurpfile scheduler "${WORKFLOW_CONFIG_DIR}/tocks.json" \
+            '{tocks: ($scheduler[0].tocks | del(.signify))}' \
+            > "${config_dir}/${wallet_name}.json" || return 1
+    done
+}
+
 # Write one KERIA config whose top-level agency name matches `keria start --name`.
 write_local_keria_config() {
     local config_file=$1
@@ -305,6 +322,7 @@ write_local_keria_config() {
     jq -n \
         --arg agencyName "${agency_name}" \
         --arg curl "http://127.0.0.1:${http_port}/" \
+        --slurpfile scheduler "${WORKFLOW_CONFIG_DIR}/tocks.json" \
         '{
             dt: "2024-12-31T14:06:30.123456+00:00",
             ($agencyName): {
@@ -314,7 +332,8 @@ write_local_keria_config() {
             # Wallet setup introduces the one witness each participant uses.
             # Keeping agency bootstrap empty avoids resolving both witnesses
             # independently in all five KERIA stores.
-            iurls: []
+            iurls: [],
+            tocks: $scheduler[0].tocks
         }' > "${config_file}"
 }
 
@@ -424,7 +443,7 @@ start_local_keria() {
     start_managed_process \
         "keria-${role}" \
         env \
-        "${LOCAL_KERI_TOCK_ENV[@]}" \
+        "${KERIA_TOCK_OVERRIDE_ENV[@]}" \
         KERI_AGENT_CORS=True \
         KERIA_RELEASER_TIMEOUT=3600 \
         PYTHONUNBUFFERED=1 \
@@ -490,7 +509,6 @@ start_local_foundation_services() {
     start_managed_process \
         witnesses \
         env \
-        "${LOCAL_KERI_TOCK_ENV[@]}" \
         PYTHONUNBUFFERED=1 \
         PYTHONWARNINGS=ignore::SyntaxWarning \
         "${WITNESS_PYTHON}" \
@@ -553,7 +571,6 @@ start_local_sally() {
     start_managed_process \
         sally \
         env \
-        "${LOCAL_KERI_TOCK_ENV[@]}" \
         PYTHONUNBUFFERED=1 \
         PYTHONWARNINGS=ignore::SyntaxWarning \
         QVI_KERI_HEAD_DIR="${KERI_HEAD_DIR}" \

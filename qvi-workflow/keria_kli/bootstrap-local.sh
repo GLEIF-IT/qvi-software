@@ -16,7 +16,7 @@ GEDA_KERIPY_BRANCH=perf/configurable-command-tocks-1.1.42
 GEDA_KERIPY_DIR=${GEDA_KERIPY_DIR:-\
 "${KERI_WORKSPACE_DIR}/worktrees/keripy/configurable-command-tocks-1.1.42"}
 # Every other local Python process uses the actively tuned 1.2.x source tree.
-LOCAL_KERIPY_BRANCH=v1.2.14
+LOCAL_KERIPY_BRANCH=tocks-build-out
 LOCAL_KERIPY_DIR=${LOCAL_KERIPY_DIR:-"${KERI_WORKSPACE_DIR}/core/python/keripy"}
 LOCAL_KERIA_COMMIT=86e21cbdf98dcc75817e16708879c3c5a9b41cb8
 LOCAL_KERIA_DIR=${LOCAL_KERIA_DIR:-"${KERI_WORKSPACE_DIR}/core/python/keria"}

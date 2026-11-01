@@ -16,12 +16,22 @@ kli_uses_state() {
 
 # Run KLI Python with isolated state and localhost scheduler cadences.
 run_local_kli_python() {
+    local python_path=$1
+    shift
+
+    if [[ "${python_path}" == "${GEDA_KLI_PYTHON}" ]]; then
+        run_interruptible_process \
+            env \
+            "${GEDA_KLI_TOCK_ENV[@]}" \
+            QVI_KERI_HEAD_DIR="${KLI_HEAD_DIR}" \
+            "${python_path}" "$@"
+        return
+    fi
+
     run_interruptible_process \
         env \
-        "${LOCAL_KERI_TOCK_ENV[@]}" \
-        "${LOCAL_KLI_TOCK_ENV[@]}" \
         QVI_KERI_HEAD_DIR="${KLI_HEAD_DIR}" \
-        "$@"
+        "${python_path}" "$@"
 }
 
 # Return the wallet name from a KLI-style argument list, when one is present.

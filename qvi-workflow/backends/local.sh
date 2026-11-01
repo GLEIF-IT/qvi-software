@@ -66,9 +66,14 @@ backend_preflight_versions() {
         return 1
     start_job preflight-kli \
         preflight_local_keripy "${KLI_PYTHON}" kli || return 1
+    start_job preflight-tocks \
+        env "${KERIA_TOCK_OVERRIDE_ENV[@]}" \
+        "${KERIA_PYTHON}" "${SCRIPT_DIR}/verify-tocks.py" \
+        "${WORKFLOW_CONFIG_DIR}/keria/keri/cf/qar1.json" \
+        "${KLI_HEAD_DIR}/keri/cf/${KLI_BASE}/${LAR1}.json" || return 1
     wait_jobs \
         preflight-signify preflight-keria preflight-witnesses \
-        preflight-geda-kli preflight-kli
+        preflight-geda-kli preflight-kli preflight-tocks
 }
 
 backend_supports_parallel_foundation_reads() {

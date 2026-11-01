@@ -136,7 +136,6 @@ if [[ "${WORKFLOW_BACKEND}" == local ]]; then
     start_managed_process \
         witnesses \
         env \
-        "${LOCAL_KERI_TOCK_ENV[@]}" \
         PYTHONUNBUFFERED=1 \
         PYTHONWARNINGS=ignore::SyntaxWarning \
         "${WITNESS_PYTHON}" \

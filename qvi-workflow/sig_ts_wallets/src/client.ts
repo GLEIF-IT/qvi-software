@@ -64,6 +64,16 @@ const PARTICIPANT_ROLES: readonly ParticipantRole[] = [
 ];
 const EXPECTED_SIGNIFY_VERSION = '0.4.0';
 let readyPromise: Promise<void> | undefined;
+
+/**
+ * Cache of clients mapped like:
+ *   - [name | adminUrl | bootUrl] => SignifyClient
+ *
+ * Provides a map of clients to their cache key to avoid
+ * recreating clients every time they are needed. This helps avoid the
+ * performance hit coming from re-deriving Signify keys every time a client
+ * or identifier state is recreated.
+ */
 const connectedClients = new Map<string, SignifyClient>();
 
 /** Return whether a value is a non-null object with string keys. */
